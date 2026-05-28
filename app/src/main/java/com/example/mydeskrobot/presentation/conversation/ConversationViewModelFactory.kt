@@ -107,6 +107,9 @@ class ConversationViewModelFactory(
             openingBrowserStatus = {
                 context.getString(R.string.status_opening_browser)
             },
+            openingSpotifyStatus = {
+                context.getString(R.string.status_opening_spotify)
+            },
             analyzingImageStatus = {
                 context.getString(R.string.status_analyzing_image)
             },

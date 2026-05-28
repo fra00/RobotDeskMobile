@@ -905,6 +905,7 @@ class ConversationViewModel(
         return when (toolName) {
             "take_photo" -> messages.capturingImageStatus()
             "open_browser" -> messages.openingBrowserStatus()
+            "play_spotify" -> messages.openingSpotifyStatus()
             else -> messages.thinkingStatus()
         }
     }
@@ -1433,6 +1434,7 @@ data class ConversationMessages(
     val hotwordEngineStopped: () -> String,
     val capturingImageStatus: () -> String,
     val openingBrowserStatus: () -> String,
+    val openingSpotifyStatus: () -> String,
     val analyzingImageStatus: () -> String,
     val cameraPermissionRequired: () -> String,
     val cameraCaptureFailed: (String) -> String,

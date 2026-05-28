@@ -73,6 +73,7 @@ Le linee guida dettagliate sono in **`.cursor/rules/*.mdc`**:
 | `take_photo` | LOCAL | Scatta foto con la camera |
 | `get_weather` | REMOTE | Meteo da OpenWeatherMap |
 | `open_browser` | LOCAL | Apre URL nel browser |
+| `play_spotify` | LOCAL | Apre Spotify con ricerca (artista, genere, musica) |
 | `set_reminder` | LOCAL | Imposta promemoria/sveglia |
 | `set_volume` | LOCAL | Controlla volume media |
 | `show_notification` | LOCAL | Mostra notifica di sistema |

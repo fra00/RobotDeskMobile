@@ -24,6 +24,7 @@
     <string name="status_thinking">Sto pensando…</string>
     <string name="status_capturing_image">Sto guardando… scatto foto</string>
     <string name="status_opening_browser">Apro il browser…</string>
+    <string name="status_opening_spotify">Apro Spotify…</string>
     <string name="status_analyzing_image">Analizzo la foto…</string>
     <string name="status_speaking">Sto parlando… parla per interrompere, oppure «%1$s» per uscire</string>
     <string name="status_session_ended_exit">Sessione chiusa («%1$s»). Di\' di nuovo la wake word.</string>

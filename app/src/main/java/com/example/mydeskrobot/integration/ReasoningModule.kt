@@ -9,6 +9,7 @@ import com.example.mydeskrobot.integration.memory.MemoryPromptContextProviderImp
 import com.example.mydeskrobot.integration.tool.Tool
 import com.example.mydeskrobot.integration.tool.ToolRouter
 import com.example.mydeskrobot.integration.tool.local.BrowserTool
+import com.example.mydeskrobot.integration.tool.local.SpotifyTool
 import com.example.mydeskrobot.integration.tool.local.CameraTool
 import com.example.mydeskrobot.integration.tool.local.NotificationTool
 import com.example.mydeskrobot.integration.tool.local.ReminderTool
@@ -45,6 +46,7 @@ object ReasoningModule {
             add(CameraTool(visionImageCapture))
             
             add(BrowserTool(context))
+            add(SpotifyTool(context))
             add(ReminderTool(context))
             add(VolumeTool(context))
             add(NotificationTool(context))

@@ -344,6 +344,7 @@ class ToolChainOrchestrator(
         return errors.joinToString(" ") { (toolName, message) ->
             when (toolName) {
                 "open_browser" -> "Non sono riuscito ad aprire il sito. $message"
+                "play_spotify" -> "Non sono riuscito ad aprire Spotify. $message"
                 else -> "Operazione $toolName non riuscita. $message"
             }
         }
