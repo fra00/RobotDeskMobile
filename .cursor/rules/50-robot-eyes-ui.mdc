@@ -1,0 +1,92 @@
+---
+description: UI a due occhi, emozioni e animazioni Compose per il robot da scrivania
+globs: app/src/**/ui/**/*.kt
+alwaysApply: false
+---
+
+# Robot Eyes — UI ed emozioni
+
+## Concept
+
+- Due occhi **simmetrici**, rivolti **in avanti** (non laterali).
+- L’espressione è comunicata quasi solo da **animazione** (forma, palpebre, pupilla, movimento), non da testo.
+- Il robot è il protagonista visivo; testo risposta LLM opzionale o minimale (sottotitoli).
+
+## Modello emozioni (domain)
+
+Definire un tipo chiuso, es.:
+
+```kotlin
+enum class RobotEmotion {
+    NEUTRAL,      // indifferenza / riposo
+    HAPPY,
+    ANGRY,
+    BORED,
+    SURPRISED,
+    CONFUSED,
+    LISTENING,    // durante STT
+    THINKING,     // attesa LLM
+    SPEAKING,     // durante TTS
+}
+```
+
+- Mappare emozione da: stato conversazione, parole chiave risposta (opzionale v2), o default `NEUTRAL`.
+- ViewModel espone `emotion: RobotEmotion` dentro `ConversationUiState`.
+
+## Componente `RobotEyes`
+
+- Un Composable `RobotEyes(emotion: RobotEmotion, modifier: Modifier)`.
+- Due occhi come sotto-composable `RobotEye` o canvas unico — stesso API animazione per sinistro/destro.
+- Parametri animabili (esempi):
+  - apertura palpebra (0f chiuso → 1f aperto)
+  - offset pupilla X/Y
+  - scala “sorpresa” (pupilla grande)
+  - inclinazione palpebra (rabbia vs felicità)
+  - blink periodico in `NEUTRAL` / `BORED`
+
+## Linee guida animazione
+
+| Emozione   | Indicazioni visive                                      |
+|-----------|----------------------------------------------------------|
+| NEUTRAL   | blink lento, pupilla centrata                           |
+| HAPPY     | palpebre arcuate, leggero “bounce”                      |
+| ANGRY     | palpebre inclinate verso il centro, pupille strette     |
+| BORED     | palpebre semi-chiuse, movimento lento/minimo            |
+| SURPRISED | occhi grandi, pupille dilatate, breve hold              |
+| CONFUSED  | pupille offset alternati o oscillazione leggera         |
+| LISTENING | leggero pulse o glow (tema), attenzione in avanti       |
+| THINKING  | occhi verso l’alto o blink irregolare                   |
+| SPEAKING  | sync leggero con TTS (mouth-like via palpebre opzionale)|
+
+- Usare `animateFloatAsState` con `spring` o `tween` per transizioni tra emozioni (~300–500 ms).
+- `LISTENING` / `SPEAKING` possono usare `InfiniteTransition` per loop sottili.
+- Transizione emozione: quando cambia `RobotEmotion`, animare da valori precedenti (non snap istantaneo).
+
+## Implementazione grafica
+
+- Preferire **Compose Canvas** o forme (`Canvas`, `drawCircle`, `drawArc`) per massimo controllo.
+- Alternativa: `ImageVector` / drawable animati solo se più semplici da mantenere.
+- Colori occhi da `MaterialTheme` o palette dedicata in `Color.kt` (es. `EyeWhite`, `PupilDark`).
+
+## Preview obbligatori
+
+```kotlin
+@Preview(name = "Happy")
+@Composable
+private fun RobotEyesHappyPreview() {
+    MyDeskRobotTheme { RobotEyes(emotion = RobotEmotion.HAPPY) }
+}
+```
+
+- Una preview per ogni emozione principale + tema scuro opzionale.
+
+## Sincronizzazione con audio
+
+- `SPEAKING`: opzionale modulazione ampiezza palpebra su callback TTS `onRangeStart` — solo se stabile su device target.
+- Non bloccare il thread UI; eventi TTS → ViewModel → aggiorna stato emozione.
+
+## Anti-pattern
+
+- Bitmap enormi per ogni frame emozione.
+- Lottie pesante senza necessità (accettabile solo se team preferisce asset designer).
+- Testo emoji al posto degli occhi animati.

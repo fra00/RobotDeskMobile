@@ -1,0 +1,26 @@
+# Copia questo file come local.properties (non committare local.properties).
+
+sdk.dir=C\:\\Path\\To\\Android\\sdk
+
+# LM Studio — Server locale (Developers → Start server)
+# Emulatore Android → PC host:
+LLM_BASE_URL=http://10.0.2.2:1234/v1/
+# Telefono/tablet reale → IP del PC sulla LAN, es.:
+# LLM_BASE_URL=http://192.168.1.50:1234/v1/
+
+# Nome modello caricato in LM Studio (tab Local Server / model identifier)
+LLM_MODEL=
+
+# Modello con visione (Gemini in LM Studio, ecc.). Se vuoto → usa LLM_MODEL.
+LLM_VISION_MODEL=
+
+# Opzionale se hai abilitato API key in LM Studio
+LLM_API_KEY=
+
+# Valori seed al primo avvio dell'app. Dopo il primo run, configurare LLM
+# dall'icona ingranaggio (Impostazioni → LLM) sul device.
+# Per Gemini: API key da https://aistudio.google.com/apikey
+
+# OpenWeatherMap API key (per il tool get_weather)
+# Registrati su https://openweathermap.org/api per ottenere una chiave gratuita
+WEATHER_API_KEY=

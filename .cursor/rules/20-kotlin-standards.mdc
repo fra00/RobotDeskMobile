@@ -1,0 +1,71 @@
+---
+description: Standard Kotlin idiomatici per tutto il codice sorgente del progetto
+globs: app/src/**/*.kt
+alwaysApply: false
+---
+
+# Standard Kotlin
+
+## Stile generale
+
+- Seguire [Kotlin coding conventions](https://kotlinlang.org/docs/coding-conventions.html) ufficiali.
+- Preferire **immutabilità**: `val` di default; `var` solo se necessario.
+- Funzioni brevi, una responsabilità; estrarre solo se migliora leggibilità (no helper da una riga).
+- `data class` per modelli; `sealed class` / `sealed interface` per stati ed eventi finiti.
+- `enum class` solo per insiemi fissi senza payload (es. emozioni base); con dati associati usare sealed.
+
+## Coroutine e concorrenza
+
+- `suspend` per operazioni I/O (rete, STT, TTS).
+- `Dispatchers.IO` per I/O; `Dispatchers.Main` solo per aggiornamenti UI già gestiti da Compose/Flow.
+- Mai `GlobalScope`; usare `viewModelScope` o scope esplicito con lifecycle.
+- Esporre flussi con `StateFlow` / `SharedFlow`; collezionare in Compose con `collectAsStateWithLifecycle()`.
+
+```kotlin
+// ✅
+class ConversationViewModel(
+    private val llmRepository: LlmRepository,
+) : ViewModel() {
+    private val _uiState = MutableStateFlow(ConversationUiState.Idle)
+    val uiState: StateFlow<ConversationUiState> = _uiState.asStateFlow()
+}
+
+// ❌ — stato mutabile esposto
+var uiState: ConversationUiState = ConversationUiState.Idle
+```
+
+## Null safety
+
+- Evitare `!!`; usare `?.`, `requireNotNull` con messaggio, o early return.
+- API che possono fallire → `Result<T>` o tipo errore esplicito, non eccezioni silenziose.
+
+## Naming
+
+| Elemento    | Convenzione   | Esempio                    |
+|------------|---------------|----------------------------|
+| Classi     | PascalCase    | `LlmRepositoryImpl`        |
+| Funzioni   | camelCase     | `sendPrompt`               |
+| Costanti   | UPPER_SNAKE   | `MAX_PROMPT_LENGTH`        |
+| File       | PascalCase = classe principale | `RobotEyes.kt` |
+| Risorse    | snake_case    | `string/listening_hint`    |
+
+## Interfacce e DI
+
+- Fase iniziale: **constructor injection manuale** in ViewModel (factory o `ViewModelProvider.Factory`) — niente Hilt finché non richiesto.
+- Programmare contro interfacce in `domain`, implementazioni in `data`.
+
+## Logging
+
+- Usare tag costante per modulo (es. `MyDeskRobot.Llm`).
+- `Log.d` / `Log.e` in debug; in release evitare log con contenuto utente o token.
+- Mai loggare API key o prompt completi in produzione.
+
+## Commenti
+
+- Il codice deve essere autoesplicativo.
+- Commentare solo invarianti non ovvie, limiti piattaforma (es. permesso microfono), o scelte Android (lifecycle STT).
+
+## Testabilità
+
+- Logica pura in funzioni top-level o classi senza `Context` quando possibile.
+- ViewModel testabile con repository fake e `runTest` + `StandardTestDispatcher`.

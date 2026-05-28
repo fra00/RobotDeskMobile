@@ -1,0 +1,72 @@
+---
+description: Speech-to-Text, integrazione LLM e Text-to-Speech — API, permessi e sicurezza
+globs: app/src/**/data/**/*.kt,app/src/**/domain/**/*.kt,app/src/**/presentation/**/*.kt
+alwaysApply: false
+---
+
+# Speech-to-Text, LLM e Text-to-Speech
+
+## Responsabilità
+
+| Capability | Layer consigliato        | Interfaccia domain (esempio)     |
+|-----------|---------------------------|----------------------------------|
+| STT       | `data/speech/`            | `SpeechToTextDataSource`         |
+| LLM       | `data/llm/`               | `LlmRepository`                  |
+| TTS       | `data/speech/`            | `TextToSpeechDataSource`         |
+| Orchestrazione | `presentation/`      | `ConversationViewModel`          |
+
+## Speech-to-Text (STT)
+
+- Preferire **`SpeechRecognizer`** (Android) o API ufficiale documentata per il target SDK.
+- Richiedere permesso `RECORD_AUDIO` a runtime prima di ascoltare; gestire denial con messaggio in UI.
+- Stati: idle → listening → result / error / cancelled.
+- Gestire fine ascolto (silenzio, timeout, tap stop) in modo esplicito.
+- Preparare fallback UX se STT non disponibile sul dispositivo (messaggio, non crash).
+
+## LLM
+
+- **Repository pattern**: `suspend fun ask(prompt: String): Result<String>` (o modello risposta strutturato).
+- HTTP: preferire **Retrofit + OkHttp** o Ktor Client — aggiungere via Version Catalog.
+- Configurazione:
+  - Base URL e API key da `local.properties` → `BuildConfig` (non committare).
+  - Timeout e retry limitati; messaggi errore user-friendly.
+- Prompt: inviare solo testo necessario; opzionale system prompt in risorsa o costante domain.
+- **Streaming** (opzionale futuro): se implementato, aggiornare UI a chunk e TTS a fine frase — non obbligatorio in v1.
+- Valutare **rate limit** e lunghezza massima input lato client.
+
+## Text-to-Speech (TTS)
+
+- Usare **`android.speech.tts.TextToSpeech`** o wrapper sottile in `data/speech/`.
+- Inizializzazione asincrona; gestire `onInit` failure.
+- Lingua: italiano (`Locale.ITALIAN` o `Locale.forLanguageTag("it-IT")`) salvo diversa richiesta.
+- Coordinare con ViewModel: `Speaking` → avvia TTS → `onDone` → torna `Idle` (o ascolto successivo).
+- Interrompere TTS se utente preme stop o nuovo input.
+
+## Sequenza stati (vincolo)
+
+1. STT produce testo → 2. LLM risponde → 3. TTS legge risposta.  
+Non avviare TTS prima di avere risposta LLM completa (v1), salvo requisito esplicito di streaming.
+
+## Permessi manifest (quando implementati)
+
+```xml
+<!-- Solo ciò che serve -->
+<uses-permission android:name="android.permission.RECORD_AUDIO" />
+<uses-permission android:name="android.permission.INTERNET" />
+```
+
+## Sicurezza
+
+- Mai committare API key; usare `local.properties.example` con chiavi placeholder.
+- HTTPS obbligatorio per endpoint LLM.
+- Non memorizzare cronologia conversazioni su disco senza richiesta esplicita (privacy).
+
+## Test
+
+- Fake `LlmRepository` / fake STT-TTS per test ViewModel.
+- Test instrumented solo dove serve permesso reale; mock per CI locale.
+
+## Dipendenze (da aggiungere solo all’implementazione)
+
+- Rete: Retrofit o Ktor + serializzazione (kotlinx.serialization o Moshi).
+- Nessuna SDK LLM proprietaria in codice senza approvazione — preferire API HTTP documentata (OpenAI-compatible, Gemini, ecc.) configurabile.

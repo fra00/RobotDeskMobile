@@ -1,0 +1,93 @@
+---
+description: Architettura Clean/MVVM, struttura package e flusso dati per My Desk Robot
+alwaysApply: true
+---
+
+# Architettura
+
+## Pattern
+
+- **MVVM** con Jetpack Compose: UI osserva stato immutabile dal ViewModel.
+- **Clean Architecture leggera** (3 layer), senza over-engineering:
+
+```
+ui/          → Composable, tema, animazioni occhi
+presentation/→ ViewModel, UiState, UiEvent, mapper
+domain/      → Use case (opzionali se logica semplice), modelli, interfacce repository
+data/        → Repository impl, datasource (rete LLM, STT/TTS wrapper)
+```
+
+## Struttura package target
+
+Sotto `com.example.mydeskrobot` (o package futuro concordato):
+
+```
+├── ui/
+│   ├── screen/          # schermate Compose
+│   ├── components/      # RobotEyes, controlli microfono, ecc.
+│   └── theme/           # già presente
+├── presentation/
+│   ├── conversation/    # ViewModel dialogo vocale
+│   └── emotion/         # stato emozione occhi (se separato)
+├── domain/
+│   ├── model/           # Message, Emotion, ConversationState
+│   └── repository/      # interfacce LlmRepository, SpeechRepository
+└── data/
+    ├── llm/
+    ├── speech/          # STT + TTS
+    └── mapper/
+```
+
+## Flusso conversazione (target)
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant UI as Compose UI
+    participant VM as ViewModel
+    participant STT
+    participant LLM
+    participant TTS
+
+    User->>UI: parla / tap microfono
+    UI->>VM: StartListening
+    VM->>STT: ascolta
+    STT-->>VM: testo utente
+    VM->>UI: stato Listening → Thinking
+    VM->>LLM: invia domanda
+    LLM-->>VM: risposta testo
+    VM->>UI: aggiorna testo + emozione
+    VM->>TTS: sintetizza risposta
+    TTS-->>UI: Speaking + animazione occhi
+```
+
+## Stato UI
+
+- Usare **una sealed class o data class** `ConversationUiState` (es. `Idle`, `Listening`, `Processing`, `Speaking`, `Error`).
+- Eventi utente: `sealed interface ConversationUiEvent` (`OnMicPressed`, `OnStopSpeaking`, ecc.).
+- Esporre stato con `StateFlow<ConversationUiState>`; mai mutare stato direttamente dalla UI.
+
+## Dipendenze tra layer
+
+| Layer        | Può dipendere da      | Non può dipendere da   |
+|-------------|------------------------|-------------------------|
+| `ui`        | `presentation`, theme  | `data` (implementazioni)|
+| `presentation` | `domain`            | Android framework pesante (preferire interfacce) |
+| `domain`    | nulla (Kotlin puro)    | Android, Compose, Retrofit |
+| `data`      | `domain`               | `ui`, Composable        |
+
+## ViewModel
+
+- `androidx.lifecycle.ViewModel` + `viewModelScope` per coroutine.
+- Cancellare job STT/TTS in `onCleared()` se necessario.
+- Gestire rotazione: stato in ViewModel, non in Composable `remember` per dati di business.
+
+## Error handling
+
+- Errori di rete/LLM → `UiState.Error(messageResId o messaggio user-safe)` + emozione occhi coerente (es. confusione / indifferenza).
+- Non mostrare stack trace o dettagli API all’utente.
+
+## Nuove dipendenze
+
+- Aggiungere solo in `gradle/libs.versions.toml` + `app/build.gradle.kts`.
+- Documentare in commento PR/commit il motivo (es. Retrofit per LLM, non “perché sì”).

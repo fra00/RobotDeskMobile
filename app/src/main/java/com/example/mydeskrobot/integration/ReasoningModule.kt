@@ -1,0 +1,80 @@
+package com.example.mydeskrobot.integration
+
+import android.content.Context
+import com.example.mydeskrobot.data.llm.LlmPromptLoader
+import com.example.mydeskrobot.domain.llm.LlmSettings
+import com.example.mydeskrobot.domain.vision.VisionImageCapture
+import com.example.mydeskrobot.integration.llm.LlmClientFactory
+import com.example.mydeskrobot.integration.memory.MemoryPromptContextProviderImpl
+import com.example.mydeskrobot.integration.tool.Tool
+import com.example.mydeskrobot.integration.tool.ToolRouter
+import com.example.mydeskrobot.integration.tool.local.BrowserTool
+import com.example.mydeskrobot.integration.tool.local.CameraTool
+import com.example.mydeskrobot.integration.tool.local.NotificationTool
+import com.example.mydeskrobot.integration.tool.local.ReminderTool
+import com.example.mydeskrobot.integration.tool.local.VolumeTool
+import com.example.mydeskrobot.integration.tool.remote.WeatherTool
+import com.example.mydeskrobot.memory.UserMemoryRepository
+import com.example.mydeskrobot.reasoning.ReasoningEngine
+import com.example.mydeskrobot.reasoning.ReasoningEngineImpl
+
+/**
+ * Module that configures and creates the ReasoningEngine.
+ * Wires together LLM client, tool router, and all tools.
+ */
+object ReasoningModule {
+    
+    /**
+     * Create a fully configured ReasoningEngine.
+     * 
+     * @param context Application context for loading prompts
+     * @param visionImageCapture Camera capture implementation
+     * @param additionalTools Extra tools to register
+     */
+    fun createReasoningEngine(
+        context: Context,
+        visionImageCapture: VisionImageCapture,
+        llmSettings: LlmSettings,
+        additionalTools: List<Tool> = emptyList(),
+    ): ReasoningEngine {
+        val basePrompt = LlmPromptLoader.loadSystemPrompt(context)
+        
+        val llmClient = LlmClientFactory.create(llmSettings)
+        
+        val tools = buildList {
+            add(CameraTool(visionImageCapture))
+            
+            add(BrowserTool(context))
+            add(ReminderTool(context))
+            add(VolumeTool(context))
+            add(NotificationTool(context))
+            
+            val weatherApiKey = getWeatherApiKey()
+            if (weatherApiKey.isNotBlank()) {
+                add(WeatherTool(weatherApiKey))
+            }
+            
+            addAll(additionalTools)
+        }
+        
+        val toolRouter = ToolRouter(tools)
+        val memoryRepository = UserMemoryRepository.create(context)
+        val memoryContextProvider = MemoryPromptContextProviderImpl(memoryRepository)
+        
+        return ReasoningEngineImpl(
+            llmClient = llmClient,
+            toolExecutor = toolRouter,
+            baseSystemPrompt = basePrompt,
+            memoryContextProvider = memoryContextProvider,
+            maxChainSteps = 10,
+        )
+    }
+    
+    private fun getWeatherApiKey(): String {
+        return try {
+            com.example.mydeskrobot.BuildConfig.WEATHER_API_KEY
+        } catch (_: Exception) {
+            ""
+        }
+    }
+}

@@ -1,0 +1,45 @@
+---
+description: Visione del progetto My Desk Robot, funzionalità principali e vincoli globali
+alwaysApply: true
+---
+
+# My Desk Robot — Panoramica progetto
+
+## Obiettivo
+
+App Android che funge da interfaccia vocale e visiva per un “robot da scrivania”: l’utente parla, l’app invia la domanda a un LLM, legge ad alta voce la risposta e mostra **due occhi** animati che esprimono emozioni.
+
+## Funzionalità principali (in ordine di priorità)
+
+1. **Speech-to-Text (STT)** — cattura voce utente e produce testo da inviare al LLM.
+2. **Comunicazione LLM** — invio domanda/richiesta e ricezione risposta testuale.
+3. **Text-to-Speech (TTS)** — sintesi vocale della risposta del LLM.
+4. **UI occhi** — due occhi rivolti in avanti; espressioni tramite animazioni (indifferenza, felicità, rabbia, noia, ecc.).
+
+## Stack attuale (non cambiare senza motivo)
+
+- Kotlin, Jetpack Compose, Material 3
+- `minSdk` 24, `compileSdk` / `targetSdk` 35
+- Gradle Version Catalog (`gradle/libs.versions.toml`)
+- Modulo singolo `:app` (per ora)
+
+## Principi di lavoro
+
+- **Scope minimo**: ogni modifica deve risolvere un requisito esplicito; niente refactor o feature non richieste.
+- **Convenzioni esistenti**: leggere il codice circostante prima di aggiungere file o dipendenze.
+- **Niente segreti in repo**: API key LLM solo in `local.properties`, BuildConfig generato, o backend proxy — mai in sorgente committato.
+- **Italiano in UI** (stringhe utente); codice e commenti tecnici in **inglese** (nomi classi, funzioni, log).
+- **Non** rinominare il package `com.example.mydeskrobot` finché non viene richiesto esplicitamente.
+
+## Cosa evitare
+
+- Logica di rete, STT, TTS o LLM dentro `MainActivity` o Composable monolitici.
+- Dipendenze pesanti senza giustificazione (es. framework UI alternativi).
+- Permessi Android non necessari al caso d’uso.
+- Test triviali che non verificano comportamento reale.
+
+## Riferimento architettura
+
+Per struttura cartelle, layer e flusso dati vedi `@10-architecture.mdc`.
+Per STT/LLM/TTS vedi `@40-speech-llm-tts.mdc`.
+Per UI occhi e animazioni vedi `@50-robot-eyes-ui.mdc`.

@@ -1,0 +1,41 @@
+  ---
+description: Testing, qualità codice e checklist prima di merge per My Desk Robot
+globs: app/src/test/**/*.kt,app/src/androidTest/**/*.kt
+alwaysApply: false
+---
+
+# Testing e qualità
+
+## Piramide test
+
+1. **Unit test** (`test/`) — ViewModel, mapper, parsing risposta LLM, logica emozione.
+2. **Instrumented** (`androidTest/`) — solo flussi che richiedono Context reale (TTS init, permessi) — pochi e mirati.
+3. **Compose UI test** — `RobotEyes` per emozioni chiave e transizioni stato (opzionale v1).
+
+## Cosa testare (utile)
+
+- ViewModel: dato fake repository, sequenza `Idle → Listening → Processing → Speaking → Idle`.
+- Mapping errore LLM → `UiState.Error` + emozione appropriata.
+- Parser/eventuale estrazione emozione da testo (se introdotto).
+
+## Cosa non testare
+
+- `assertEquals(4, 2+2)` o solo package name (rimuovere/sostituire template quando si implementa).
+- Snapshot fragili senza stabilizzazione.
+
+## Strumenti
+
+- JUnit 4/5, `kotlinx-coroutines-test`, `turbine` (opzionale per Flow) se aggiunto al catalog.
+- Compose: `createComposeRule` + `onNodeWithContentDescription`.
+
+## Checklist pre-commit (manuale)
+
+- [ ] Build `./gradlew assembleDebug` ok
+- [ ] Nessuna API key nel diff
+- [ ] Stringhe utente in `strings.xml`
+- [ ] Preview Compose aggiornate per UI toccata
+- [ ] Permessi manifest giustificati
+
+## Lint
+
+- Rispettare Android Lint e Kotlin warnings; non sopprimere `@Suppress` senza commento breve.

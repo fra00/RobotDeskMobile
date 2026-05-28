@@ -1,0 +1,105 @@
+<resources>
+    <string name="app_name">My Desk Robot</string>
+
+    <string name="wake_phrase">assistente</string>
+    <string name="out_phrase">adesso basta</string>
+    <string name="utterance_pause_seconds">3</string>
+    <string name="conversation_silence_timeout_seconds">45</string>
+    <!-- Pausa dopo il TTS prima di riaprire il microfono (anti-eco) -->
+    <string name="post_tts_cooldown_seconds">1</string>
+    <!-- Standby: espressione annoiata se nessuna wake word -->
+    <string name="bored_idle_before_seconds">60</string>
+    <string name="bored_expression_seconds">4</string>
+    <string name="bored_repeat_interval_seconds">90</string>
+    <!-- Notte: standby dormiente (ore 0–23, end esclusa; default 0–6 = mezzanotte–6:00) -->
+    <string name="night_mode_start_hour">0</string>
+    <string name="night_mode_end_hour">6</string>
+
+    <string name="wake_phrase_hint">Attivazione: «%1$s»</string>
+    <string name="out_phrase_hint">Uscita: «%1$s» · pausa frase %2$s s</string>
+    <string name="status_idle">Attiva il microfono per l\'ascolto always-on</string>
+    <string name="status_waiting_hotword">Standby — di\' «%1$s» per iniziare</string>
+    <string name="status_waiting_hotword_night">Stanotte dormo — di\' «%1$s» per svegliarmi</string>
+    <string name="status_active_listening">In ascolto… esci con «%1$s»</string>
+    <string name="status_thinking">Sto pensando…</string>
+    <string name="status_capturing_image">Sto guardando… scatto foto</string>
+    <string name="status_analyzing_image">Analizzo la foto…</string>
+    <string name="status_speaking">Sto parlando… parla per interrompere, oppure «%1$s» per uscire</string>
+    <string name="status_session_ended_exit">Sessione chiusa («%1$s»). Di\' di nuovo la wake word.</string>
+    <string name="status_session_ended_silence">Silenzio prolungato: standby.</string>
+
+    <string name="line_user">Tu: %1$s</string>
+    <string name="line_robot">Robot: %1$s</string>
+
+    <string name="error_stt_unavailable">Riconoscimento vocale non disponibile</string>
+    <string name="error_llm_not_configured">Configura LLM_BASE_URL in local.properties (LM Studio)</string>
+    <string name="error_llm_model_missing">Imposta LLM_MODEL in local.properties (nome modello in LM Studio)</string>
+    <string name="error_llm_failed">Errore LLM: %1$s</string>
+    <string name="error_tts_failed">Errore sintesi vocale: %1$s</string>
+    <string name="error_hotword_engine_stopped">Ascolto interrotto. Riattiva il microfono.</string>
+    <string name="error_camera_permission">Serve il permesso fotocamera per vedere la scena.</string>
+    <string name="error_camera_capture">Non riesco a scattare la foto: %1$s</string>
+    <string name="error_llm_empty_reply">Il modello non ha fornito una risposta.</string>
+    <string name="error_vision_loop">Analisi immagine non riuscita. Verifica LLM_VISION_MODEL (modello con visione).</string>
+
+    <string name="conversation_history_title">Cronologia conversazione</string>
+    <string name="conversation_history_empty">Nessun messaggio ancora.</string>
+    <string name="conversation_history_close">Chiudi</string>
+    <string name="cd_show_conversation_history">Mostra cronologia conversazione</string>
+
+    <string name="cd_service_off">Servizio di ascolto disattivato</string>
+    <string name="cd_standby_on">In standby — in attesa della wake word</string>
+    <string name="cd_session_active">Sessione conversazione attiva</string>
+    <string name="cd_thinking">Sto pensando</string>
+    <string name="cd_happy_mood">Felice</string>
+    <string name="cd_sleeping">Robot che dorme</string>
+    <string name="cd_drowsy">Robot assonnato</string>
+    <string name="cd_standby_sleeping">In standby — dorme</string>
+
+    <string name="cd_hotword_inactive">Attiva ascolto always-on</string>
+    <string name="cd_hotword_active">Disattiva ascolto always-on</string>
+    <string name="cd_mic_listening">Trascrizione in corso</string>
+
+    <string name="notification_channel_hotword">Ascolto wake word</string>
+    <string name="notification_hotword_title">My Desk Robot in ascolto</string>
+    <string name="notification_hotword_text">Wake: %1$s</string>
+
+    <string name="cd_open_settings">Impostazioni</string>
+    <string name="settings_title">Impostazioni</string>
+    <string name="settings_llm">LLM</string>
+    <string name="settings_memory">Memoria</string>
+    <string name="settings_close">Chiudi</string>
+    <string name="settings_save">Salva</string>
+    <string name="settings_cancel">Annulla</string>
+    <string name="settings_test_connection">Test connessione</string>
+
+    <string name="llm_settings_title">Configurazione LLM</string>
+    <string name="llm_provider_lm_studio">LM Studio</string>
+    <string name="llm_provider_gemini">Gemini</string>
+    <string name="llm_field_base_url">Base URL</string>
+    <string name="llm_field_base_url_hint">http://10.0.2.2:1234/v1/</string>
+    <string name="llm_field_text_model">Modello testo</string>
+    <string name="llm_field_vision_model">Modello visione (opzionale)</string>
+    <string name="llm_field_api_key">API key</string>
+    <string name="llm_field_api_key_hint">Chiave da Google AI Studio</string>
+    <string name="llm_gemini_model_hint">gemini-2.0-flash</string>
+
+    <string name="llm_error_base_url_required">Inserisci il Base URL</string>
+    <string name="llm_error_text_model_required">Inserisci il modello testo</string>
+    <string name="llm_error_api_key_required">Inserisci l\'API key Gemini</string>
+    <string name="llm_save_success">Configurazione LLM salvata</string>
+    <string name="llm_save_deferred">Salvato. Si applica al prossimo avvio ascolto.</string>
+    <string name="llm_test_success">Connessione riuscita</string>
+    <string name="llm_test_failed">Test fallito: %1$s</string>
+    <string name="memory_settings_title">Impostazioni memoria</string>
+    <string name="memory_enabled_label">Abilita estrazione memoria in standby</string>
+    <string name="memory_interval_seconds_label">Intervallo analisi (secondi)</string>
+    <string name="memory_preview_title">Anteprima memoria</string>
+    <string name="memory_preview_empty">Nessuna informazione memorizzata</string>
+    <string name="memory_reset_button">Cancella tutta la memoria</string>
+    <string name="memory_reorganize_button">Riorganizza ora</string>
+    <string name="memory_settings_saved">Impostazioni memoria salvate</string>
+    <string name="memory_reset_done">Memoria cancellata</string>
+
+    <string name="error_llm_not_configured_settings">Configura il LLM nelle impostazioni (icona ingranaggio)</string>
+</resources>

@@ -1,0 +1,68 @@
+---
+description: Linee guida Jetpack Compose e Material 3 per UI My Desk Robot
+globs: app/src/**/ui/**/*.kt,app/src/main/java/**/MainActivity.kt
+alwaysApply: false
+---
+
+# Jetpack Compose & Material 3
+
+## Organizzazione UI
+
+- **Schermata** = un Composable root (es. `RobotScreen`) che riceve `uiState` e `onEvent`.
+- **Componenti** riutilizzabili in `ui/components/` (es. `RobotEyes`, `MicButton`).
+- Nessuna chiamata diretta a repository, Retrofit o `SpeechRecognizer` dai Composable.
+
+```kotlin
+@Composable
+fun RobotScreen(
+    uiState: ConversationUiState,
+    onEvent: (ConversationUiEvent) -> Unit,
+    modifier: Modifier = Modifier,
+) { /* ... */ }
+```
+
+## Stato in Compose
+
+- Stato di business → dal ViewModel (`collectAsStateWithLifecycle`).
+- Stato puramente UI locale (es. animazione one-shot) → `remember` / `animate*AsState`.
+- Non duplicare `uiState` in `remember { mutableStateOf(...) } }` se proviene dal ViewModel.
+
+## Tema
+
+- Usare `MyDeskRobotTheme` e `MaterialTheme.colorScheme` / `typography`.
+- Colori custom solo in `ui/theme/Color.kt`; testi utente in `res/values/strings.xml`.
+- Supportare dark/light e dynamic color già configurati — non hardcodare colori nei Composable.
+
+## Layout schermata principale (target)
+
+- Area centrale: **occhi** (dominante, sempre visibili).
+- Controlli minimali: pulsante microfono / indicatore ascolto (opzionale sottotitolo stato).
+- Evitare UI affollata; priorità all’espressione visiva del robot.
+
+## Accessibilità
+
+- `contentDescription` su pulsanti e icone interattive.
+- Contrasto sufficiente per stati errore/listening.
+- Considerare `semantics` per stato “in ascolto” / “sta parlando”.
+
+## Preview
+
+- Ogni componente visivo significativo deve avere `@Preview` con stati rappresentativi.
+- Preview multipli per emozioni occhi diverse (vedi `@50-robot-eyes-ui.mdc`).
+
+## Performance animazioni
+
+- Preferire `Modifier.graphicsLayer` + `animateFloatAsState` / `InfiniteTransition` per occhi.
+- Evitare ricomposizioni inutili: parametri stabili, `key` dove serve liste.
+- Animazioni complesse → considerare `Animatable` o stati dedicati in ViewModel solo se sincronizzate con TTS.
+
+## Material 3
+
+- Componenti M3 (`Button`, `IconButton`, `Scaffold`) coerenti con il tema.
+- `Scaffold` + `enableEdgeToEdge()` già in uso — rispettare `innerPadding`.
+
+## Anti-pattern
+
+- `AndroidView` solo se indispensabile (es. legacy view); preferire API Compose/AndroidX.
+- `LaunchedEffect` con side effect di business pesanti — spostare in ViewModel.
+- Stringhe hardcoded in Composable.

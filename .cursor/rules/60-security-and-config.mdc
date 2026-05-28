@@ -1,0 +1,41 @@
+---
+description: Segreti, configurazione build, permessi e privacy per My Desk Robot
+alwaysApply: false
+---
+
+# Sicurezza e configurazione
+
+## Segreti e API key
+
+- File `local.properties` (già in `.gitignore`) per:
+  - `LLM_API_KEY=...`
+  - `LLM_BASE_URL=...` (se variabile)
+- Fornire `local.properties.example` con chiavi vuote e commenti.
+- Esporre in app solo via `buildConfigField` in `app/build.gradle.kts` — mai stringhe letterali nel Kotlin sorgente.
+
+```properties
+# local.properties.example
+LLM_API_KEY=your_key_here
+LLM_BASE_URL=https://api.example.com/v1/
+```
+
+## Build
+
+- Non abilitare `isMinifyEnabled` finché non c’è suite release stabile; quando attivo, regole ProGuard per Retrofit/serialization.
+- `debug` vs `release`: logging verboso solo in debug.
+
+## Privacy
+
+- Audio microfono: usare solo durante sessione STT attiva; non registrare su file senza consenso esplicito.
+- Conversazioni: default **non** persistere su disco; se aggiunta cronologia, opt-in e cancellazione.
+- Informativa permessi prima del primo uso microfono (stringa + dialog sistema).
+
+## Rete
+
+- `INTERNET` solo se LLM cloud; certificate pinning opzionale fase avanzata.
+- Validare risposte LLM (lunghezza, charset) prima di TTS per evitare input anomali.
+
+## Git
+
+- Inizializzare repo prima del primo commit con segreti.
+- Non committare: `local.properties`, `.idea/workspace.xml`, build artifacts.
