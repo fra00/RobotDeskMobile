@@ -5,6 +5,9 @@ import com.example.mydeskrobot.reasoning.model.IntermediateResponse
 import com.example.mydeskrobot.reasoning.model.ReasoningResult
 import com.example.mydeskrobot.reasoning.tool.ToolExecutor
 import com.example.mydeskrobot.reasoning.tool.toSystemPromptSection
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 /**
  * Implementation of [ReasoningEngine].
@@ -20,6 +23,10 @@ class ReasoningEngineImpl(
     private val memoryContextProvider: MemoryContextProvider? = null,
     maxChainSteps: Int = 10,
 ) : ReasoningEngine {
+
+    companion object {
+        private const val DATETIME_PLACEHOLDER = "{{CURRENT_DATETIME}}"
+    }
     
     private val responseParser = LlmResponseParser()
     
@@ -71,12 +78,21 @@ class ReasoningEngineImpl(
     
     private fun buildFullSystemPrompt(): String {
         val toolSection = toolExecutor.getAvailableTools().toSystemPromptSection()
+        val promptWithDateTime = baseSystemPrompt.replace(
+            DATETIME_PLACEHOLDER, 
+            getCurrentDateTimeString()
+        )
         
         return if (toolSection.isNotBlank()) {
-            "$baseSystemPrompt\n\n$toolSection"
+            "$promptWithDateTime\n\n$toolSection"
         } else {
-            baseSystemPrompt
+            promptWithDateTime
         }
+    }
+
+    private fun getCurrentDateTimeString(): String {
+        val dateFormat = SimpleDateFormat("EEEE d MMMM yyyy, HH:mm", Locale.ITALIAN)
+        return dateFormat.format(Date())
     }
 
     private suspend fun refreshSystemPrompt(userText: String) {

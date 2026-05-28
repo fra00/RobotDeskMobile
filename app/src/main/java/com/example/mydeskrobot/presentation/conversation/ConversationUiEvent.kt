@@ -35,4 +35,20 @@ sealed interface ConversationUiEvent {
     data object OnResetMemoryManual : ConversationUiEvent
 
     data object OnReorganizeMemoryManual : ConversationUiEvent
+
+    data object OnOpenVoskModelSettings : ConversationUiEvent
+
+    data object OnDismissVoskModelSettings : ConversationUiEvent
+
+    data object OnDownloadVoskModel : ConversationUiEvent
+
+    data object OnSkipVoskModel : ConversationUiEvent
+
+    data object OnOpenSttSettings : ConversationUiEvent
+
+    data object OnDismissSttSettings : ConversationUiEvent
+
+    data class OnSttProviderChange(val provider: com.example.mydeskrobot.domain.speech.SttProvider) : ConversationUiEvent
+
+    data object OnSaveSttSettings : ConversationUiEvent
 }

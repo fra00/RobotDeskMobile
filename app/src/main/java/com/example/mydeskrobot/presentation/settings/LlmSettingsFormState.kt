@@ -1,7 +1,9 @@
 package com.example.mydeskrobot.presentation.settings
 
+import com.example.mydeskrobot.data.speech.VoskModelManager
 import com.example.mydeskrobot.domain.llm.LlmProvider
 import com.example.mydeskrobot.domain.llm.LlmSettings
+import com.example.mydeskrobot.domain.speech.SttProvider
 import com.example.mydeskrobot.memory.MemorySettings
 
 data class LlmSettingsFormState(
@@ -32,8 +34,12 @@ data class SettingsUiState(
     val showMainDialog: Boolean = false,
     val showLlmDialog: Boolean = false,
     val showMemoryDialog: Boolean = false,
+    val showVoskModelDialog: Boolean = false,
+    val showSttDialog: Boolean = false,
     val form: LlmSettingsFormState = LlmSettingsFormState(),
     val memoryForm: MemorySettingsFormState = MemorySettingsFormState(),
+    val voskModelState: VoskModelManager.ModelState = VoskModelManager.ModelState.NotDownloaded,
+    val sttProvider: SttProvider = SttProvider.ANDROID,
     val isSaving: Boolean = false,
     val isTesting: Boolean = false,
     val memoryListPreview: List<String> = emptyList(),

@@ -16,6 +16,7 @@ object LlmPromptLoader {
         require(text.isNotBlank()) {
             "System prompt asset is empty: $SYSTEM_PROMPT_ASSET_PATH"
         }
+
         return text
     }
 

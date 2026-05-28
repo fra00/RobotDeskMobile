@@ -41,6 +41,9 @@ import com.example.mydeskrobot.ui.components.MicButton
 import com.example.mydeskrobot.ui.components.MemorySettingsDialog
 import com.example.mydeskrobot.ui.components.PhraseInfoCorner
 import com.example.mydeskrobot.ui.components.SettingsDialog
+import com.example.mydeskrobot.ui.components.SttSettingsDialog
+import com.example.mydeskrobot.ui.components.VoskModelDownloadDialog
+import com.example.mydeskrobot.domain.speech.SttProvider
 import com.example.mydeskrobot.ui.components.RobotEyes
 import com.example.mydeskrobot.ui.components.StandbyStatusIndicator
 import com.example.mydeskrobot.ui.components.DrowsyMoodIndicator
@@ -202,10 +205,37 @@ fun RobotScreen(
     }
 
     if (settingsUiState.showMainDialog) {
+        val sttProviderName = when (settingsUiState.sttProvider) {
+            SttProvider.ANDROID -> stringResource(R.string.stt_provider_android)
+            SttProvider.VOSK -> stringResource(R.string.stt_provider_vosk)
+        }
         SettingsDialog(
             onDismiss = { onEvent(ConversationUiEvent.OnDismissSettings) },
             onOpenLlmSettings = { onEvent(ConversationUiEvent.OnOpenLlmSettings) },
             onOpenMemorySettings = { onEvent(ConversationUiEvent.OnOpenMemorySettings) },
+            onOpenSttSettings = { onEvent(ConversationUiEvent.OnOpenSttSettings) },
+            onOpenVoskModelSettings = { onEvent(ConversationUiEvent.OnOpenVoskModelSettings) },
+            isVoskModelReady = settingsUiState.voskModelState is com.example.mydeskrobot.data.speech.VoskModelManager.ModelState.Ready,
+            sttProviderName = sttProviderName,
+        )
+    }
+
+    if (settingsUiState.showVoskModelDialog) {
+        VoskModelDownloadDialog(
+            modelState = settingsUiState.voskModelState,
+            onDownload = { onEvent(ConversationUiEvent.OnDownloadVoskModel) },
+            onDismiss = { onEvent(ConversationUiEvent.OnDismissVoskModelSettings) },
+            onSkip = { onEvent(ConversationUiEvent.OnSkipVoskModel) },
+        )
+    }
+
+    if (settingsUiState.showSttDialog) {
+        SttSettingsDialog(
+            currentProvider = settingsUiState.sttProvider,
+            isVoskModelReady = settingsUiState.voskModelState is com.example.mydeskrobot.data.speech.VoskModelManager.ModelState.Ready,
+            onProviderChange = { onEvent(ConversationUiEvent.OnSttProviderChange(it)) },
+            onSave = { onEvent(ConversationUiEvent.OnSaveSttSettings) },
+            onDismiss = { onEvent(ConversationUiEvent.OnDismissSttSettings) },
         )
     }
 

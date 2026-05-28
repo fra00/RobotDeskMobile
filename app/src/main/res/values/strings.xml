@@ -3,7 +3,7 @@
 
     <string name="wake_phrase">assistente</string>
     <string name="out_phrase">adesso basta</string>
-    <string name="utterance_pause_seconds">3</string>
+    <string name="utterance_pause_seconds">2</string>
     <string name="conversation_silence_timeout_seconds">45</string>
     <!-- Pausa dopo il TTS prima di riaprire il microfono (anti-eco) -->
     <string name="post_tts_cooldown_seconds">1</string>
@@ -23,6 +23,7 @@
     <string name="status_active_listening">In ascolto… esci con «%1$s»</string>
     <string name="status_thinking">Sto pensando…</string>
     <string name="status_capturing_image">Sto guardando… scatto foto</string>
+    <string name="status_opening_browser">Apro il browser…</string>
     <string name="status_analyzing_image">Analizzo la foto…</string>
     <string name="status_speaking">Sto parlando… parla per interrompere, oppure «%1$s» per uscire</string>
     <string name="status_session_ended_exit">Sessione chiusa («%1$s»). Di\' di nuovo la wake word.</string>
@@ -102,4 +103,30 @@
     <string name="memory_reset_done">Memoria cancellata</string>
 
     <string name="error_llm_not_configured_settings">Configura il LLM nelle impostazioni (icona ingranaggio)</string>
+
+    <string name="ok">OK</string>
+    <string name="vosk_model_dialog_title">Modello riconoscimento vocale</string>
+    <string name="vosk_model_not_downloaded">Per eliminare i beep di sistema, scarica il modello Vosk per il riconoscimento vocale offline.</string>
+    <string name="vosk_model_size_info">Dimensione: circa 50 MB. Richiede connessione internet.</string>
+    <string name="vosk_model_downloading">Download modello in corso…</string>
+    <string name="vosk_model_extracting">Estrazione modello…</string>
+    <string name="vosk_model_please_wait">Attendere prego</string>
+    <string name="vosk_model_ready">Modello pronto. Riconoscimento vocale offline attivo.</string>
+    <string name="vosk_model_error">Errore: %1$s</string>
+    <string name="vosk_model_download_button">Scarica modello</string>
+    <string name="vosk_model_retry_button">Riprova</string>
+    <string name="vosk_model_skip_button">Usa sistema (con beep)</string>
+    <string name="vosk_model_settings_entry">Modello STT Vosk</string>
+    <string name="vosk_model_status_ready">Pronto (offline)</string>
+    <string name="vosk_model_status_not_downloaded">Non scaricato</string>
+
+    <string name="settings_stt">Riconoscimento vocale</string>
+    <string name="stt_settings_title">Riconoscimento vocale</string>
+    <string name="stt_provider_label">Motore STT</string>
+    <string name="stt_provider_android">Android (Google)</string>
+    <string name="stt_provider_android_desc">Qualità alta, richiede connessione, beep di sistema</string>
+    <string name="stt_provider_vosk">Vosk (offline)</string>
+    <string name="stt_provider_vosk_desc">Offline, nessun beep, qualità inferiore</string>
+    <string name="stt_settings_saved">Impostazioni salvate. Riavvia l\'ascolto per applicare.</string>
+    <string name="stt_vosk_not_downloaded">Modello Vosk non scaricato. Vai nelle impostazioni Vosk per scaricarlo.</string>
 </resources>

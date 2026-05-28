@@ -1,11 +1,14 @@
 package com.example.mydeskrobot.reasoning
 
+import android.util.Log
 import com.example.mydeskrobot.reasoning.model.ChainStatus
 import com.example.mydeskrobot.reasoning.model.LlmAction
 import com.example.mydeskrobot.reasoning.model.ToolInvocation
 import com.squareup.moshi.Json
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
+
+private const val TAG = "LlmResponseParser"
 
 /**
  * Parsed LLM response with action support.
@@ -67,16 +70,79 @@ class LlmResponseParser(
         
         val jsonPayload = extractJsonPayload(trimmed)
         if (jsonPayload != null) {
-            runCatching { adapter.fromJson(jsonPayload) }.getOrNull()?.let { json ->
+            val parseResult = runCatching { adapter.fromJson(jsonPayload) }
+            parseResult.getOrNull()?.let { json ->
                 return ParsedLlmResponse(
                     text = json.spokenText(),
                     emotion = json.emotion?.trim()?.lowercase(),
                     action = parseAction(json),
                 )
             }
+            // JSON extraction found something but Moshi parsing failed
+            Log.w(TAG, "JSON parsing failed: ${parseResult.exceptionOrNull()?.message}")
+            Log.d(TAG, "Raw response (first 200 chars): ${trimmed.take(200)}")
         }
         
-        return ParsedLlmResponse(text = trimmed, emotion = null, action = LlmAction.None)
+        // Fallback: try to extract "reply" field from malformed JSON
+        val replyFromMalformed = extractReplyFromMalformedJson(trimmed)
+        val fallbackText = if (replyFromMalformed != null) {
+            Log.d(TAG, "Fallback: extracted reply from malformed JSON")
+            replyFromMalformed
+        } else {
+            Log.d(TAG, "Fallback: sanitizing JSON residues from raw text")
+            sanitizeJsonResidues(trimmed)
+        }
+        
+        return ParsedLlmResponse(text = fallbackText, emotion = null, action = LlmAction.None)
+    }
+    
+    /**
+     * Tries to extract the "reply" field from malformed/incomplete JSON using regex.
+     * Returns null if no reply field found.
+     */
+    private fun extractReplyFromMalformedJson(raw: String): String? {
+        // Match "reply": "..." or "reply":"..."
+        val replyPattern = Regex(""""reply"\s*:\s*"((?:[^"\\]|\\.)*)""")
+        val match = replyPattern.find(raw)
+        val extracted = match?.groupValues?.getOrNull(1)
+            ?.replace("\\\"", "\"")
+            ?.replace("\\n", "\n")
+            ?.replace("\\t", "\t")
+            ?.replace("\\\\", "\\")
+            ?.trim()
+        
+        return extracted?.takeIf { it.isNotBlank() }
+    }
+    
+    /**
+     * Removes JSON-like patterns from text that should be spoken.
+     * Used as last resort when JSON parsing completely fails.
+     */
+    private fun sanitizeJsonResidues(text: String): String {
+        var result = text
+        
+        // Remove JSON object patterns at start
+        if (result.startsWith("{")) {
+            // Try to find where actual text content might start
+            val replyContent = extractReplyFromMalformedJson(result)
+            if (replyContent != null) {
+                return replyContent
+            }
+        }
+        
+        // Remove leading/trailing braces if they look like failed JSON
+        result = result.removePrefix("{").removeSuffix("}")
+        
+        // Remove common JSON key patterns
+        result = result.replace(Regex(""""reply"\s*:\s*"""), "")
+        result = result.replace(Regex(""""text"\s*:\s*"""), "")
+        result = result.replace(Regex(""""emotion"\s*:\s*"[^"]*",?\s*"""), "")
+        result = result.replace(Regex(""""action"\s*:\s*\{[^}]*\},?\s*"""), "")
+        
+        // Clean up residual quotes and commas
+        result = result.trim('"', ',', ' ')
+        
+        return result.trim()
     }
     
     private fun parseAction(json: LlmResponseJson): LlmAction {

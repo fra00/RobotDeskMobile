@@ -23,6 +23,7 @@ import com.example.mydeskrobot.domain.repository.TextToSpeechRepository
 import com.example.mydeskrobot.domain.vision.VisionImageCapture
 import com.example.mydeskrobot.data.speech.TtsInterruptedException
 import com.example.mydeskrobot.domain.speech.EchoSpeechFilter
+import com.example.mydeskrobot.domain.speech.MarkdownStripper
 import com.example.mydeskrobot.domain.llm.LlmEmotionMapper
 import com.example.mydeskrobot.domain.llm.LlmSettings
 import com.example.mydeskrobot.domain.llm.LlmSettingsRepository
@@ -42,6 +43,9 @@ import com.example.mydeskrobot.reasoning.model.ConversationMessage
 import com.example.mydeskrobot.reasoning.model.IntermediateResponse
 import com.example.mydeskrobot.reasoning.model.ReasoningResult
 import com.example.mydeskrobot.R
+import com.example.mydeskrobot.data.speech.SttSettingsRepository
+import com.example.mydeskrobot.data.speech.VoskModelManager
+import com.example.mydeskrobot.domain.speech.SttProvider
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -99,6 +103,8 @@ class ConversationViewModel(
     private var conversationLogBeforeCurrentTurn: String? = null
     private val memoryRepository = UserMemoryRepository.create(appContext)
     private val memorySettingsRepository = MemorySettingsRepository(appContext)
+    private val voskModelManager = VoskModelManager(appContext)
+    private val sttSettingsRepository = SttSettingsRepository(appContext)
     private val memoryExtractionScheduler by lazy {
         val prompt = LlmPromptLoader.loadMemoryExtractorPrompt(appContext)
         val extractionClient = LlmClientFactory.create(runBlockingLoadSettings())
@@ -162,11 +168,29 @@ class ConversationViewModel(
             ConversationUiEvent.OnSaveMemorySettings -> saveMemorySettings()
             ConversationUiEvent.OnResetMemoryManual -> resetMemoryManual()
             ConversationUiEvent.OnReorganizeMemoryManual -> reorganizeMemoryManual()
+            ConversationUiEvent.OnOpenVoskModelSettings -> openVoskModelSettings()
+            ConversationUiEvent.OnDismissVoskModelSettings -> dismissVoskModelSettings()
+            ConversationUiEvent.OnDownloadVoskModel -> downloadVoskModel()
+            ConversationUiEvent.OnSkipVoskModel -> skipVoskModel()
+            ConversationUiEvent.OnOpenSttSettings -> openSttSettings()
+            ConversationUiEvent.OnDismissSttSettings -> dismissSttSettings()
+            is ConversationUiEvent.OnSttProviderChange -> updateSttProvider(event.provider)
+            ConversationUiEvent.OnSaveSttSettings -> saveSttSettings()
         }
     }
 
     private fun openSettings() {
-        _settingsUiState.update { it.copy(showMainDialog = true, feedbackMessage = null) }
+        viewModelScope.launch {
+            val currentProvider = sttSettingsRepository.getProvider()
+            refreshVoskModelState()
+            _settingsUiState.update { 
+                it.copy(
+                    showMainDialog = true, 
+                    feedbackMessage = null,
+                    sttProvider = currentProvider,
+                ) 
+            }
+        }
     }
 
     private fun dismissSettings() {
@@ -256,6 +280,84 @@ class ConversationViewModel(
                     } else {
                         "Memoria già ottimizzata"
                     },
+                    feedbackIsError = false,
+                )
+            }
+        }
+    }
+
+    private fun openVoskModelSettings() {
+        refreshVoskModelState()
+        _settingsUiState.update {
+            it.copy(
+                showMainDialog = false,
+                showVoskModelDialog = true,
+                feedbackMessage = null,
+            )
+        }
+    }
+
+    private fun dismissVoskModelSettings() {
+        _settingsUiState.update { it.copy(showVoskModelDialog = false) }
+    }
+
+    private fun downloadVoskModel() {
+        viewModelScope.launch {
+            voskModelManager.state.collect { state ->
+                _settingsUiState.update { it.copy(voskModelState = state) }
+            }
+        }
+        viewModelScope.launch {
+            voskModelManager.downloadModel()
+        }
+    }
+
+    private fun skipVoskModel() {
+        _settingsUiState.update { it.copy(showVoskModelDialog = false) }
+    }
+
+    private fun refreshVoskModelState() {
+        val state = if (voskModelManager.isModelReady()) {
+            VoskModelManager.ModelState.Ready(voskModelManager.getModelIfReady()!!)
+        } else {
+            VoskModelManager.ModelState.NotDownloaded
+        }
+        _settingsUiState.update { it.copy(voskModelState = state) }
+    }
+
+    fun isVoskModelReady(): Boolean = voskModelManager.isModelReady()
+
+    private fun openSttSettings() {
+        viewModelScope.launch {
+            val currentProvider = sttSettingsRepository.getProvider()
+            refreshVoskModelState()
+            _settingsUiState.update {
+                it.copy(
+                    showMainDialog = false,
+                    showSttDialog = true,
+                    sttProvider = currentProvider,
+                    feedbackMessage = null,
+                )
+            }
+        }
+    }
+
+    private fun dismissSttSettings() {
+        _settingsUiState.update { it.copy(showSttDialog = false, feedbackMessage = null) }
+    }
+
+    private fun updateSttProvider(provider: SttProvider) {
+        _settingsUiState.update { it.copy(sttProvider = provider, feedbackMessage = null) }
+    }
+
+    private fun saveSttSettings() {
+        val provider = _settingsUiState.value.sttProvider
+        viewModelScope.launch {
+            sttSettingsRepository.setProvider(provider)
+            _settingsUiState.update {
+                it.copy(
+                    showSttDialog = false,
+                    feedbackMessage = appContext.getString(R.string.stt_settings_saved),
                     feedbackIsError = false,
                 )
             }
@@ -687,9 +789,10 @@ class ConversationViewModel(
             )
         }
 
+        val textForTts = MarkdownStripper.strip(text)
         HotwordController.beginBargeIn(text)
         try {
-            ttsRepository.speak(text).onFailure { error ->
+            ttsRepository.speak(textForTts).onFailure { error ->
                 if (error !is TtsInterruptedException) {
                     // Don't switch to recoverable anger here: the chain will continue.
                 }
@@ -720,6 +823,7 @@ class ConversationViewModel(
     private fun toolStatusMessage(toolName: String?): String {
         return when (toolName) {
             "take_photo" -> messages.capturingImageStatus()
+            "open_browser" -> messages.openingBrowserStatus()
             else -> messages.thinkingStatus()
         }
     }
@@ -873,9 +977,10 @@ class ConversationViewModel(
             )
         }
 
+        val textForTts = MarkdownStripper.strip(text)
         HotwordController.beginBargeIn(text)
 
-        ttsRepository.speak(text).fold(
+        ttsRepository.speak(textForTts).fold(
             onSuccess = {
                 if (!ttsInterruptHandled) {
                     resumeListeningAfterAssistantTurn()
@@ -1150,6 +1255,7 @@ data class ConversationMessages(
     val ttsFailed: (String) -> String,
     val hotwordEngineStopped: () -> String,
     val capturingImageStatus: () -> String,
+    val openingBrowserStatus: () -> String,
     val analyzingImageStatus: () -> String,
     val cameraPermissionRequired: () -> String,
     val cameraCaptureFailed: (String) -> String,

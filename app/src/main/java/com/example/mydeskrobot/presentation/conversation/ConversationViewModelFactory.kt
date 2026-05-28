@@ -101,6 +101,9 @@ class ConversationViewModelFactory(
             capturingImageStatus = {
                 context.getString(R.string.status_capturing_image)
             },
+            openingBrowserStatus = {
+                context.getString(R.string.status_opening_browser)
+            },
             analyzingImageStatus = {
                 context.getString(R.string.status_analyzing_image)
             },

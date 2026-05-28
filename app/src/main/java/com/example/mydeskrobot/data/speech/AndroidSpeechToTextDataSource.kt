@@ -20,15 +20,7 @@ import kotlin.coroutines.resume
 class AndroidSpeechToTextDataSource(
     private val context: Context,
     private val languageTag: String = Locale.ITALIAN.toLanguageTag(),
-) {
-    data class RecognitionChunk(
-        val text: String,
-        val isFinal: Boolean,
-    )
-
-    fun interface ChunkListener {
-        fun onChunk(chunk: RecognitionChunk)
-    }
+) : SpeechToTextDataSource {
 
     companion object {
         private const val TAG = "SttDataSource"
@@ -51,7 +43,7 @@ class AndroidSpeechToTextDataSource(
     @Volatile
     private var restartCounter: Long = 0L
 
-    fun isRecognitionAvailable(): Boolean =
+    override fun isRecognitionAvailable(): Boolean =
         SpeechRecognizer.isRecognitionAvailable(context)
 
     /**
@@ -75,7 +67,7 @@ class AndroidSpeechToTextDataSource(
      * Cancels any active listening session without destroying the recognizer.
      * Call this before TTS to stop capturing audio.
      */
-    fun cancelActiveListening() {
+    override fun cancelActiveListening() {
         synchronized(lock) {
             if (isListening) {
                 try {
@@ -94,7 +86,7 @@ class AndroidSpeechToTextDataSource(
      * Releases the SpeechRecognizer instance completely.
      * Call this when the listening service is stopped.
      */
-    fun release() {
+    override fun release() {
         synchronized(lock) {
             persistentRecognizer?.let { recognizer ->
                 try {
@@ -135,9 +127,9 @@ class AndroidSpeechToTextDataSource(
         }
     }
 
-    suspend fun listenOnce(): Result<String> = listenWithChunks(listener = null)
+    override suspend fun listenOnce(): Result<String> = listenWithChunks(listener = null)
 
-    suspend fun listenWithChunks(listener: ChunkListener?): Result<String> = withContext(Dispatchers.Main) {
+    override suspend fun listenWithChunks(listener: SpeechToTextDataSource.ChunkListener?): Result<String> = withContext(Dispatchers.Main) {
         if (!isRecognitionAvailable()) {
             return@withContext Result.failure(
                 IllegalStateException("Speech recognition is not available on this device"),
@@ -224,7 +216,7 @@ class AndroidSpeechToTextDataSource(
                     }
                     Log.d(TAG, "onResults textLen=${text.length} afterMs=$elapsed")
                     if (text.isNotEmpty()) {
-                        listener?.onChunk(RecognitionChunk(text = text, isFinal = true))
+                        listener?.onChunk(SpeechToTextDataSource.RecognitionChunk(text = text, isFinal = true))
                     }
                     finishOnce {
                         if (!continuation.isActive) return@finishOnce
@@ -251,7 +243,7 @@ class AndroidSpeechToTextDataSource(
                         .orEmpty()
                     if (partial.isEmpty()) return
                     Log.v(TAG, "onPartial len=${partial.length}")
-                    listener?.onChunk(RecognitionChunk(text = partial, isFinal = false))
+                    listener?.onChunk(SpeechToTextDataSource.RecognitionChunk(text = partial, isFinal = false))
                 }
 
                 override fun onEvent(eventType: Int, params: Bundle?) = Unit

@@ -2,8 +2,8 @@ package com.example.mydeskrobot.data.hotword
 
 import android.speech.SpeechRecognizer
 import android.util.Log
-import com.example.mydeskrobot.data.speech.AndroidSpeechToTextDataSource
 import com.example.mydeskrobot.data.speech.SpeechRecognitionException
+import com.example.mydeskrobot.data.speech.SpeechToTextDataSource
 import com.example.mydeskrobot.domain.hotword.HotwordEvent
 import com.example.mydeskrobot.domain.hotword.SessionEndReason
 import com.example.mydeskrobot.domain.speech.EchoSpeechFilter
@@ -21,7 +21,7 @@ import kotlin.coroutines.coroutineContext
  * frase in corso → standby (serve di nuovo la wake word).
  */
 class SttListeningOrchestrator(
-    private val dataSource: AndroidSpeechToTextDataSource,
+    private val dataSource: SpeechToTextDataSource,
     private val config: ListeningConfig,
     private val wakePhraseMatcher: WakePhraseMatcher,
     private val exitPhraseMatcher: ExitPhraseMatcher,
@@ -177,7 +177,7 @@ class SttListeningOrchestrator(
             }
 
             dataSource.listenWithChunks(
-                listener = AndroidSpeechToTextDataSource.ChunkListener { chunk ->
+                listener = SpeechToTextDataSource.ChunkListener { chunk ->
                     if (isBargeInMode()) return@ChunkListener
                     if (chunk.isFinal) return@ChunkListener
                     lastSpeechAt = System.currentTimeMillis()

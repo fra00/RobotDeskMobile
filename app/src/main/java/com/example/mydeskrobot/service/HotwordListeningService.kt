@@ -18,6 +18,12 @@ import com.example.mydeskrobot.data.hotword.ListeningConfig
 import com.example.mydeskrobot.data.hotword.SttListeningOrchestrator
 import com.example.mydeskrobot.data.power.DeviceStayAwakeManager
 import com.example.mydeskrobot.data.speech.AndroidSpeechToTextDataSource
+import com.example.mydeskrobot.data.speech.SpeechToTextDataSource
+import com.example.mydeskrobot.data.speech.SttSettingsRepository
+import com.example.mydeskrobot.data.speech.VoskModelManager
+import com.example.mydeskrobot.data.speech.VoskSpeechToTextDataSource
+import com.example.mydeskrobot.domain.speech.SttProvider
+import kotlinx.coroutines.runBlocking
 import com.example.mydeskrobot.domain.hotword.HotwordEvent
 import com.example.mydeskrobot.domain.hotword.HotwordEventDispatcher
 import com.example.mydeskrobot.domain.speech.ExitPhraseMatcher
@@ -62,7 +68,9 @@ class HotwordListeningService : Service() {
 
     private lateinit var stayAwakeManager: DeviceStayAwakeManager
     private lateinit var listeningConfig: ListeningConfig
-    private lateinit var speechDataSource: AndroidSpeechToTextDataSource
+    private lateinit var voskModelManager: VoskModelManager
+    private lateinit var sttSettingsRepository: SttSettingsRepository
+    private var speechDataSource: SpeechToTextDataSource? = null
     private var orchestrator: SttListeningOrchestrator? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -72,7 +80,8 @@ class HotwordListeningService : Service() {
         HotwordController.register(this)
         stayAwakeManager = DeviceStayAwakeManager(applicationContext)
         listeningConfig = buildListeningConfig()
-        speechDataSource = AndroidSpeechToTextDataSource(applicationContext)
+        voskModelManager = VoskModelManager(applicationContext)
+        sttSettingsRepository = SttSettingsRepository(applicationContext)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -108,6 +117,9 @@ class HotwordListeningService : Service() {
         if (::stayAwakeManager.isInitialized) {
             stayAwakeManager.release()
         }
+        if (::voskModelManager.isInitialized) {
+            voskModelManager.release()
+        }
         HotwordController.unregister(this)
         serviceScope.cancel()
         super.onDestroy()
@@ -115,13 +127,17 @@ class HotwordListeningService : Service() {
 
     fun isDetecting(): Boolean = listenJob?.isActive == true
 
+    fun getVoskModelManager(): VoskModelManager = voskModelManager
+
+    fun isUsingVosk(): Boolean = speechDataSource is VoskSpeechToTextDataSource
+
     fun beginAssistantTurn() {
         Log.d(TAG, "beginAssistantTurn")
         resumeJob?.cancel()
         bargeInMode = false
         bargeInEchoReference = null
         sttPaused = true
-        speechDataSource.cancelActiveListening()
+        speechDataSource?.cancelActiveListening()
         orchestrator?.clearPendingPhrase()
     }
 
@@ -135,7 +151,7 @@ class HotwordListeningService : Service() {
         bargeInMode = true
         sttPaused = false
         orchestrator?.resetSessionSilenceClock()
-        speechDataSource.cancelActiveListening()
+        speechDataSource?.cancelActiveListening()
     }
 
     fun endAssistantTurn(cooldownMs: Long, echoReferenceForCooldown: String? = null) {
@@ -152,17 +168,22 @@ class HotwordListeningService : Service() {
     }
 
     private fun startListeningLoop() {
-        if (!speechDataSource.isRecognitionAvailable()) {
+        sttPaused = false
+        Log.d(TAG, "startListeningLoop")
+        listenJob?.cancel()
+
+        val dataSource = createSpeechDataSource()
+        speechDataSource = dataSource
+
+        if (!dataSource.isRecognitionAvailable()) {
+            Log.w(TAG, "Speech recognition not available")
             HotwordEventDispatcher.emit(HotwordEvent.EngineStopped)
             stopSelf()
             return
         }
 
-        sttPaused = false
-        Log.d(TAG, "startListeningLoop")
-        listenJob?.cancel()
         orchestrator = SttListeningOrchestrator(
-            dataSource = speechDataSource,
+            dataSource = dataSource,
             config = listeningConfig,
             wakePhraseMatcher = WakePhraseMatcher(wakePhrase = listeningConfig.wakePhrase),
             exitPhraseMatcher = ExitPhraseMatcher(exitPhrase = listeningConfig.exitPhrase),
@@ -180,6 +201,26 @@ class HotwordListeningService : Service() {
         }
     }
 
+    private fun createSpeechDataSource(): SpeechToTextDataSource {
+        val provider = runBlocking { sttSettingsRepository.getProvider() }
+        
+        return when (provider) {
+            SttProvider.VOSK -> {
+                if (voskModelManager.isModelReady()) {
+                    Log.d(TAG, "Using Vosk STT (no system beeps)")
+                    VoskSpeechToTextDataSource(applicationContext, voskModelManager)
+                } else {
+                    Log.w(TAG, "Vosk selected but model not ready, falling back to Android STT")
+                    AndroidSpeechToTextDataSource(applicationContext)
+                }
+            }
+            SttProvider.ANDROID -> {
+                Log.d(TAG, "Using Android STT (system beeps may occur)")
+                AndroidSpeechToTextDataSource(applicationContext)
+            }
+        }
+    }
+
     private fun stopListeningLoop() {
         Log.d(TAG, "stopListeningLoop")
         resumeJob?.cancel()
@@ -189,7 +230,8 @@ class HotwordListeningService : Service() {
         sttPaused = false
         bargeInMode = false
         bargeInEchoReference = null
-        speechDataSource.release()
+        speechDataSource?.release()
+        speechDataSource = null
     }
 
     private fun buildListeningConfig(): ListeningConfig {

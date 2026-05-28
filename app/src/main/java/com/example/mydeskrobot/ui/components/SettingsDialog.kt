@@ -19,6 +19,10 @@ fun SettingsDialog(
     onDismiss: () -> Unit,
     onOpenLlmSettings: () -> Unit,
     onOpenMemorySettings: () -> Unit,
+    onOpenSttSettings: () -> Unit,
+    onOpenVoskModelSettings: () -> Unit,
+    isVoskModelReady: Boolean,
+    sttProviderName: String,
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -41,6 +45,20 @@ fun SettingsDialog(
                         .clickable(onClick = onOpenMemorySettings)
                         .padding(vertical = 12.dp),
                 )
+                SettingsRow(
+                    label = stringResource(R.string.settings_stt),
+                    value = sttProviderName,
+                    onClick = onOpenSttSettings,
+                )
+                SettingsRow(
+                    label = stringResource(R.string.vosk_model_settings_entry),
+                    value = if (isVoskModelReady) {
+                        stringResource(R.string.vosk_model_status_ready)
+                    } else {
+                        stringResource(R.string.vosk_model_status_not_downloaded)
+                    },
+                    onClick = onOpenVoskModelSettings,
+                )
             }
         },
         confirmButton = {
@@ -49,4 +67,28 @@ fun SettingsDialog(
             }
         },
     )
+}
+
+@Composable
+private fun SettingsRow(
+    label: String,
+    value: String,
+    onClick: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(vertical = 12.dp),
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyLarge,
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
 }

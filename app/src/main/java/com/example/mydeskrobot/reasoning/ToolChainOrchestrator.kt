@@ -157,10 +157,14 @@ class ToolChainOrchestrator(
                         action.chainStatus == ChainStatus.COMPLETE
                     
                     if (chainTerminated) {
-                        // Text already emitted via intermediate; signal Success with empty text
-                        // so the caller doesn't re-speak it.
-                        val finalText = if (alreadySpokenText) "" else parsed.text
-                        return ReasoningResult.Success(finalText, parsed.emotion)
+                        val toolFailureText = formatToolFailures(results)
+                        val finalText = when {
+                            toolFailureText != null -> toolFailureText
+                            alreadySpokenText -> ""
+                            else -> parsed.text
+                        }
+                        val emotion = if (toolFailureText != null) "confused" else parsed.emotion
+                        return ReasoningResult.Success(finalText, emotion)
                     }
                 }
                 
@@ -235,8 +239,14 @@ class ToolChainOrchestrator(
                     action.chainStatus == ChainStatus.COMPLETE
                 
                 if (chainTerminated) {
-                    val finalText = if (alreadySpokenText) "" else parsed.text
-                    ReasoningResult.Success(finalText, parsed.emotion)
+                    val toolFailureText = formatToolFailures(results)
+                    val finalText = when {
+                        toolFailureText != null -> toolFailureText
+                        alreadySpokenText -> ""
+                        else -> parsed.text
+                    }
+                    val emotion = if (toolFailureText != null) "confused" else parsed.emotion
+                    ReasoningResult.Success(finalText, emotion)
                 } else {
                     executeChain(onIntermediateResponse)
                 }
@@ -303,6 +313,26 @@ class ToolChainOrchestrator(
     private fun captureImageIfPresent(result: ToolResult) {
         if (result is ToolResult.BinaryData && result.mimeType.startsWith("image/")) {
             pendingImageBytes = result.data
+        }
+    }
+
+    /**
+     * Builds a spoken error when a terminating tool chain had failures.
+     * Without this, await_result=false tools fail silently after an optimistic intermediate reply.
+     */
+    private fun formatToolFailures(
+        results: List<Pair<ToolInvocation, ToolResult>>,
+    ): String? {
+        val errors = results.mapNotNull { (tool, result) ->
+            (result as? ToolResult.Error)?.let { tool.name to it.message }
+        }
+        if (errors.isEmpty()) return null
+
+        return errors.joinToString(" ") { (toolName, message) ->
+            when (toolName) {
+                "open_browser" -> "Non sono riuscito ad aprire il sito. $message"
+                else -> "Operazione $toolName non riuscita. $message"
+            }
         }
     }
     
