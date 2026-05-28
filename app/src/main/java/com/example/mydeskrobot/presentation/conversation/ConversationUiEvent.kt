@@ -51,4 +51,14 @@ sealed interface ConversationUiEvent {
     data class OnSttProviderChange(val provider: com.example.mydeskrobot.domain.speech.SttProvider) : ConversationUiEvent
 
     data object OnSaveSttSettings : ConversationUiEvent
+
+    data object OnOpenNotificationSettings : ConversationUiEvent
+
+    data object OnDismissNotificationSettings : ConversationUiEvent
+
+    data class OnNotificationEnabledChange(val enabled: Boolean) : ConversationUiEvent
+
+    data class OnNotificationPackageToggle(val packageName: String) : ConversationUiEvent
+
+    data object OnSaveNotificationSettings : ConversationUiEvent
 }

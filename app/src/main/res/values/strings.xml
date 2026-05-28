@@ -31,6 +31,7 @@
 
     <string name="line_user">Tu: %1$s</string>
     <string name="line_robot">Robot: %1$s</string>
+    <string name="line_system">Sistema (%1$s): %2$s</string>
 
     <string name="error_stt_unavailable">Riconoscimento vocale non disponibile</string>
     <string name="error_llm_not_configured">Configura LLM_BASE_URL in local.properties (LM Studio)</string>
@@ -70,6 +71,7 @@
     <string name="settings_llm">LLM</string>
     <string name="settings_memory">Memoria</string>
     <string name="settings_close">Chiudi</string>
+    <string name="settings_configure">Configura</string>
     <string name="settings_save">Salva</string>
     <string name="settings_cancel">Annulla</string>
     <string name="settings_test_connection">Test connessione</string>
@@ -129,4 +131,14 @@
     <string name="stt_provider_vosk_desc">Offline, nessun beep, qualità inferiore</string>
     <string name="stt_settings_saved">Impostazioni salvate. Riavvia l\'ascolto per applicare.</string>
     <string name="stt_vosk_not_downloaded">Modello Vosk non scaricato. Vai nelle impostazioni Vosk per scaricarlo.</string>
+
+    <string name="settings_notifications">Input da notifiche</string>
+    <string name="notification_settings_title">Input da notifiche</string>
+    <string name="notification_settings_enable">Abilita lettura notifiche</string>
+    <string name="notification_settings_permission_required">Accesso alle notifiche non concesso. Apri le impostazioni di sistema per abilitarlo.</string>
+    <string name="notification_settings_open_permissions">Apri impostazioni notifiche</string>
+    <string name="notification_settings_apps_title">App abilitate</string>
+    <string name="notification_settings_enabled">Abilitato</string>
+    <string name="notification_settings_disabled">Disabilitato</string>
+    <string name="notification_settings_saved">Impostazioni notifiche salvate</string>
 </resources>

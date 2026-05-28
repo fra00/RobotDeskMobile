@@ -9,6 +9,7 @@ App Android (Kotlin + Jetpack Compose) per dialogo vocale con LLM e interfaccia 
 3. Text-to-Speech (lettura risposta)
 4. UI occhi con emozioni animate (neutral, happy, angry, bored, …)
 5. **Tool Architecture**: esecuzione di tool locali e remoti orchestrati dal LLM
+6. **Input Architecture**: input esterni paralleli alla voce (notifiche, sensori, hardware)
 
 ## Architettura a 3 Layer
 
@@ -61,8 +62,9 @@ Le linee guida dettagliate sono in **`.cursor/rules/*.mdc`**:
 1. Leggere `00` e `10`.
 2. Per feature vocali/LLM → `40`; per occhi → `50`.
 3. Per tool → `docs/TOOL_ARCHITECTURE.md`.
-4. Scope minimo: una capability per volta.
-5. Non committare segreti; usare `local.properties.example`.
+4. Per input esterni → `docs/INPUT_ARCHITECTURE.md`.
+5. Scope minimo: una capability per volta.
+6. Non committare segreti; usare `local.properties.example`.
 
 ## Tool disponibili
 
@@ -74,6 +76,16 @@ Le linee guida dettagliate sono in **`.cursor/rules/*.mdc`**:
 | `set_reminder` | LOCAL | Imposta promemoria/sveglia |
 | `set_volume` | LOCAL | Controlla volume media |
 | `show_notification` | LOCAL | Mostra notifica di sistema |
+
+## Input esterni disponibili
+
+| Input | Priorità | Descrizione |
+|-------|----------|-------------|
+| `notification` | DEFERRED | Notifiche da app (WhatsApp, SMS, etc.) |
+| `hardware_button` | BLOCKING | Pulsante fisico ESP32 (futuro) |
+| `sensor_reading` | DEFERRED | Sensori ambientali (futuro) |
+
+Gli input esterni vengono elaborati dal LLM quando il microfono è attivo. Dettagli: `docs/INPUT_ARCHITECTURE.md`.
 
 ## Configurazione LLM (runtime)
 

@@ -10,6 +10,8 @@ import com.example.mydeskrobot.data.llm.LlmPromptLoader
 import com.example.mydeskrobot.domain.hotword.HotwordEvent
 import com.example.mydeskrobot.domain.hotword.HotwordEventDispatcher
 import com.example.mydeskrobot.domain.hotword.SessionEndReason
+import com.example.mydeskrobot.domain.input.SystemInputDispatcher
+import com.example.mydeskrobot.domain.input.SystemInputEvent
 import com.example.mydeskrobot.domain.model.BoredIdleConfig
 import com.example.mydeskrobot.domain.model.LlmAssistantReply
 import com.example.mydeskrobot.domain.model.RobotEmotion
@@ -42,6 +44,11 @@ import com.example.mydeskrobot.reasoning.ReasoningEngine
 import com.example.mydeskrobot.reasoning.model.ConversationMessage
 import com.example.mydeskrobot.reasoning.model.IntermediateResponse
 import com.example.mydeskrobot.reasoning.model.ReasoningResult
+import com.example.mydeskrobot.reasoning.model.RobotInput
+import com.example.mydeskrobot.reasoning.model.SystemInputEnvelope
+import com.example.mydeskrobot.integration.input.DeferredInputQueue
+import com.example.mydeskrobot.integration.input.InputPolicyEngine
+import com.example.mydeskrobot.data.input.InputSettingsRepository
 import com.example.mydeskrobot.R
 import com.example.mydeskrobot.data.speech.SttSettingsRepository
 import com.example.mydeskrobot.data.speech.VoskModelManager
@@ -105,6 +112,8 @@ class ConversationViewModel(
     private val memorySettingsRepository = MemorySettingsRepository(appContext)
     private val voskModelManager = VoskModelManager(appContext)
     private val sttSettingsRepository = SttSettingsRepository(appContext)
+    private val deferredInputQueue = DeferredInputQueue()
+    private val inputSettingsRepository = InputSettingsRepository(appContext)
     private val memoryExtractionScheduler by lazy {
         val prompt = LlmPromptLoader.loadMemoryExtractorPrompt(appContext)
         val extractionClient = LlmClientFactory.create(runBlockingLoadSettings())
@@ -148,6 +157,13 @@ class ConversationViewModel(
                 }
             }
         }
+        viewModelScope.launch {
+            SystemInputDispatcher.events.collect { event ->
+                when (event) {
+                    is SystemInputEvent.InputReceived -> onSystemInputReceived(event.envelope)
+                }
+            }
+        }
         memoryExtractionScheduler.start()
     }
 
@@ -176,18 +192,29 @@ class ConversationViewModel(
             ConversationUiEvent.OnDismissSttSettings -> dismissSttSettings()
             is ConversationUiEvent.OnSttProviderChange -> updateSttProvider(event.provider)
             ConversationUiEvent.OnSaveSttSettings -> saveSttSettings()
+            ConversationUiEvent.OnOpenNotificationSettings -> openNotificationSettings()
+            ConversationUiEvent.OnDismissNotificationSettings -> dismissNotificationSettings()
+            is ConversationUiEvent.OnNotificationEnabledChange -> updateNotificationEnabled(event.enabled)
+            is ConversationUiEvent.OnNotificationPackageToggle -> toggleNotificationPackage(event.packageName)
+            ConversationUiEvent.OnSaveNotificationSettings -> saveNotificationSettings()
         }
     }
 
     private fun openSettings() {
         viewModelScope.launch {
             val currentProvider = sttSettingsRepository.getProvider()
+            val notificationsEnabled = inputSettingsRepository.isNotificationsEnabled()
+            val accessGranted = inputSettingsRepository.isNotificationAccessGranted()
+            val allowedPackages = inputSettingsRepository.getAllowedPackages()
             refreshVoskModelState()
             _settingsUiState.update { 
                 it.copy(
                     showMainDialog = true, 
                     feedbackMessage = null,
                     sttProvider = currentProvider,
+                    notificationsEnabled = notificationsEnabled,
+                    notificationAccessGranted = accessGranted,
+                    notificationAllowedPackages = allowedPackages,
                 ) 
             }
         }
@@ -358,6 +385,60 @@ class ConversationViewModel(
                 it.copy(
                     showSttDialog = false,
                     feedbackMessage = appContext.getString(R.string.stt_settings_saved),
+                    feedbackIsError = false,
+                )
+            }
+        }
+    }
+
+    private fun openNotificationSettings() {
+        viewModelScope.launch {
+            val enabled = inputSettingsRepository.isNotificationsEnabled()
+            val accessGranted = inputSettingsRepository.isNotificationAccessGranted()
+            val allowedPackages = inputSettingsRepository.getAllowedPackages()
+            _settingsUiState.update {
+                it.copy(
+                    showMainDialog = false,
+                    showNotificationDialog = true,
+                    notificationsEnabled = enabled,
+                    notificationAccessGranted = accessGranted,
+                    notificationAllowedPackages = allowedPackages,
+                    feedbackMessage = null,
+                )
+            }
+        }
+    }
+
+    private fun dismissNotificationSettings() {
+        _settingsUiState.update { it.copy(showNotificationDialog = false) }
+    }
+
+    private fun updateNotificationEnabled(enabled: Boolean) {
+        _settingsUiState.update { it.copy(notificationsEnabled = enabled, feedbackMessage = null) }
+    }
+
+    private fun toggleNotificationPackage(packageName: String) {
+        val current = _settingsUiState.value.notificationAllowedPackages.toMutableSet()
+        if (current.contains(packageName)) {
+            current.remove(packageName)
+        } else {
+            current.add(packageName)
+        }
+        _settingsUiState.update { it.copy(notificationAllowedPackages = current, feedbackMessage = null) }
+    }
+
+    private fun saveNotificationSettings() {
+        val state = _settingsUiState.value
+        viewModelScope.launch {
+            inputSettingsRepository.setNotificationsEnabled(state.notificationsEnabled)
+            inputSettingsRepository.setAllowedPackages(state.notificationAllowedPackages)
+            val accessGranted = inputSettingsRepository.isNotificationAccessGranted()
+            _settingsUiState.update {
+                it.copy(
+                    showMainDialog = false,
+                    showNotificationDialog = false,
+                    notificationAccessGranted = accessGranted,
+                    feedbackMessage = appContext.getString(R.string.notification_settings_saved),
                     feedbackIsError = false,
                 )
             }
@@ -893,6 +974,7 @@ class ConversationViewModel(
             )
         }
         drainQueuedUtterance()
+        drainDeferredInputs()
     }
 
     /**
@@ -921,6 +1003,7 @@ class ConversationViewModel(
         }
         HotwordController.clearPendingPhrase()
         drainQueuedUtterance()
+        drainDeferredInputs()
     }
 
     private fun clearVisionPipeline() {
@@ -1033,6 +1116,7 @@ class ConversationViewModel(
             )
         }
         drainQueuedUtterance()
+        drainDeferredInputs()
     }
 
     private fun revertConversationLogIfTurnAborted() {
@@ -1216,6 +1300,98 @@ class ConversationViewModel(
         return if (log.isBlank()) line else "$log\n\n$line"
     }
 
+    private fun appendSystemLine(log: String, source: String, text: String): String {
+        val line = messages.systemLine(source, text)
+        return if (log.isBlank()) line else "$log\n\n$line"
+    }
+
+    private fun onSystemInputReceived(envelope: SystemInputEnvelope) {
+        val uiState = _uiState.value
+        if (!InputPolicyEngine.canAcceptInput(uiState)) {
+            Log.d(TAG, "Mic not active, dropping system input")
+            return
+        }
+        if (InputPolicyEngine.shouldSuppressForNightMode(uiState, envelope.input.priority)) {
+            Log.d(TAG, "Night mode, suppressing system input")
+            return
+        }
+        if (InputPolicyEngine.canProcessNow(envelope.input.priority, uiState)) {
+            deferredInputQueue.markSeen(envelope.dedupKey)
+            sendSystemInputToLlm(envelope)
+        } else {
+            Log.i(TAG, "Deferring system input: ${envelope.input.sourceId}")
+            deferredInputQueue.enqueue(envelope)
+        }
+    }
+
+    private fun sendSystemInputToLlm(envelope: SystemInputEnvelope) {
+        val turnId = ++llmTurnGeneration
+        llmJob?.cancel()
+        emotionTransitionJob?.cancel()
+        HotwordController.beginAssistantTurn()
+
+        val state = _uiState.value
+        conversationLogBeforeCurrentTurn = state.conversationLog
+
+        val sourceLabel = when (val input = envelope.input) {
+            is RobotInput.Notification -> input.appLabel
+            is RobotInput.HardwareButton -> "Pulsante"
+            is RobotInput.SensorReading -> input.sensorType
+        }
+        val summaryText = when (val input = envelope.input) {
+            is RobotInput.Notification -> input.text ?: input.title ?: "Nuova notifica"
+            is RobotInput.HardwareButton -> input.action
+            is RobotInput.SensorReading -> "${input.value} ${input.unit}"
+        }
+
+        _uiState.update {
+            it.copy(
+                phase = ConversationPhase.Thinking,
+                emotion = RobotEmotion.THINKING,
+                statusMessage = messages.thinkingStatus(),
+                currentUtterance = "",
+                conversationLog = appendSystemLine(state.conversationLog, sourceLabel, summaryText),
+            )
+        }
+
+        llmJob = viewModelScope.launch {
+            try {
+                if (turnId != llmTurnGeneration) return@launch
+
+                val result = reasoningEngine.processSystemInput(
+                    envelope = envelope,
+                    onIntermediateResponse = { intermediate ->
+                        if (turnId != llmTurnGeneration) return@processSystemInput
+                        if (!_uiState.value.isHotwordListeningActive) return@processSystemInput
+                        handleIntermediateResponse(intermediate)
+                    },
+                )
+
+                if (turnId != llmTurnGeneration) return@launch
+                if (!_uiState.value.isHotwordListeningActive) return@launch
+
+                handleReasoningResult(result)
+            } catch (e: CancellationException) {
+                if (turnId == llmTurnGeneration) {
+                    recoverFromCancelledLlmTurn()
+                }
+                throw e
+            }
+        }
+    }
+
+    private fun drainDeferredInputs() {
+        if (!_uiState.value.isHotwordListeningActive) return
+        if (isAssistantTurnInProgress() || visionPipelineActive) return
+
+        val deferred = deferredInputQueue.drain()
+        if (deferred.isEmpty()) return
+
+        Log.i(TAG, "Draining ${deferred.size} deferred system inputs")
+        val first = deferred.first()
+        sendSystemInputToLlm(first)
+    }
+
     override fun onCleared() {
         llmJob?.cancel()
         emotionTransitionJob?.cancel()
@@ -1247,6 +1423,7 @@ data class ConversationMessages(
     val speakingStatus: (String) -> String,
     val userLine: (String) -> String,
     val robotLine: (String) -> String,
+    val systemLine: (String, String) -> String,
     val sessionEndedByExitPhrase: (String) -> String,
     val sessionEndedBySilence: () -> String,
     val sttUnavailable: () -> String,

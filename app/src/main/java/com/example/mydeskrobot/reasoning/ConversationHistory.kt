@@ -41,6 +41,12 @@ class ConversationHistory(
         messages.add(ConversationMessage.ToolResultMessage(toolName, result))
         trimIfNeeded()
     }
+
+    fun addSystemInput(formattedContent: String) {
+        if (formattedContent.isBlank()) return
+        messages.add(ConversationMessage.SystemInputMessage(formattedContent))
+        trimIfNeeded()
+    }
     
     fun toMessages(): List<ConversationMessage> = messages.toList()
     

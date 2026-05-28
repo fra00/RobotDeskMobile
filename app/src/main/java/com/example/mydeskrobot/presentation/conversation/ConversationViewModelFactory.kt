@@ -77,6 +77,9 @@ class ConversationViewModelFactory(
             robotLine = { response ->
                 context.getString(R.string.line_robot, response)
             },
+            systemLine = { source, text ->
+                context.getString(R.string.line_system, source, text)
+            },
             sessionEndedByExitPhrase = { exit ->
                 context.getString(R.string.status_session_ended_exit, exit)
             },

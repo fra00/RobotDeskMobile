@@ -41,4 +41,15 @@ sealed class ConversationMessage {
             return "[TOOL_RESULT: $toolName]\n$resultText"
         }
     }
+
+    /**
+     * System input (notification, hardware button, sensor) injected into conversation.
+     * Uses "user" role so the LLM treats it as input requiring a response.
+     */
+    data class SystemInputMessage(
+        val formattedContent: String,
+    ) : ConversationMessage() {
+        override val role: String = "user"
+        override val content: String = formattedContent
+    }
 }

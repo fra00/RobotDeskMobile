@@ -2,6 +2,7 @@ package com.example.mydeskrobot.reasoning
 
 import com.example.mydeskrobot.reasoning.model.IntermediateResponse
 import com.example.mydeskrobot.reasoning.model.ReasoningResult
+import com.example.mydeskrobot.reasoning.model.SystemInputEnvelope
 
 /**
  * Main interface for the Reasoning Module.
@@ -45,6 +46,19 @@ interface ReasoningEngine {
      */
     suspend fun continueAfterConfirmation(
         confirmed: Boolean,
+        onIntermediateResponse: suspend (IntermediateResponse) -> Unit = {},
+    ): ReasoningResult
+
+    /**
+     * Process a system input (notification, hardware button, sensor).
+     * Unlike user input, this comes from the system rather than voice.
+     * 
+     * @param envelope The system input envelope with formatted content
+     * @param onIntermediateResponse Callback for intermediate responses
+     * @return Final reasoning result
+     */
+    suspend fun processSystemInput(
+        envelope: SystemInputEnvelope,
         onIntermediateResponse: suspend (IntermediateResponse) -> Unit = {},
     ): ReasoningResult
     

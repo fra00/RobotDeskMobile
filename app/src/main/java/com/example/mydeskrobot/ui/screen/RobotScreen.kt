@@ -40,6 +40,7 @@ import com.example.mydeskrobot.ui.components.LlmSettingsDialog
 import com.example.mydeskrobot.ui.components.MicButton
 import com.example.mydeskrobot.ui.components.MemorySettingsDialog
 import com.example.mydeskrobot.ui.components.PhraseInfoCorner
+import com.example.mydeskrobot.ui.components.NotificationSettingsDialog
 import com.example.mydeskrobot.ui.components.SettingsDialog
 import com.example.mydeskrobot.ui.components.SttSettingsDialog
 import com.example.mydeskrobot.ui.components.VoskModelDownloadDialog
@@ -215,8 +216,13 @@ fun RobotScreen(
             onOpenMemorySettings = { onEvent(ConversationUiEvent.OnOpenMemorySettings) },
             onOpenSttSettings = { onEvent(ConversationUiEvent.OnOpenSttSettings) },
             onOpenVoskModelSettings = { onEvent(ConversationUiEvent.OnOpenVoskModelSettings) },
+            onOpenNotificationSettings = { onEvent(ConversationUiEvent.OnOpenNotificationSettings) },
             isVoskModelReady = settingsUiState.voskModelState is com.example.mydeskrobot.data.speech.VoskModelManager.ModelState.Ready,
             sttProviderName = sttProviderName,
+            notificationsEnabled = settingsUiState.notificationsEnabled,
+            isNotificationAccessGranted = settingsUiState.notificationAccessGranted,
+            onNotificationsEnabledChange = { onEvent(ConversationUiEvent.OnNotificationEnabledChange(it)) },
+            onSaveNotifications = { onEvent(ConversationUiEvent.OnSaveNotificationSettings) },
         )
     }
 
@@ -263,6 +269,18 @@ fun RobotScreen(
             onResetMemory = { onEvent(ConversationUiEvent.OnResetMemoryManual) },
             onReorganizeNow = { onEvent(ConversationUiEvent.OnReorganizeMemoryManual) },
             onDismiss = { onEvent(ConversationUiEvent.OnDismissMemorySettings) },
+        )
+    }
+
+    if (settingsUiState.showNotificationDialog) {
+        NotificationSettingsDialog(
+            isEnabled = settingsUiState.notificationsEnabled,
+            isNotificationAccessGranted = settingsUiState.notificationAccessGranted,
+            allowedPackages = settingsUiState.notificationAllowedPackages,
+            onEnabledChange = { onEvent(ConversationUiEvent.OnNotificationEnabledChange(it)) },
+            onPackageToggle = { onEvent(ConversationUiEvent.OnNotificationPackageToggle(it)) },
+            onDismiss = { onEvent(ConversationUiEvent.OnDismissNotificationSettings) },
+            onSave = { onEvent(ConversationUiEvent.OnSaveNotificationSettings) },
         )
     }
 }

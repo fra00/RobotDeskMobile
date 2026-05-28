@@ -3,6 +3,7 @@ package com.example.mydeskrobot.reasoning
 import com.example.mydeskrobot.reasoning.llm.LlmClient
 import com.example.mydeskrobot.reasoning.model.IntermediateResponse
 import com.example.mydeskrobot.reasoning.model.ReasoningResult
+import com.example.mydeskrobot.reasoning.model.SystemInputEnvelope
 import com.example.mydeskrobot.reasoning.tool.ToolExecutor
 import com.example.mydeskrobot.reasoning.tool.toSystemPromptSection
 import java.text.SimpleDateFormat
@@ -67,6 +68,17 @@ class ReasoningEngineImpl(
     ): ReasoningResult {
         return orchestrator.continueAfterConfirmation(confirmed, onIntermediateResponse)
     }
+
+    override suspend fun processSystemInput(
+        envelope: SystemInputEnvelope,
+        onIntermediateResponse: suspend (IntermediateResponse) -> Unit,
+    ): ReasoningResult {
+        if (envelope.formattedForLlm.isBlank()) {
+            return ReasoningResult.Error("Empty system input")
+        }
+        refreshSystemPromptForSystemInput()
+        return orchestrator.processSystemInput(envelope, onIntermediateResponse)
+    }
     
     override fun reset() {
         orchestrator.reset()
@@ -104,5 +116,10 @@ class ReasoningEngineImpl(
             "$toolPrompt\n\n$memoryContext"
         }
         orchestrator.updateSystemPrompt(finalPrompt)
+    }
+
+    private fun refreshSystemPromptForSystemInput() {
+        val toolPrompt = buildFullSystemPrompt()
+        orchestrator.updateSystemPrompt(toolPrompt)
     }
 }

@@ -5,6 +5,7 @@ import com.example.mydeskrobot.reasoning.model.ChainStatus
 import com.example.mydeskrobot.reasoning.model.IntermediateResponse
 import com.example.mydeskrobot.reasoning.model.LlmAction
 import com.example.mydeskrobot.reasoning.model.ReasoningResult
+import com.example.mydeskrobot.reasoning.model.SystemInputEnvelope
 import com.example.mydeskrobot.reasoning.model.ToolInvocation
 import com.example.mydeskrobot.reasoning.model.ToolResult
 import com.example.mydeskrobot.reasoning.tool.ToolExecutor
@@ -55,6 +56,18 @@ class ToolChainOrchestrator(
     ): ReasoningResult {
         conversationHistory.addUserMessage(userText)
         return executeChainWithImage(imageBytes, onIntermediateResponse)
+    }
+
+    /**
+     * Process a system input (notification, hardware button, sensor).
+     * Adds the formatted content to conversation history and runs the LLM chain.
+     */
+    suspend fun processSystemInput(
+        envelope: SystemInputEnvelope,
+        onIntermediateResponse: suspend (IntermediateResponse) -> Unit,
+    ): ReasoningResult {
+        conversationHistory.addSystemInput(envelope.formattedForLlm)
+        return executeChain(onIntermediateResponse)
     }
     
     suspend fun continueAfterConfirmation(
