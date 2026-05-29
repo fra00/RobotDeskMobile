@@ -1,0 +1,77 @@
+package com.example.mydeskrobot.domain.context
+
+import com.example.mydeskrobot.reasoning.model.NotificationMode
+import com.example.mydeskrobot.reasoning.model.RobotContextState
+import com.example.mydeskrobot.reasoning.model.RobotProfile
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Test
+import java.util.Calendar
+
+class RobotContextPolicyTest {
+
+    @Test
+    fun `shouldDropNotifications when profile is CALL`() {
+        val state = RobotContextState(profile = RobotProfile.CALL, notificationMode = NotificationMode.SILENT)
+        assertTrue(RobotContextPolicy.shouldDropNotifications(state))
+    }
+
+    @Test
+    fun `shouldNotDrop when NORMAL`() {
+        assertFalse(RobotContextPolicy.shouldDropNotifications(RobotContextState.NORMAL))
+    }
+
+    @Test
+    fun `resolveEffectiveState returns NORMAL after validUntil`() {
+        val past = System.currentTimeMillis() - 60_000
+        val state = RobotContextState(
+            profile = RobotProfile.CALL,
+            notificationMode = NotificationMode.SILENT,
+            validUntilEpochMs = past,
+        )
+        val effective = RobotContextPolicy.resolveEffectiveState(state)
+        assertTrue(effective.isNormal)
+        assertFalse(RobotContextPolicy.shouldDropNotifications(state))
+    }
+
+    @Test
+    fun `resolveEffectiveState returns NORMAL outside daily window`() {
+        val cal = Calendar.getInstance()
+        val nowMinutes = cal.get(Calendar.HOUR_OF_DAY) * 60 + cal.get(Calendar.MINUTE)
+        val start = (nowMinutes + 120) % (24 * 60)
+        val end = (nowMinutes + 180) % (24 * 60)
+
+        val state = RobotContextState(
+            profile = RobotProfile.MEETING,
+            notificationMode = NotificationMode.SILENT,
+            windowStartMinutes = start,
+            windowEndMinutes = end,
+        )
+        val effective = RobotContextPolicy.resolveEffectiveState(state)
+        assertTrue(effective.isNormal)
+    }
+
+    @Test
+    fun `isSessionScoped when sessionOnly and not normal`() {
+        val state = RobotContextState(
+            profile = RobotProfile.WORK,
+            notificationMode = NotificationMode.SILENT,
+            sessionOnly = true,
+        )
+        assertTrue(RobotContextPolicy.isSessionScoped(state))
+    }
+
+    @Test
+    fun `buildPromptSection empty for NORMAL`() {
+        assertTrue(RobotContextPolicy.buildPromptSection(RobotContextState.NORMAL).isBlank())
+    }
+
+    @Test
+    fun `buildPromptSection includes profile for WORK`() {
+        val section = RobotContextPolicy.buildPromptSection(
+            RobotContextState(profile = RobotProfile.WORK, notificationMode = NotificationMode.SILENT),
+        )
+        assertTrue(section.contains("WORK"))
+        assertTrue(section.contains("SILENCED"))
+    }
+}

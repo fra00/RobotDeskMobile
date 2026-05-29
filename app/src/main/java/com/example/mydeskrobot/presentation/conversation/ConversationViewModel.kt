@@ -48,7 +48,9 @@ import com.example.mydeskrobot.reasoning.model.RobotInput
 import com.example.mydeskrobot.reasoning.model.SystemInputEnvelope
 import com.example.mydeskrobot.integration.input.DeferredInputQueue
 import com.example.mydeskrobot.integration.input.InputPolicyEngine
+import com.example.mydeskrobot.data.context.RobotContextRepository
 import com.example.mydeskrobot.data.input.InputSettingsRepository
+import com.example.mydeskrobot.domain.context.RobotContextPolicy
 import com.example.mydeskrobot.R
 import com.example.mydeskrobot.data.speech.SttSettingsRepository
 import com.example.mydeskrobot.data.speech.VoskModelManager
@@ -114,6 +116,7 @@ class ConversationViewModel(
     private val sttSettingsRepository = SttSettingsRepository(appContext)
     private val deferredInputQueue = DeferredInputQueue()
     private val inputSettingsRepository = InputSettingsRepository(appContext)
+    private val robotContextRepository = RobotContextRepository(appContext)
     private val memoryExtractionScheduler by lazy {
         val prompt = LlmPromptLoader.loadMemoryExtractorPrompt(appContext)
         val extractionClient = LlmClientFactory.create(runBlockingLoadSettings())
@@ -906,6 +909,9 @@ class ConversationViewModel(
             "take_photo" -> messages.capturingImageStatus()
             "open_browser" -> messages.openingBrowserStatus()
             "play_spotify" -> messages.openingSpotifyStatus()
+            "set_robot_context" -> messages.settingRobotContextStatus()
+            "web_search" -> messages.webSearchStatus()
+            "fetch_url" -> messages.fetchUrlStatus()
             else -> messages.thinkingStatus()
         }
     }
@@ -1143,6 +1149,13 @@ class ConversationViewModel(
 
     private fun onSessionEnded(reason: SessionEndReason) {
         if (!_uiState.value.isHotwordListeningActive) return
+        viewModelScope.launch {
+            val stored = robotContextRepository.getStoredState()
+            if (RobotContextPolicy.isSessionScoped(stored)) {
+                robotContextRepository.clearToNormal()
+                Log.i(TAG, "Session ended — cleared session-scoped robot context")
+            }
+        }
         emotionTransitionJob?.cancel()
         llmTurnGeneration++
         llmJob?.cancel()
@@ -1312,6 +1325,13 @@ class ConversationViewModel(
             Log.d(TAG, "Mic not active, dropping system input")
             return
         }
+        if (envelope.input is RobotInput.Notification) {
+            val stored = kotlinx.coroutines.runBlocking { robotContextRepository.getStoredState() }
+            if (RobotContextPolicy.shouldDropNotifications(stored)) {
+                Log.d(TAG, "DROP system notification (robot context silent)")
+                return
+            }
+        }
         if (InputPolicyEngine.shouldSuppressForNightMode(uiState, envelope.input.priority)) {
             Log.d(TAG, "Night mode, suppressing system input")
             return
@@ -1435,6 +1455,9 @@ data class ConversationMessages(
     val capturingImageStatus: () -> String,
     val openingBrowserStatus: () -> String,
     val openingSpotifyStatus: () -> String,
+    val settingRobotContextStatus: () -> String,
+    val webSearchStatus: () -> String,
+    val fetchUrlStatus: () -> String,
     val analyzingImageStatus: () -> String,
     val cameraPermissionRequired: () -> String,
     val cameraCaptureFailed: (String) -> String,

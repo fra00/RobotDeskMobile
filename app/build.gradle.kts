@@ -51,6 +51,11 @@ android {
             "WEATHER_API_KEY",
             "\"${localProperties.getProperty("WEATHER_API_KEY", "")}\"",
         )
+        buildConfigField(
+            "String",
+            "SEARX_BASE_URL",
+            "\"${localProperties.getProperty("SEARX_BASE_URL", "https://searx.be")}\"",
+        )
     }
 
     buildTypes {
@@ -93,6 +98,7 @@ dependencies {
     implementation(libs.retrofit)
     implementation(libs.retrofit.converter.moshi)
     implementation(libs.okhttp)
+    implementation(libs.jsoup)
     implementation(libs.moshi.kotlin)
     implementation(libs.androidx.camera.core)
     implementation(libs.androidx.camera.camera2)

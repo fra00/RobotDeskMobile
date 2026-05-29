@@ -5,7 +5,10 @@ import com.example.mydeskrobot.data.llm.LlmPromptLoader
 import com.example.mydeskrobot.domain.llm.LlmSettings
 import com.example.mydeskrobot.domain.vision.VisionImageCapture
 import com.example.mydeskrobot.integration.llm.LlmClientFactory
+import com.example.mydeskrobot.data.context.RobotContextRepository
+import com.example.mydeskrobot.integration.context.RobotContextPromptProviderImpl
 import com.example.mydeskrobot.integration.memory.MemoryPromptContextProviderImpl
+import com.example.mydeskrobot.integration.tool.local.SetRobotContextTool
 import com.example.mydeskrobot.integration.tool.Tool
 import com.example.mydeskrobot.integration.tool.ToolRouter
 import com.example.mydeskrobot.integration.tool.local.BrowserTool
@@ -14,6 +17,12 @@ import com.example.mydeskrobot.integration.tool.local.CameraTool
 import com.example.mydeskrobot.integration.tool.local.NotificationTool
 import com.example.mydeskrobot.integration.tool.local.ReminderTool
 import com.example.mydeskrobot.integration.tool.local.VolumeTool
+import com.example.mydeskrobot.data.search.SearchSettingsRepository
+import com.example.mydeskrobot.integration.tool.remote.ChainedWebSearchEngine
+import com.example.mydeskrobot.integration.tool.remote.DuckDuckGoHtmlWebSearchEngine
+import com.example.mydeskrobot.integration.tool.remote.FetchUrlTool
+import com.example.mydeskrobot.integration.tool.remote.SearxngWebSearchEngine
+import com.example.mydeskrobot.integration.tool.remote.WebSearchTool
 import com.example.mydeskrobot.integration.tool.remote.WeatherTool
 import com.example.mydeskrobot.memory.UserMemoryRepository
 import com.example.mydeskrobot.reasoning.ReasoningEngine
@@ -47,6 +56,7 @@ object ReasoningModule {
             
             add(BrowserTool(context))
             add(SpotifyTool(context))
+            add(SetRobotContextTool(RobotContextRepository(context)))
             add(ReminderTool(context))
             add(VolumeTool(context))
             add(NotificationTool(context))
@@ -55,6 +65,16 @@ object ReasoningModule {
             if (weatherApiKey.isNotBlank()) {
                 add(WeatherTool(weatherApiKey))
             }
+
+            val searchSettings = SearchSettingsRepository(context)
+            val webSearchEngine = ChainedWebSearchEngine(
+                listOf(
+                    SearxngWebSearchEngine.create(searchSettings),
+                    DuckDuckGoHtmlWebSearchEngine(),
+                ),
+            )
+            add(WebSearchTool(webSearchEngine))
+            add(FetchUrlTool())
             
             addAll(additionalTools)
         }
@@ -62,12 +82,15 @@ object ReasoningModule {
         val toolRouter = ToolRouter(tools)
         val memoryRepository = UserMemoryRepository.create(context)
         val memoryContextProvider = MemoryPromptContextProviderImpl(memoryRepository)
+        val robotContextRepository = RobotContextRepository(context)
+        val robotContextProvider = RobotContextPromptProviderImpl(robotContextRepository)
         
         return ReasoningEngineImpl(
             llmClient = llmClient,
             toolExecutor = toolRouter,
             baseSystemPrompt = basePrompt,
             memoryContextProvider = memoryContextProvider,
+            robotContextProvider = robotContextProvider,
             maxChainSteps = 10,
         )
     }

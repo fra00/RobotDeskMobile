@@ -24,3 +24,7 @@ LLM_API_KEY=
 # OpenWeatherMap API key (per il tool get_weather)
 # Registrati su https://openweathermap.org/api per ottenere una chiave gratuita
 WEATHER_API_KEY=
+
+# SearXNG — base URL per web_search (istanze su https://searx.space)
+# Default nell'app: https://searx.be
+SEARX_BASE_URL=https://searx.be

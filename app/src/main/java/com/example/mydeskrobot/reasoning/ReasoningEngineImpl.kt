@@ -22,6 +22,7 @@ class ReasoningEngineImpl(
     private val toolExecutor: ToolExecutor,
     private val baseSystemPrompt: String,
     private val memoryContextProvider: MemoryContextProvider? = null,
+    private val robotContextProvider: RobotContextProvider? = null,
     maxChainSteps: Int = 10,
 ) : ReasoningEngine {
 
@@ -108,18 +109,28 @@ class ReasoningEngineImpl(
     }
 
     private suspend fun refreshSystemPrompt(userText: String) {
-        val toolPrompt = buildFullSystemPrompt()
-        val memoryContext = memoryContextProvider?.buildContextFor(userText).orEmpty()
-        val finalPrompt = if (memoryContext.isBlank()) {
-            toolPrompt
-        } else {
-            "$toolPrompt\n\n$memoryContext"
-        }
-        orchestrator.updateSystemPrompt(finalPrompt)
+        orchestrator.updateSystemPrompt(buildPromptWithContext(userText))
     }
 
-    private fun refreshSystemPromptForSystemInput() {
+    private suspend fun refreshSystemPromptForSystemInput() {
+        orchestrator.updateSystemPrompt(buildPromptWithContext(""))
+    }
+
+    private suspend fun buildPromptWithContext(userText: String): String {
         val toolPrompt = buildFullSystemPrompt()
-        orchestrator.updateSystemPrompt(toolPrompt)
+        val memoryContext = memoryContextProvider?.buildContextFor(userText).orEmpty()
+        val robotContext = robotContextProvider?.buildContextSection().orEmpty()
+
+        return buildString {
+            append(toolPrompt)
+            if (memoryContext.isNotBlank()) {
+                append("\n\n")
+                append(memoryContext)
+            }
+            if (robotContext.isNotBlank()) {
+                append("\n\n")
+                append(robotContext)
+            }
+        }
     }
 }

@@ -4,6 +4,7 @@ import android.app.Notification
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import android.util.Log
+import com.example.mydeskrobot.data.context.RobotContextRepository
 import com.example.mydeskrobot.data.input.InputSettingsRepository
 import com.example.mydeskrobot.domain.input.SystemInputDispatcher
 import com.example.mydeskrobot.domain.input.SystemInputEvent
@@ -25,8 +26,10 @@ class RobotNotificationListenerService : NotificationListenerService() {
         super.onCreate()
         Log.i(TAG, "NotificationListenerService created")
         settingsRepository = InputSettingsRepository(applicationContext)
+        val robotContextRepository = RobotContextRepository(applicationContext)
         inputSource = NotificationInputSource(
             settingsRepository = settingsRepository,
+            robotContextRepository = robotContextRepository,
             packageManager = packageManager,
         )
     }

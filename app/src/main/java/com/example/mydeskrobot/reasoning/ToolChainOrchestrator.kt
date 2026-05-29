@@ -345,6 +345,9 @@ class ToolChainOrchestrator(
             when (toolName) {
                 "open_browser" -> "Non sono riuscito ad aprire il sito. $message"
                 "play_spotify" -> "Non sono riuscito ad aprire Spotify. $message"
+                "set_robot_context" -> "Non sono riuscito ad impostare il contesto. $message"
+                "web_search" -> "Non sono riuscito a cercare sul web. $message"
+                "fetch_url" -> "Non sono riuscito a leggere la pagina. $message"
                 else -> "Operazione $toolName non riuscita. $message"
             }
         }

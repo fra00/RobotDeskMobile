@@ -110,6 +110,15 @@ class ConversationViewModelFactory(
             openingSpotifyStatus = {
                 context.getString(R.string.status_opening_spotify)
             },
+            settingRobotContextStatus = {
+                context.getString(R.string.status_setting_robot_context)
+            },
+            webSearchStatus = {
+                context.getString(R.string.status_web_search)
+            },
+            fetchUrlStatus = {
+                context.getString(R.string.status_fetch_url)
+            },
             analyzingImageStatus = {
                 context.getString(R.string.status_analyzing_image)
             },

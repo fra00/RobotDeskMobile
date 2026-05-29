@@ -63,6 +63,7 @@ Le linee guida dettagliate sono in **`.cursor/rules/*.mdc`**:
 2. Per feature vocali/LLM → `40`; per occhi → `50`.
 3. Per tool → `docs/TOOL_ARCHITECTURE.md`.
 4. Per input esterni → `docs/INPUT_ARCHITECTURE.md`.
+5. Per contesto robot / silenzio notifiche → `docs/ROBOT_CONTEXT.md`.
 5. Scope minimo: una capability per volta.
 6. Non committare segreti; usare `local.properties.example`.
 
@@ -72,8 +73,11 @@ Le linee guida dettagliate sono in **`.cursor/rules/*.mdc`**:
 |------|----------|-------------|
 | `take_photo` | LOCAL | Scatta foto con la camera |
 | `get_weather` | REMOTE | Meteo da OpenWeatherMap |
+| `web_search` | REMOTE | Ricerca web via SearXNG JSON (config: `SEARX_BASE_URL`) |
+| `fetch_url` | REMOTE | Legge pagina web come testo (OkHttp + Jsoup) |
 | `open_browser` | LOCAL | Apre URL nel browser |
 | `play_spotify` | LOCAL | Apre Spotify con ricerca (artista, genere, musica) |
+| `set_robot_context` | LOCAL | Contesto robot (lavoro/call/riunione) e silenzio notifiche robot-only |
 | `set_reminder` | LOCAL | Imposta promemoria/sveglia |
 | `set_volume` | LOCAL | Controlla volume media |
 | `show_notification` | LOCAL | Mostra notifica di sistema |
