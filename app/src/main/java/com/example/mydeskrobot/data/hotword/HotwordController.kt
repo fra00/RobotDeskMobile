@@ -45,4 +45,8 @@ object HotwordController {
     }
 
     fun isRunning(): Boolean = serviceRef?.get()?.isDetecting() == true
+
+    fun activateVoiceSession() {
+        serviceRef?.get()?.activateVoiceSession()
+    }
 }

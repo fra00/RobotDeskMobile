@@ -110,6 +110,10 @@ class ConversationViewModel(
     private var queuedUtteranceForLlm: String? = null
     /** Ripristino cronologia se il turno LLM viene annullato prima della risposta robot. */
     private var conversationLogBeforeCurrentTurn: String? = null
+    /** True while hotword orchestrator is in active voice session (not standby-only). */
+    private var voiceSessionActive = false
+    /** After a system input in standby, open voice session when the robot finishes speaking. */
+    private var openVoiceSessionAfterSystemInput = false
     private val memoryRepository = UserMemoryRepository.create(appContext)
     private val memorySettingsRepository = MemorySettingsRepository(appContext)
     private val voskModelManager = VoskModelManager(appContext)
@@ -575,6 +579,8 @@ class ConversationViewModel(
 
         lastAssistantResponse = null
         lastLlmEmotion = null
+        voiceSessionActive = false
+        openVoiceSessionAfterSystemInput = false
         val night = isNightModeNow()
         HotwordServiceStarter.start(appContext)
         _uiState.update {
@@ -598,6 +604,8 @@ class ConversationViewModel(
         llmJob?.cancel()
         emotionTransitionJob?.cancel()
         queuedUtteranceForLlm = null
+        voiceSessionActive = false
+        openVoiceSessionAfterSystemInput = false
         clearVisionPipeline()
         stopBoredIdleMonitor()
         stopNightModeMonitor()
@@ -636,6 +644,8 @@ class ConversationViewModel(
 
     private fun onSessionStarted(initialText: String?) {
         if (!_uiState.value.isHotwordListeningActive) return
+        voiceSessionActive = true
+        openVoiceSessionAfterSystemInput = false
 
         val initial = initialText?.trim().orEmpty()
 
@@ -692,26 +702,60 @@ class ConversationViewModel(
 
     private fun onUtteranceReadyForLlm(phrase: String) {
         Log.i(TAG, "onUtteranceReadyForLlm: '${phrase.take(60)}'")
-        if (!_uiState.value.isHotwordListeningActive) return
-
-        var trimmed = phrase.trim()
-        if (trimmed.isEmpty()) return
-        trimmed = EchoSpeechFilter.stripLeadingAssistantEcho(trimmed, lastAssistantResponse)
-        if (trimmed.isEmpty()) return
-        if (EchoSpeechFilter.isLikelyAssistantEcho(trimmed, lastAssistantResponse)) return
-        if (EchoSpeechFilter.isLikelyAssistantEcho(trimmed, LlmRepositoryImpl.DEFAULT_IMAGE_ACK)) return
-        pendingVisionUserPhrase?.let { original ->
-            if (EchoSpeechFilter.isLikelyAssistantEcho(trimmed, original)) return
+        if (!_uiState.value.isHotwordListeningActive) {
+            Log.d(TAG, "onUtteranceReadyForLlm: ignored (hotword session inactive)")
+            return
         }
 
-        if (handleMemoryVoiceCommand(trimmed)) return
+        var trimmed = phrase.trim()
+        if (trimmed.isEmpty()) {
+            clearCurrentUtteranceDisplay()
+            return
+        }
+        trimmed = EchoSpeechFilter.stripLeadingAssistantEcho(trimmed, lastAssistantResponse)
+        if (trimmed.isEmpty()) {
+            Log.d(TAG, "onUtteranceReadyForLlm: discarded (empty after echo strip)")
+            clearCurrentUtteranceDisplay()
+            return
+        }
+        if (EchoSpeechFilter.isLikelyAssistantEcho(trimmed, lastAssistantResponse)) {
+            Log.d(TAG, "onUtteranceReadyForLlm: discarded (assistant echo)")
+            clearCurrentUtteranceDisplay()
+            return
+        }
+        if (EchoSpeechFilter.isLikelyAssistantEcho(trimmed, LlmRepositoryImpl.DEFAULT_IMAGE_ACK)) {
+            Log.d(TAG, "onUtteranceReadyForLlm: discarded (image ack echo)")
+            clearCurrentUtteranceDisplay()
+            return
+        }
+        pendingVisionUserPhrase?.let { original ->
+            if (EchoSpeechFilter.isLikelyAssistantEcho(trimmed, original)) {
+                Log.d(TAG, "onUtteranceReadyForLlm: discarded (vision phrase echo)")
+                clearCurrentUtteranceDisplay()
+                return
+            }
+        }
+
+        if (handleMemoryVoiceCommand(trimmed)) {
+            clearCurrentUtteranceDisplay()
+            return
+        }
 
         if (isAssistantTurnInProgress() || visionPipelineActive) {
+            Log.d(TAG, "onUtteranceReadyForLlm: queued (assistant turn in progress)")
             queueUtteranceForLlm(trimmed)
             return
         }
 
+        Log.d(TAG, "onUtteranceReadyForLlm: sendPhraseToLlm")
         sendPhraseToLlm(trimmed)
+    }
+
+    private fun clearCurrentUtteranceDisplay() {
+        _uiState.update { state ->
+            if (state.currentUtterance.isEmpty()) state
+            else state.copy(currentUtterance = "")
+        }
     }
 
     private fun handleMemoryVoiceCommand(phrase: String): Boolean {
@@ -970,18 +1014,7 @@ class ConversationViewModel(
 
         conversationLogBeforeCurrentTurn = null
         lastLlmEmotion = emotion ?: lastLlmEmotion
-        HotwordController.endAssistantTurn(postTtsCooldownMs, lastAssistantResponse)
-        HotwordController.clearPendingPhrase()
-        _uiState.update {
-            it.copy(
-                phase = ConversationPhase.ActiveListening,
-                emotion = lastLlmEmotion ?: RobotEmotion.LISTENING,
-                statusMessage = messages.activeListeningStatus(exitPhrase),
-                currentUtterance = "",
-            )
-        }
-        drainQueuedUtterance()
-        drainDeferredInputs()
+        resumeListeningAfterAssistantTurn(emotionOverride = lastLlmEmotion)
     }
 
     /**
@@ -1079,7 +1112,10 @@ class ConversationViewModel(
             onFailure = { error ->
                 if (error is TtsInterruptedException || ttsInterruptHandled) return@fold
 
+                ensureAssistantTurnEnded()
                 showRecoverableAnger(messages.ttsFailed(error.message.orEmpty()))
+                drainQueuedUtterance()
+                drainDeferredInputs()
             },
         )
     }
@@ -1109,21 +1145,55 @@ class ConversationViewModel(
         ) { phase -> phase is ConversationPhase.ActiveListening }
     }
 
-    private fun resumeListeningAfterAssistantTurn() {
+    private fun resumeListeningAfterAssistantTurn(emotionOverride: RobotEmotion? = null) {
         if (!_uiState.value.isHotwordListeningActive) return
 
         HotwordController.endAssistantTurn(postTtsCooldownMs, lastAssistantResponse)
         HotwordController.clearPendingPhrase()
+
+        val openingVoiceSession = openVoiceSessionAfterSystemInput
+        if (openingVoiceSession) {
+            openVoiceSessionAfterSystemInput = false
+            Log.i(TAG, "resumeListening: opening voice session after system input (was standby)")
+            HotwordController.activateVoiceSession()
+        }
+
+        val listeningPhase = if (voiceSessionActive || openingVoiceSession) {
+            ConversationPhase.ActiveListening
+        } else {
+            ConversationPhase.WaitingForHotword
+        }
+        val emotion = emotionOverride ?: lastLlmEmotion ?: if (listeningPhase is ConversationPhase.ActiveListening) {
+            RobotEmotion.LISTENING
+        } else {
+            standbyEmotionFor(_uiState.value.isNightMode)
+        }
+        val status = if (listeningPhase is ConversationPhase.ActiveListening) {
+            messages.activeListeningStatus(exitPhrase)
+        } else {
+            standbyStatusFor(_uiState.value.isNightMode)
+        }
+
         _uiState.update {
             it.copy(
-                phase = ConversationPhase.ActiveListening,
-                emotion = lastLlmEmotion ?: RobotEmotion.LISTENING,
-                statusMessage = messages.activeListeningStatus(exitPhrase),
+                phase = listeningPhase,
+                emotion = emotion,
+                statusMessage = status,
                 currentUtterance = "",
             )
         }
         drainQueuedUtterance()
         drainDeferredInputs()
+    }
+
+    private fun listeningPhaseAfterAssistantTurn(): ConversationPhase =
+        if (voiceSessionActive) ConversationPhase.ActiveListening else ConversationPhase.WaitingForHotword
+
+    private fun ensureAssistantTurnEnded() {
+        if (!isAssistantTurnInProgress()) return
+        Log.d(TAG, "ensureAssistantTurnEnded: releasing STT pause")
+        HotwordController.endAssistantTurn(cooldownMs = 0)
+        HotwordController.clearPendingPhrase()
     }
 
     private fun revertConversationLogIfTurnAborted() {
@@ -1149,6 +1219,8 @@ class ConversationViewModel(
 
     private fun onSessionEnded(reason: SessionEndReason) {
         if (!_uiState.value.isHotwordListeningActive) return
+        voiceSessionActive = false
+        openVoiceSessionAfterSystemInput = false
         viewModelScope.launch {
             val stored = robotContextRepository.getStoredState()
             if (RobotContextPolicy.isSessionScoped(stored)) {
@@ -1276,10 +1348,11 @@ class ConversationViewModel(
     }
 
     private fun showRecoverableAnger(statusMessage: String) {
+        ensureAssistantTurnEnded()
         emotionTransitionJob?.cancel()
         _uiState.update {
             it.copy(
-                phase = ConversationPhase.ActiveListening,
+                phase = listeningPhaseAfterAssistantTurn(),
                 emotion = RobotEmotion.ANGRY,
                 statusMessage = statusMessage,
             )
@@ -1349,6 +1422,7 @@ class ConversationViewModel(
         val turnId = ++llmTurnGeneration
         llmJob?.cancel()
         emotionTransitionJob?.cancel()
+        openVoiceSessionAfterSystemInput = !voiceSessionActive
         HotwordController.beginAssistantTurn()
 
         val state = _uiState.value

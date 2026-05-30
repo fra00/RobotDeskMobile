@@ -27,6 +27,7 @@ import kotlin.coroutines.resume
 class VoskSpeechToTextDataSource(
     private val context: Context,
     private val modelManager: VoskModelManager,
+    private val segmentSilenceMs: Long = 1_000L,
 ) : SpeechToTextDataSource {
 
     companion object {
@@ -36,7 +37,6 @@ class VoskSpeechToTextDataSource(
         private const val AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT
         private const val SILENCE_TIMEOUT_MS = 15_000L
         private const val BUFFER_SIZE_FACTOR = 2
-        private const val END_OF_SPEECH_SILENCE_MS = 1_500L
     }
 
     private val lock = Any()
@@ -240,8 +240,8 @@ class VoskSpeechToTextDataSource(
                 Log.d(TAG, "AudioRecord started")
 
                 val buffer = ShortArray(bufferSize / 2)
-                var lastSpeechAt = System.currentTimeMillis()
-                var lastPartialChangeAt = System.currentTimeMillis()
+                val listenStartedAt = System.currentTimeMillis()
+                var lastPartialChangeAt = listenStartedAt
                 var finalText: String? = null
                 var lastPartialText = ""
                 var hasSpeechStarted = false
@@ -270,7 +270,6 @@ class VoskSpeechToTextDataSource(
                             Log.d(TAG, "Final result: $text")
                             listener?.onChunk(SpeechToTextDataSource.RecognitionChunk(text = text, isFinal = true))
                             finalText = text
-                            lastSpeechAt = System.currentTimeMillis()
                             shouldStop = true
                             continue
                         }
@@ -282,18 +281,17 @@ class VoskSpeechToTextDataSource(
                             listener?.onChunk(SpeechToTextDataSource.RecognitionChunk(text = partialText, isFinal = false))
                             lastPartialText = partialText
                             lastPartialChangeAt = System.currentTimeMillis()
-                            lastSpeechAt = System.currentTimeMillis()
                             hasSpeechStarted = true
                         }
                     }
 
                     val now = System.currentTimeMillis()
 
-                    if (hasSpeechStarted && 
-                        lastPartialText.isNotBlank() && 
-                        now - lastPartialChangeAt > END_OF_SPEECH_SILENCE_MS
+                    if (hasSpeechStarted &&
+                        lastPartialText.isNotBlank() &&
+                        now - lastPartialChangeAt >= segmentSilenceMs
                     ) {
-                        Log.d(TAG, "End of speech detected (no new partials for ${END_OF_SPEECH_SILENCE_MS}ms)")
+                        Log.d(TAG, "Segment end (no new partials for ${segmentSilenceMs}ms)")
                         val lastResult = rec.finalResult
                         val text = parseVoskResult(lastResult).ifBlank { lastPartialText }
                         if (text.isNotBlank()) {
@@ -305,7 +303,7 @@ class VoskSpeechToTextDataSource(
                         continue
                     }
 
-                    if (now - lastSpeechAt > SILENCE_TIMEOUT_MS) {
+                    if (now - listenStartedAt > SILENCE_TIMEOUT_MS) {
                         Log.d(TAG, "Silence timeout reached")
                         val lastResult = rec.finalResult
                         val text = parseVoskResult(lastResult)

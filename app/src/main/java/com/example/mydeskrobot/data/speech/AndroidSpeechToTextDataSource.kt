@@ -20,13 +20,12 @@ import kotlin.coroutines.resume
 class AndroidSpeechToTextDataSource(
     private val context: Context,
     private val languageTag: String = Locale.ITALIAN.toLanguageTag(),
+    private val segmentSilenceMs: Long = 1_000L,
 ) : SpeechToTextDataSource {
 
     companion object {
         private const val TAG = "SttDataSource"
         private const val MINIMUM_LISTEN_WINDOW_MS = 15_000L
-        private const val POSSIBLY_COMPLETE_SILENCE_MS = 10_000L
-        private const val COMPLETE_SILENCE_MS = 15_000L
     }
 
     private val lock = Any()
@@ -152,7 +151,7 @@ class AndroidSpeechToTextDataSource(
             }
             Log.d(TAG, "startListening count=$restartCounter")
 
-            val listener = object : RecognitionListener {
+            val recognitionListener = object : RecognitionListener {
                 private var finished = false
 
                 private fun finishOnce(shouldInvalidate: Boolean = false, block: () -> Unit) {
@@ -216,7 +215,9 @@ class AndroidSpeechToTextDataSource(
                     }
                     Log.d(TAG, "onResults textLen=${text.length} afterMs=$elapsed")
                     if (text.isNotEmpty()) {
-                        listener?.onChunk(SpeechToTextDataSource.RecognitionChunk(text = text, isFinal = true))
+                        listener?.onChunk(
+                            SpeechToTextDataSource.RecognitionChunk(text = text, isFinal = true),
+                        )
                     }
                     finishOnce {
                         if (!continuation.isActive) return@finishOnce
@@ -249,7 +250,7 @@ class AndroidSpeechToTextDataSource(
                 override fun onEvent(eventType: Int, params: Bundle?) = Unit
             }
 
-            recognizer.setRecognitionListener(listener)
+            recognizer.setRecognitionListener(recognitionListener)
             recognizer.startListening(createRecognizerIntent(enablePartialResults = listener != null))
 
             continuation.invokeOnCancellation {
@@ -283,11 +284,11 @@ class AndroidSpeechToTextDataSource(
             )
             putExtra(
                 RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS,
-                POSSIBLY_COMPLETE_SILENCE_MS,
+                segmentSilenceMs,
             )
             putExtra(
                 RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS,
-                COMPLETE_SILENCE_MS,
+                segmentSilenceMs + 200L,
             )
         }
 

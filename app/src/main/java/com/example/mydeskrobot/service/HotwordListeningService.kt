@@ -43,9 +43,10 @@ class HotwordListeningService : Service() {
         private const val TAG = "HotwordService"
         private const val CHANNEL_ID = "hotword_listening"
         private const val NOTIFICATION_ID = 1001
-        private const val DEFAULT_UTTERANCE_PAUSE_SECONDS = 5L
-        private const val MIN_UTTERANCE_PAUSE_SECONDS = 2L
-        private const val MAX_UTTERANCE_PAUSE_SECONDS = 30L
+        private const val DEFAULT_UTTERANCE_PAUSE_SECONDS = 2L
+        private const val MIN_UTTERANCE_PAUSE_SECONDS = 1L
+        private const val MAX_UTTERANCE_PAUSE_SECONDS = 5L
+        private const val BALANCED_END_OF_UTTERANCE_MS = 1_800L
         private const val DEFAULT_SILENCE_SECONDS = 15L
         private const val MIN_SILENCE_SECONDS = 5L
         private const val MAX_SILENCE_SECONDS = 120L
@@ -65,6 +66,10 @@ class HotwordListeningService : Service() {
 
     @Volatile
     private var bargeInEchoReference: String? = null
+
+    /** True from [beginAssistantTurn] until [endAssistantTurn] finishes (incl. post-TTS cooldown). */
+    @Volatile
+    private var assistantTurnActive = false
 
     private lateinit var stayAwakeManager: DeviceStayAwakeManager
     private lateinit var listeningConfig: ListeningConfig
@@ -134,15 +139,24 @@ class HotwordListeningService : Service() {
     fun beginAssistantTurn() {
         Log.d(TAG, "beginAssistantTurn")
         resumeJob?.cancel()
+        assistantTurnActive = true
         bargeInMode = false
         bargeInEchoReference = null
         sttPaused = true
         speechDataSource?.cancelActiveListening()
         orchestrator?.clearPendingPhrase()
+        orchestrator?.resetSessionSilenceClock()
     }
 
     fun clearPendingPhrase() {
         orchestrator?.clearPendingPhrase()
+    }
+
+    /** Opens hotword voice session without saying the wake phrase (after notification TTS in standby). */
+    fun activateVoiceSession() {
+        Log.d(TAG, "activateVoiceSession")
+        orchestrator?.requestActivateVoiceSession()
+        speechDataSource?.cancelActiveListening()
     }
 
     fun beginBargeIn(lastAssistantResponse: String) {
@@ -164,11 +178,13 @@ class HotwordListeningService : Service() {
             orchestrator?.resetSessionSilenceClock()
             if (cooldownMs > 0) delay(cooldownMs)
             bargeInEchoReference = null
+            assistantTurnActive = false
         }
     }
 
     private fun startListeningLoop() {
         sttPaused = false
+        assistantTurnActive = false
         Log.d(TAG, "startListeningLoop")
         listenJob?.cancel()
 
@@ -195,6 +211,7 @@ class HotwordListeningService : Service() {
             activeOrchestrator.run(
                 isServiceActive = { listenJob?.isActive == true },
                 isSttEnabled = { !sttPaused && listenJob?.isActive == true },
+                isAssistantTurnActive = { assistantTurnActive },
                 isBargeInMode = { bargeInMode },
                 bargeInEchoReference = { bargeInEchoReference },
             )
@@ -203,20 +220,31 @@ class HotwordListeningService : Service() {
 
     private fun createSpeechDataSource(): SpeechToTextDataSource {
         val provider = runBlocking { sttSettingsRepository.getProvider() }
-        
+        val segmentMs = listeningConfig.segmentSilenceMs
+
         return when (provider) {
             SttProvider.VOSK -> {
                 if (voskModelManager.isModelReady()) {
-                    Log.d(TAG, "Using Vosk STT (no system beeps)")
-                    VoskSpeechToTextDataSource(applicationContext, voskModelManager)
+                    Log.d(TAG, "Using Vosk STT (no system beeps) segmentSilenceMs=$segmentMs")
+                    VoskSpeechToTextDataSource(
+                        applicationContext,
+                        voskModelManager,
+                        segmentSilenceMs = segmentMs,
+                    )
                 } else {
                     Log.w(TAG, "Vosk selected but model not ready, falling back to Android STT")
-                    AndroidSpeechToTextDataSource(applicationContext)
+                    AndroidSpeechToTextDataSource(
+                        applicationContext,
+                        segmentSilenceMs = segmentMs,
+                    )
                 }
             }
             SttProvider.ANDROID -> {
-                Log.d(TAG, "Using Android STT (system beeps may occur)")
-                AndroidSpeechToTextDataSource(applicationContext)
+                Log.d(TAG, "Using Android STT (system beeps may occur) segmentSilenceMs=$segmentMs")
+                AndroidSpeechToTextDataSource(
+                    applicationContext,
+                    segmentSilenceMs = segmentMs,
+                )
             }
         }
     }
@@ -228,6 +256,7 @@ class HotwordListeningService : Service() {
         listenJob = null
         orchestrator = null
         sttPaused = false
+        assistantTurnActive = false
         bargeInMode = false
         bargeInEchoReference = null
         speechDataSource?.release()
@@ -250,10 +279,19 @@ class HotwordListeningService : Service() {
             ?.coerceIn(MIN_POST_TTS_COOLDOWN_SECONDS, MAX_POST_TTS_COOLDOWN_SECONDS)
             ?: DEFAULT_POST_TTS_COOLDOWN_SECONDS
 
+        val endOfUtteranceMs = (utterancePauseSeconds * 1000L).let { configured ->
+            if (configured == DEFAULT_UTTERANCE_PAUSE_SECONDS * 1000L) {
+                BALANCED_END_OF_UTTERANCE_MS
+            } else {
+                configured
+            }
+        }
+
         return ListeningConfig(
             wakePhrase = getString(R.string.wake_phrase),
             exitPhrase = getString(R.string.out_phrase),
-            utterancePauseMs = utterancePauseSeconds * 1000L,
+            endOfUtteranceMs = endOfUtteranceMs,
+            segmentSilenceMs = ListeningConfig.segmentSilenceFor(endOfUtteranceMs),
             sessionSilenceTimeoutMs = sessionSilenceSeconds * 1000L,
             postTtsCooldownMs = postTtsCooldownSeconds * 1000L,
         )

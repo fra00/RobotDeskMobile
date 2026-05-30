@@ -3,6 +3,7 @@
 
     <string name="wake_phrase">assistente</string>
     <string name="out_phrase">adesso basta</string>
+    <!-- Total silence after last recognized words before sending to LLM (~1.8s balanced) -->
     <string name="utterance_pause_seconds">2</string>
     <string name="conversation_silence_timeout_seconds">45</string>
     <!-- Pausa dopo il TTS prima di riaprire il microfono (anti-eco) -->

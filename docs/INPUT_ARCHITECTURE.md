@@ -30,6 +30,10 @@ Il robot può ricevere input da diverse fonti oltre alla voce:
 
 Questi input vengono elaborati dal `ReasoningEngine` allo stesso modo delle frasi vocali, permettendo al LLM di decidere come rispondere o se usare tool.
 
+### Voce dopo una notifica (standby)
+
+Se il microfono è in **standby** (nessuna sessione vocale attiva), dopo l’annuncio TTS della notifica il robot **apre automaticamente** una sessione vocale: puoi rispondere a voce senza ripetere la hot word. Se eri già in conversazione attiva, la sessione continua come prima.
+
 ### Differenza Input vs Tool
 
 | | **Input** (ingresso) | **Tool** (uscita) |

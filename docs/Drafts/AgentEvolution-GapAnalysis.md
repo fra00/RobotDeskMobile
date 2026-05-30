@@ -139,6 +139,7 @@
 
 ## 8. Decisioni aperte (da dibattere)
 
+0. **STT:** fix latenza / bug testo non inviato prima di proattività? → vedi `docs/Drafts/STT-Analysis.md`
 1. Reminder: solo voce robot, o anche notifica Android?
 2. Heartbeat: intervallo default (5 min draft) e gate ore (7–23)?
 3. Memoria: priorità tool LLM vs solo estrazione automatica?

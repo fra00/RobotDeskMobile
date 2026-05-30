@@ -11,14 +11,16 @@ import com.example.mydeskrobot.domain.speech.ExitPhraseMatcher
 import com.example.mydeskrobot.domain.speech.ExitPhraseParseResult
 import com.example.mydeskrobot.domain.speech.WakePhraseMatcher
 import com.example.mydeskrobot.domain.speech.WakePhraseParseResult
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlin.coroutines.coroutineContext
 
 /**
- * Standby: solo wake word.
- * Attivo: trascrive tutto; pausa [utterancePauseMs] → LLM; silenzio [sessionSilenceTimeoutMs] senza
- * frase in corso → standby (serve di nuovo la wake word).
+ * Standby: wake word only.
+ * Active: buffers transcript segments; [ListeningConfig.endOfUtteranceMs] after last committed
+ * content → [HotwordEvent.UtteranceReadyForLlm]; empty buffer + [sessionSilenceTimeoutMs] → standby.
  */
 class SttListeningOrchestrator(
     private val dataSource: SpeechToTextDataSource,
@@ -38,9 +40,21 @@ class SttListeningOrchestrator(
     @Volatile
     private var sessionSilenceClockMs: Long = 0L
 
+    @Volatile
+    private var activateVoiceSessionPending = false
+
     private var activePhraseBuffer: StringBuilder? = null
 
-    /** Ripristina il timer di sessione dopo TTS/LLM (il tempo in pausa non conta come silenzio utente). */
+    /**
+     * Opens a voice session without wake word (e.g. after announcing a notification in standby).
+     * Cancels the current standby listen so the request is picked up on the next loop iteration.
+     */
+    fun requestActivateVoiceSession() {
+        activateVoiceSessionPending = true
+        resetSessionSilenceClock()
+    }
+
+    /** Resets session silence clock after TTS/LLM (paused time is not user silence). */
     fun resetSessionSilenceClock() {
         sessionSilenceClockMs = System.currentTimeMillis()
     }
@@ -52,6 +66,7 @@ class SttListeningOrchestrator(
     suspend fun run(
         isServiceActive: () -> Boolean,
         isSttEnabled: () -> Boolean,
+        isAssistantTurnActive: () -> Boolean,
         isBargeInMode: () -> Boolean,
         bargeInEchoReference: () -> String?,
     ) {
@@ -59,6 +74,7 @@ class SttListeningOrchestrator(
             runStandbyCycle(
                 isServiceActive = isServiceActive,
                 isSttEnabled = isSttEnabled,
+                isAssistantTurnActive = isAssistantTurnActive,
                 isBargeInMode = isBargeInMode,
                 bargeInEchoReference = bargeInEchoReference,
             )
@@ -68,25 +84,41 @@ class SttListeningOrchestrator(
     private suspend fun runStandbyCycle(
         isServiceActive: () -> Boolean,
         isSttEnabled: () -> Boolean,
+        isAssistantTurnActive: () -> Boolean,
         isBargeInMode: () -> Boolean,
         bargeInEchoReference: () -> String?,
     ) {
         while (coroutineContext.isActive && isServiceActive()) {
+            if (consumeActivateVoiceSessionRequest()) {
+                Log.d(TAG, "Activating voice session after external prompt")
+                enterActiveSession(
+                    initialText = null,
+                    isServiceActive = isServiceActive,
+                    isSttEnabled = isSttEnabled,
+                    isAssistantTurnActive = isAssistantTurnActive,
+                    isBargeInMode = isBargeInMode,
+                    bargeInEchoReference = bargeInEchoReference,
+                )
+                return
+            }
+
             if (!isSttEnabled()) {
                 delay(PAUSE_POLL_MS)
                 continue
             }
 
-            dataSource.listenWithChunks(listener = null).fold(
-                onSuccess = { transcript ->
-                    if (!isSttEnabled()) return@fold
+            val standbyResult = dataSource.listenWithChunks(listener = null)
+            val transcript = standbyResult.getOrNull()
+            if (transcript != null) {
+                if (!isSttEnabled()) continue
 
-                    when (val wake = wakePhraseMatcher.parse(transcript)) {
-                        is WakePhraseParseResult.Accepted -> {
+                when (val wake = wakePhraseMatcher.parse(transcript)) {
+                    is WakePhraseParseResult.Accepted -> {
                             enterActiveSession(
                                 initialText = wake.query,
                                 isServiceActive = isServiceActive,
                                 isSttEnabled = isSttEnabled,
+                                isAssistantTurnActive = isAssistantTurnActive,
                                 isBargeInMode = isBargeInMode,
                                 bargeInEchoReference = bargeInEchoReference,
                             )
@@ -99,22 +131,24 @@ class SttListeningOrchestrator(
                                     initialText = null,
                                     isServiceActive = isServiceActive,
                                     isSttEnabled = isSttEnabled,
+                                    isAssistantTurnActive = isAssistantTurnActive,
                                     isBargeInMode = isBargeInMode,
                                     bargeInEchoReference = bargeInEchoReference,
                                 )
-                                return
-                            }
-
-                            WakePhraseParseResult.RejectReason.MISSING_WAKE_PHRASE -> Unit
+                            return
                         }
+
+                        WakePhraseParseResult.RejectReason.MISSING_WAKE_PHRASE -> Unit
                     }
-                },
-                onFailure = { error ->
+                }
+            } else {
+                val error = standbyResult.exceptionOrNull()
+                if (error != null) {
                     handleBenignListenError(error)
                     val code = (error as? SpeechRecognitionException)?.errorCode
                     Log.d(TAG, "standby listen error=$code")
-                },
-            )
+                }
+            }
             delay(RESTART_DELAY_MS)
         }
     }
@@ -123,6 +157,7 @@ class SttListeningOrchestrator(
         initialText: String?,
         isServiceActive: () -> Boolean,
         isSttEnabled: () -> Boolean,
+        isAssistantTurnActive: () -> Boolean,
         isBargeInMode: () -> Boolean,
         bargeInEchoReference: () -> String?,
     ) {
@@ -130,35 +165,55 @@ class SttListeningOrchestrator(
 
         val phraseBuffer = StringBuilder()
         activePhraseBuffer = phraseBuffer
+        var lastContentAt = 0L
+
         if (!initialText.isNullOrBlank()) {
             val content = initialText.trim()
             if (!EchoSpeechFilter.isLikelyAssistantEcho(content, bargeInEchoReference())) {
                 phraseBuffer.append(content)
+                lastContentAt = System.currentTimeMillis()
                 onEvent(HotwordEvent.UtteranceInProgress(phraseBuffer.toString()))
             }
         }
 
         sessionSilenceClockMs = System.currentTimeMillis()
-        var lastSpeechAt = sessionSilenceClockMs
 
-        suspend fun finalizePhraseIfPaused(): Boolean {
+        suspend fun tryFinalizePhrase(): Boolean {
             if (phraseBuffer.isBlank()) return false
-            if (System.currentTimeMillis() - lastSpeechAt < config.utterancePauseMs) return false
+            if (lastContentAt == 0L) return false
+            if (System.currentTimeMillis() - lastContentAt < config.endOfUtteranceMs) return false
 
             val phrase = phraseBuffer.toString().trim()
             phraseBuffer.clear()
             if (phrase.isBlank()) return false
-            if (EchoSpeechFilter.isLikelyAssistantEcho(phrase, bargeInEchoReference())) return false
+            if (EchoSpeechFilter.isLikelyAssistantEcho(phrase, bargeInEchoReference())) {
+                Log.d(TAG, "finalize skipped (echo): '${phrase.take(40)}'")
+                return false
+            }
 
+            Log.d(TAG, "UtteranceReadyForLlm: '${phrase.take(60)}'")
             onEvent(HotwordEvent.UtteranceReadyForLlm(phrase))
-            lastSpeechAt = System.currentTimeMillis()
-            sessionSilenceClockMs = lastSpeechAt
+            lastContentAt = System.currentTimeMillis()
+            sessionSilenceClockMs = lastContentAt
             return true
         }
 
         suspend fun shouldEndSessionForSilence(): Boolean {
+            if (isAssistantTurnActive()) return false
             if (phraseBuffer.isNotBlank()) return false
             return System.currentTimeMillis() - sessionSilenceClockMs >= config.sessionSilenceTimeoutMs
+        }
+
+        val sessionScope = CoroutineScope(coroutineContext)
+        val chunkListener = SpeechToTextDataSource.ChunkListener { chunk ->
+            if (isBargeInMode()) return@ChunkListener
+            if (chunk.isFinal) return@ChunkListener
+            val partial = chunk.text.trim()
+            if (partial.isNotEmpty()) {
+                sessionScope.launch {
+                    onEvent(HotwordEvent.UtteranceInProgress(partial))
+                }
+            }
         }
 
         while (coroutineContext.isActive && isServiceActive()) {
@@ -167,8 +222,8 @@ class SttListeningOrchestrator(
                 continue
             }
 
-            if (!isBargeInMode()) {
-                finalizePhraseIfPaused()
+            if (!isBargeInMode() && tryFinalizePhrase()) {
+                continue
             }
 
             if (shouldEndSessionForSilence()) {
@@ -176,16 +231,11 @@ class SttListeningOrchestrator(
                 return
             }
 
-            dataSource.listenWithChunks(
-                listener = SpeechToTextDataSource.ChunkListener { chunk ->
-                    if (isBargeInMode()) return@ChunkListener
-                    if (chunk.isFinal) return@ChunkListener
-                    lastSpeechAt = System.currentTimeMillis()
-                    sessionSilenceClockMs = lastSpeechAt
-                },
-            ).fold(
-                onSuccess = { transcript ->
-                    if (!isSttEnabled()) return@fold
+            if (phraseBuffer.isEmpty()) {
+                val activeResult = dataSource.listenWithChunks(listener = chunkListener)
+                val transcript = activeResult.getOrNull()
+                if (transcript != null) {
+                    if (!isSttEnabled()) continue
 
                     if (isBargeInMode()) {
                         if (handleBargeInTranscript(
@@ -195,51 +245,68 @@ class SttListeningOrchestrator(
                         ) {
                             return
                         }
-                        return@fold
-                    }
+                    } else {
+                        when (val exit = exitPhraseMatcher.parse(transcript)) {
+                            ExitPhraseParseResult.ExitOnly -> {
+                                tryFinalizePhrase()
+                                onEvent(HotwordEvent.SessionEnded(SessionEndReason.EXIT_PHRASE))
+                                return
+                            }
 
-                    lastSpeechAt = System.currentTimeMillis()
-                    sessionSilenceClockMs = lastSpeechAt
-                    when (val exit = exitPhraseMatcher.parse(transcript)) {
-                        ExitPhraseParseResult.ExitOnly -> {
-                            finalizePhraseIfPaused()
-                            onEvent(HotwordEvent.SessionEnded(SessionEndReason.EXIT_PHRASE))
+                            is ExitPhraseParseResult.ContentThenExit -> {
+                                if (appendUserTranscript(
+                                        buffer = phraseBuffer,
+                                        transcript = exit.content,
+                                        echoReference = bargeInEchoReference,
+                                    )
+                                ) {
+                                    lastContentAt = System.currentTimeMillis()
+                                    sessionSilenceClockMs = lastContentAt
+                                }
+                                tryFinalizePhrase()
+                                onEvent(HotwordEvent.SessionEnded(SessionEndReason.EXIT_PHRASE))
+                                return
+                            }
+
+                            ExitPhraseParseResult.NotExit -> {
+                                if (appendUserTranscript(
+                                        buffer = phraseBuffer,
+                                        transcript = transcript,
+                                        echoReference = bargeInEchoReference,
+                                    )
+                                ) {
+                                    lastContentAt = System.currentTimeMillis()
+                                    sessionSilenceClockMs = lastContentAt
+                                }
+                                tryFinalizePhrase()
+                            }
+                        }
+                    }
+                } else {
+                    val error = activeResult.exceptionOrNull()
+                    if (error != null) {
+                        val code = (error as? SpeechRecognitionException)?.errorCode
+                        Log.d(TAG, "active listen error=$code bargeIn=${isBargeInMode()}")
+                        when (code) {
+                            SpeechRecognizer.ERROR_NO_MATCH,
+                            SpeechRecognizer.ERROR_SPEECH_TIMEOUT,
+                            -> if (!isBargeInMode()) tryFinalizePhrase()
+
+                            SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> delay(BUSY_RETRY_MS)
+
+                            else -> delay(RESTART_DELAY_MS)
+                        }
+
+                        if (shouldEndSessionForSilence()) {
+                            onEvent(HotwordEvent.SessionEnded(SessionEndReason.SILENCE_TIMEOUT))
                             return
                         }
-
-                        is ExitPhraseParseResult.ContentThenExit -> {
-                            appendUserTranscript(phraseBuffer, exit.content, bargeInEchoReference)
-                            finalizePhraseIfPaused()
-                            onEvent(HotwordEvent.SessionEnded(SessionEndReason.EXIT_PHRASE))
-                            return
-                        }
-
-                        ExitPhraseParseResult.NotExit -> {
-                            appendUserTranscript(phraseBuffer, transcript, bargeInEchoReference)
-                        }
                     }
-                },
-                onFailure = { error ->
-                    val code = (error as? SpeechRecognitionException)?.errorCode
-                    Log.d(TAG, "active listen error=$code bargeIn=${isBargeInMode()}")
-                    when (code) {
-                        SpeechRecognizer.ERROR_NO_MATCH,
-                        SpeechRecognizer.ERROR_SPEECH_TIMEOUT,
-                        -> if (!isBargeInMode()) finalizePhraseIfPaused()
-
-                        SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> delay(BUSY_RETRY_MS)
-
-                        else -> delay(RESTART_DELAY_MS)
-                    }
-
-                    if (shouldEndSessionForSilence()) {
-                        onEvent(HotwordEvent.SessionEnded(SessionEndReason.SILENCE_TIMEOUT))
-                        return
-                    }
-                },
-            )
-
-            delay(RESTART_DELAY_MS)
+                }
+                delay(RESTART_DELAY_MS)
+            } else {
+                delay(PAUSE_POLL_MS)
+            }
         }
     }
 
@@ -250,21 +317,23 @@ class SttListeningOrchestrator(
         buffer.append(trimmed)
     }
 
+    /** @return true if committed text was appended to the buffer. */
     private suspend fun appendUserTranscript(
         buffer: StringBuilder,
         transcript: String,
         echoReference: () -> String?,
-    ) {
+    ): Boolean {
         val echoRef = echoReference()
         var content = stripWakePrefixIfPresent(transcript).trim()
-        if (content.isBlank()) return
+        if (content.isBlank()) return false
 
         content = EchoSpeechFilter.stripLeadingAssistantEcho(content, echoRef)
-        if (content.isBlank()) return
-        if (EchoSpeechFilter.isLikelyAssistantEcho(content, echoRef)) return
+        if (content.isBlank()) return false
+        if (EchoSpeechFilter.isLikelyAssistantEcho(content, echoRef)) return false
 
         appendToPhrase(buffer, content)
         onEvent(HotwordEvent.UtteranceInProgress(buffer.toString()))
+        return true
     }
 
     private fun stripWakePrefixIfPresent(transcript: String): String {
@@ -274,7 +343,7 @@ class SttListeningOrchestrator(
         }
     }
 
-    /** @return true se la sessione attiva deve terminare (es. frase di uscita). */
+    /** @return true if the active session should end (e.g. exit phrase). */
     private suspend fun handleBargeInTranscript(
         transcript: String,
         echoReference: String?,
@@ -302,6 +371,12 @@ class SttListeningOrchestrator(
         }
     }
 
+    private fun consumeActivateVoiceSessionRequest(): Boolean {
+        if (!activateVoiceSessionPending) return false
+        activateVoiceSessionPending = false
+        return true
+    }
+
     private suspend fun handleBenignListenError(error: Throwable) {
         val code = (error as? SpeechRecognitionException)?.errorCode
         when (code) {
@@ -314,5 +389,4 @@ class SttListeningOrchestrator(
             else -> delay(RESTART_DELAY_MS)
         }
     }
-
 }
