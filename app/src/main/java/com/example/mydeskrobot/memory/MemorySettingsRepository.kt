@@ -16,7 +16,8 @@ private val Context.memoryDataStore: DataStore<Preferences> by preferencesDataSt
 data class MemorySettings(
     val enabled: Boolean = true,
     val intervalSeconds: Long = 45L,
-    val lastProcessedMessageId: Long = 0L,
+    /** Number of parsed log entries already sent to the memory extractor. */
+    val lastProcessedEntryCount: Long = 0L,
 )
 
 class MemorySettingsRepository(
@@ -27,7 +28,7 @@ class MemorySettingsRepository(
             MemorySettings(
                 enabled = prefs[KEY_ENABLED] ?: true,
                 intervalSeconds = prefs[KEY_INTERVAL_SECONDS] ?: 45L,
-                lastProcessedMessageId = prefs[KEY_LAST_PROCESSED_ID] ?: 0L,
+                lastProcessedEntryCount = prefs[KEY_LAST_PROCESSED_ID] ?: 0L,
             )
         }
 
@@ -41,7 +42,7 @@ class MemorySettingsRepository(
         context.memoryDataStore.edit { it[KEY_INTERVAL_SECONDS] = value.coerceIn(10L, 300L) }
     }
 
-    suspend fun setLastProcessedMessageId(value: Long) {
+    suspend fun setLastProcessedEntryCount(value: Long) {
         context.memoryDataStore.edit { it[KEY_LAST_PROCESSED_ID] = maxOf(0L, value) }
     }
 

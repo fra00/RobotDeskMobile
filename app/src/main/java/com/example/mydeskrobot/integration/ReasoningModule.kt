@@ -15,6 +15,8 @@ import com.example.mydeskrobot.integration.tool.local.BrowserTool
 import com.example.mydeskrobot.integration.tool.local.SpotifyTool
 import com.example.mydeskrobot.integration.tool.local.CameraTool
 import com.example.mydeskrobot.integration.tool.local.NotificationTool
+import com.example.mydeskrobot.integration.tool.local.DeleteReminderTool
+import com.example.mydeskrobot.integration.tool.local.GetRemindersTool
 import com.example.mydeskrobot.integration.tool.local.ReminderTool
 import com.example.mydeskrobot.integration.tool.local.VolumeTool
 import com.example.mydeskrobot.data.search.SearchSettingsRepository
@@ -58,6 +60,8 @@ object ReasoningModule {
             add(SpotifyTool(context))
             add(SetRobotContextTool(RobotContextRepository(context)))
             add(ReminderTool(context))
+            add(GetRemindersTool(context))
+            add(DeleteReminderTool(context))
             add(VolumeTool(context))
             add(NotificationTool(context))
             

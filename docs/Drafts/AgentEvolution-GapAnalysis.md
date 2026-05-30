@@ -35,14 +35,14 @@
 | Tool chain | ✅ | `ToolChainOrchestrator`, `docs/TOOL_ARCHITECTURE.md` |
 | Web | ✅ **oltre draft** | `web_search` (SearXNG + fallback DDG HTML) + `fetch_url` |
 | Meteo | ✅ **variante** | OpenWeatherMap + API key (non Open-Meteo) |
-| Reminder | ⚠️ parziale | Solo `set_reminder`; scadenza = **notifica Android** |
+| Reminder / scheduled tasks | ✅ B1 | `set_reminder` + Room; scadenza = **notifica + voce** (`ScheduledTaskFired`); `get_reminders` / `delete_reminder`; boot reschedule |
 | Memoria | ⚠️ parziale | Room + `MemoryExtractionService` + injection; **no** tool LLM save/list/delete |
 | Data/ora prompt | ✅ | `{{CURRENT_DATETIME}}` |
 | Ragionamento agente (prompt) | ✅ **oltre draft** | `AUTONOMOUS PROBLEM SOLVING`, `docs/AGENT_REASONING.md` |
 | Altri tool | ✅ | `play_spotify`, `open_browser`, `set_volume`, `show_notification` |
 
 `RobotInput` attuali: `Notification`, `HardwareButton` (stub), `SensorReading` (stub).  
-**Mancano:** `Heartbeat`, `ReminderFired`.
+**Mancano:** `Heartbeat`.
 
 ---
 
@@ -52,8 +52,7 @@
 |------------|-----|
 | Heartbeat | Nessun scheduler / `InputSource` / prompt HEARTBEAT |
 | Tool memoria LLM | Nessun `save_memory` / `list_memories` / `delete_memory` |
-| Reminder vocali | `ReminderAlarmReceiver` → notifica, non LLM → TTS |
-| `get_reminders` / `delete_reminder` | Assenti |
+| Heartbeat | Nessun scheduler / input source |
 | Note | Aperto in `docs/TODO.md` |
 | Lista spesa | Assente |
 | `detect_presence` / `analyze_environment` | Assenti (solo `take_photo`) |
@@ -98,8 +97,8 @@
 
 ### Fase B — Proattività vocale (alto impatto)
 
-- [ ] `ReminderFired` → `SystemInputDispatcher` → LLM → TTS
-- [ ] `get_reminders`, `delete_reminder`
+- [x] Scheduled task → `SystemInputDispatcher` → LLM → TTS — vedi `docs/SCHEDULED_TASKS.md`
+- [x] `get_reminders`, `delete_reminder` + Room
 - [ ] `Heartbeat` + `HeartbeatInputSource` + scheduler + prompt HEARTBEAT
 
 ### Fase C — Memoria e quotidiano
@@ -140,7 +139,7 @@
 ## 8. Decisioni aperte (da dibattere)
 
 0. **STT:** fix latenza / bug testo non inviato prima di proattività? → vedi `docs/Drafts/STT-Analysis.md`
-1. Reminder: solo voce robot, o anche notifica Android?
+1. ~~Reminder: solo voce robot, o anche notifica Android?~~ → **entrambi** (implementato)
 2. Heartbeat: intervallo default (5 min draft) e gate ore (7–23)?
 3. Memoria: priorità tool LLM vs solo estrazione automatica?
 4. Meteo: restare OWM o migrare Open-Meteo?

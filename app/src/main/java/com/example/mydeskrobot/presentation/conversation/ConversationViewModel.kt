@@ -138,6 +138,9 @@ class ConversationViewModel(
                 val state = _uiState.value
                 state.isHotwordListeningActive && state.phase is ConversationPhase.WaitingForHotword
             },
+            onExtractingChanged = { extracting ->
+                _uiState.update { it.copy(isMemoryExtracting = extracting) }
+            },
         )
     }
 
@@ -291,7 +294,7 @@ class ConversationViewModel(
     private fun resetMemoryManual() {
         viewModelScope.launch {
             memoryRepository.resetMemory()
-            memorySettingsRepository.setLastProcessedMessageId(0L)
+            memorySettingsRepository.setLastProcessedEntryCount(0L)
             _settingsUiState.update {
                 it.copy(
                     memoryListPreview = emptyList(),
@@ -583,6 +586,9 @@ class ConversationViewModel(
         openVoiceSessionAfterSystemInput = false
         val night = isNightModeNow()
         HotwordServiceStarter.start(appContext)
+        viewModelScope.launch {
+            memorySettingsRepository.setLastProcessedEntryCount(0L)
+        }
         _uiState.update {
             it.copy(
                 phase = ConversationPhase.WaitingForHotword,
@@ -655,7 +661,6 @@ class ConversationViewModel(
                 emotion = RobotEmotion.SURPRISED,
                 statusMessage = messages.activeListeningStatus(exitPhrase),
                 currentUtterance = initial,
-                conversationLog = "",
             )
         }
 
@@ -783,7 +788,7 @@ class ConversationViewModel(
                 }
                 "reset" -> {
                     memoryRepository.resetMemory()
-                    memorySettingsRepository.setLastProcessedMessageId(0L)
+                    memorySettingsRepository.setLastProcessedEntryCount(0L)
                     speakMemoryCommandReply(phrase, "Ho cancellato tutta la memoria personale.")
                 }
                 "forget" -> {
@@ -1255,6 +1260,7 @@ class ConversationViewModel(
                 currentUtterance = "",
             )
         }
+        memoryExtractionScheduler.requestRunOnce()
     }
 
     private fun isAssistantTurnInProgress(): Boolean {
@@ -1405,7 +1411,9 @@ class ConversationViewModel(
                 return
             }
         }
-        if (InputPolicyEngine.shouldSuppressForNightMode(uiState, envelope.input.priority)) {
+        if (envelope.input !is RobotInput.ScheduledTaskFired &&
+            InputPolicyEngine.shouldSuppressForNightMode(uiState, envelope.input.priority)
+        ) {
             Log.d(TAG, "Night mode, suppressing system input")
             return
         }
@@ -1430,11 +1438,13 @@ class ConversationViewModel(
 
         val sourceLabel = when (val input = envelope.input) {
             is RobotInput.Notification -> input.appLabel
+            is RobotInput.ScheduledTaskFired -> "Promemoria"
             is RobotInput.HardwareButton -> "Pulsante"
             is RobotInput.SensorReading -> input.sensorType
         }
         val summaryText = when (val input = envelope.input) {
             is RobotInput.Notification -> input.text ?: input.title ?: "Nuova notifica"
+            is RobotInput.ScheduledTaskFired -> input.message
             is RobotInput.HardwareButton -> input.action
             is RobotInput.SensorReading -> "${input.value} ${input.unit}"
         }

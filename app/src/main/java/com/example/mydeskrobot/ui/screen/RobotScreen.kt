@@ -38,6 +38,7 @@ import com.example.mydeskrobot.presentation.settings.SettingsUiState
 import com.example.mydeskrobot.ui.components.ConversationHistoryDialog
 import com.example.mydeskrobot.ui.components.LlmSettingsDialog
 import com.example.mydeskrobot.ui.components.MicButton
+import com.example.mydeskrobot.ui.components.MemoryExtractingIndicator
 import com.example.mydeskrobot.ui.components.MemorySettingsDialog
 import com.example.mydeskrobot.ui.components.PhraseInfoCorner
 import com.example.mydeskrobot.ui.components.NotificationSettingsDialog
@@ -145,6 +146,23 @@ fun RobotScreen(
                 .align(Alignment.TopStart)
                 .padding(layout.cornerPadding),
         )
+
+        if (uiState.isMemoryExtracting) {
+            MemoryExtractingIndicator(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(
+                        top = layout.cornerPadding + if (showHistoryButton) {
+                            layout.cornerIconButtonSize + 4.dp
+                        } else {
+                            0.dp
+                        },
+                        end = layout.cornerPadding,
+                    )
+                    .zIndex(1f),
+                size = layout.cornerIconButtonSize - 8.dp,
+            )
+        }
 
         if (showHistoryButton) {
             IconButton(

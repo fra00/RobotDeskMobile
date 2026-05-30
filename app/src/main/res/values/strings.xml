@@ -58,6 +58,7 @@
     <string name="cd_standby_on">In standby — in attesa della wake word</string>
     <string name="cd_session_active">Sessione conversazione attiva</string>
     <string name="cd_thinking">Sto pensando</string>
+    <string name="cd_memory_extracting">Analisi memoria in corso</string>
     <string name="cd_happy_mood">Felice</string>
     <string name="cd_sleeping">Robot che dorme</string>
     <string name="cd_drowsy">Robot assonnato</string>

@@ -52,4 +52,17 @@ sealed class RobotInput {
         override val sourceId: String = "sensor_$sensorType"
         override val priority: InputPriority = InputPriority.DEFERRED
     }
+
+    /**
+     * A user-scheduled task reached its trigger time (e.g. voice reminder).
+     */
+    data class ScheduledTaskFired(
+        val taskId: Long,
+        val message: String,
+        val triggerAtMillis: Long,
+        override val timestamp: Long = System.currentTimeMillis(),
+    ) : RobotInput() {
+        override val sourceId: String = "scheduled_task"
+        override val priority: InputPriority = InputPriority.DEFERRED
+    }
 }

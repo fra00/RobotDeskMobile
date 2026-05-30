@@ -1,5 +1,6 @@
 package com.example.mydeskrobot.memory.extract
 
+import android.util.Log
 import com.example.mydeskrobot.memory.UserMemoryRepository
 import com.example.mydeskrobot.memory.db.MemoryCategory
 import com.example.mydeskrobot.reasoning.llm.LlmClient
@@ -32,10 +33,13 @@ class MemoryExtractionService(
     private val moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
     private val adapter = moshi.adapter(MemoryExtractionPayload::class.java)
 
+    /**
+     * @return number of facts persisted to Room
+     */
     suspend fun processDelta(
         newEntries: List<ChatLogEntry>,
-    ) {
-        if (newEntries.isEmpty()) return
+    ): Int {
+        if (newEntries.isEmpty()) return 0
 
         val transcript = newEntries.joinToString("\n") { entry ->
             "${entry.role.uppercase()}: ${entry.text}"
@@ -45,24 +49,50 @@ class MemoryExtractionService(
             messages = listOf(ConversationMessage.User(transcript)),
             systemPrompt = extractorPrompt,
         )
+        llmResult.exceptionOrNull()?.let { error ->
+            Log.w(TAG, "Memory extractor LLM failed", error)
+            return 0
+        }
         val raw = llmResult.getOrNull()?.content?.trim().orEmpty()
-        if (raw.isBlank()) return
+        if (raw.isBlank()) {
+            Log.w(TAG, "Memory extractor returned empty content")
+            return 0
+        }
 
-        val payload = runCatching { adapter.fromJson(raw) }.getOrNull() ?: return
+        val payload = parsePayload(raw)
+        if (payload == null) {
+            Log.w(TAG, "Memory extractor JSON parse failed: ${raw.take(120)}")
+            return 0
+        }
+        if (payload.facts.isEmpty()) {
+            Log.d(TAG, "Memory extractor returned no facts")
+            return 0
+        }
+
+        var saved = 0
+        val sourceMessageId = newEntries.maxOf { it.id }
         payload.facts.forEach { fact ->
             val value = fact.value?.trim().orEmpty()
             if (value.isBlank()) return@forEach
             val category = parseCategory(fact.category) ?: MemoryCategory.FACT
             val confidence = (fact.confidence ?: 0.5f).coerceIn(0f, 1f)
-            val sourceMessageId = newEntries.maxOf { it.id }
             memoryRepository.upsert(
                 category = category,
                 value = value,
                 confidence = confidence,
                 sourceMessageId = sourceMessageId,
             )
+            saved++
         }
-        memoryRepository.pruneIfNeeded(maxMemoryItems)
+        if (saved > 0) {
+            memoryRepository.pruneIfNeeded(maxMemoryItems)
+        }
+        return saved
+    }
+
+    private fun parsePayload(raw: String): MemoryExtractionPayload? {
+        val json = extractJsonBody(raw)
+        return runCatching { adapter.fromJson(json) }.getOrNull()
     }
 
     private fun parseCategory(raw: String?): MemoryCategory? {
@@ -71,6 +101,8 @@ class MemoryExtractionService(
     }
 
     companion object {
+        private const val TAG = "MemoryExtraction"
+
         fun extractEntriesFromConversationLog(conversationLog: String): List<ChatLogEntry> {
             if (conversationLog.isBlank()) return emptyList()
             val lines = conversationLog
@@ -103,6 +135,17 @@ class MemoryExtractionService(
                 }
             }
             return entries
+        }
+
+        internal fun extractJsonBody(raw: String): String {
+            val trimmed = raw.trim()
+            if (!trimmed.startsWith("```")) return trimmed
+            val withoutFence = trimmed
+                .removePrefix("```json")
+                .removePrefix("```JSON")
+                .removePrefix("```")
+                .trim()
+            return withoutFence.substringBeforeLast("```").trim()
         }
     }
 }

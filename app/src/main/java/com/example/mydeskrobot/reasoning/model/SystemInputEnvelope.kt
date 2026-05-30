@@ -74,6 +74,25 @@ data class SystemInputEnvelope(
             )
         }
 
+        fun fromScheduledTask(task: RobotInput.ScheduledTaskFired): SystemInputEnvelope {
+            val timeLabel = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
+                .format(java.util.Date(task.triggerAtMillis))
+            val formatted = buildString {
+                append("[SYSTEM_INPUT: scheduled_task]\n")
+                append("Id: ${task.taskId}\n")
+                append("Messaggio: ${task.message}\n")
+                append("Scadenza: $timeLabel\n")
+            }.trimEnd()
+
+            val dedupKey = "task:${task.taskId}:${task.triggerAtMillis}"
+
+            return SystemInputEnvelope(
+                input = task,
+                formattedForLlm = formatted,
+                dedupKey = dedupKey,
+            )
+        }
+
         /**
          * Factory method that dispatches to the appropriate builder.
          */
@@ -81,6 +100,7 @@ data class SystemInputEnvelope(
             is RobotInput.Notification -> fromNotification(input)
             is RobotInput.HardwareButton -> fromHardwareButton(input)
             is RobotInput.SensorReading -> fromSensorReading(input)
+            is RobotInput.ScheduledTaskFired -> fromScheduledTask(input)
         }
     }
 }

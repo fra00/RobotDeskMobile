@@ -15,6 +15,8 @@ data class ConversationUiState(
     val isHotwordListeningActive: Boolean = false,
     /** True tra mezzanotte e l'ora di fine notte configurata (standby dormiente). */
     val isNightMode: Boolean = false,
+    /** True while background LLM scans conversation log for durable user memories. */
+    val isMemoryExtracting: Boolean = false,
 ) {
     val displayText: String
         get() = buildString {

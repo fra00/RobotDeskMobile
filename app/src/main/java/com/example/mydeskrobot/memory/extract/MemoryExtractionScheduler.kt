@@ -1,5 +1,6 @@
 package com.example.mydeskrobot.memory.extract
 
+import android.util.Log
 import com.example.mydeskrobot.memory.MemorySettingsRepository
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -13,6 +14,7 @@ class MemoryExtractionScheduler(
     private val extractionService: MemoryExtractionService,
     private val getConversationLog: () -> String,
     private val isStandby: () -> Boolean,
+    private val onExtractingChanged: (Boolean) -> Unit = {},
 ) {
     private var job: Job? = null
     private var lastRunAtMs: Long = 0L
@@ -21,34 +23,68 @@ class MemoryExtractionScheduler(
         if (job?.isActive == true) return
         job = scope.launch {
             while (isActive) {
+                runExtractionCycleIfReady()
                 val settings = settingsRepository.load()
                 val waitMs = settings.intervalSeconds.coerceIn(10L, 300L) * 1000L
                 delay(waitMs)
-
-                if (!settings.enabled) continue
-                if (!isStandby()) continue
-
-                // Basic rate-limit guard.
-                val now = System.currentTimeMillis()
-                if (now - lastRunAtMs < 30_000L) continue
-                lastRunAtMs = now
-
-                val entries = MemoryExtractionService.extractEntriesFromConversationLog(
-                    getConversationLog(),
-                )
-                if (entries.isEmpty()) continue
-
-                val delta = entries.filter { it.id > settings.lastProcessedMessageId }
-                if (delta.isEmpty()) continue
-
-                extractionService.processDelta(delta)
-                settingsRepository.setLastProcessedMessageId(delta.maxOf { it.id })
             }
         }
+    }
+
+    /** Runs one extraction pass immediately (e.g. right after voice session ends). */
+    fun requestRunOnce() {
+        scope.launch { runExtractionCycleIfReady() }
     }
 
     fun stop() {
         job?.cancel()
         job = null
+        onExtractingChanged(false)
+    }
+
+    private suspend fun runExtractionCycleIfReady() {
+        val settings = settingsRepository.load()
+        if (!settings.enabled) return
+        if (!isStandby()) return
+
+        val now = System.currentTimeMillis()
+        if (now - lastRunAtMs < 30_000L) return
+        lastRunAtMs = now
+
+        val log = getConversationLog()
+        if (log.isBlank()) {
+            settingsRepository.setLastProcessedEntryCount(0L)
+            return
+        }
+
+        val entries = MemoryExtractionService.extractEntriesFromConversationLog(log)
+        if (entries.isEmpty()) return
+
+        var processedCount = settings.lastProcessedEntryCount
+        if (processedCount > entries.size) {
+            Log.i(TAG, "Log shrank ($processedCount -> ${entries.size}); resetting extraction cursor")
+            processedCount = 0L
+            settingsRepository.setLastProcessedEntryCount(0L)
+        }
+
+        val delta = MemoryExtractionDelta.selectDelta(entries, processedCount)
+        if (delta.isEmpty()) return
+
+        try {
+            onExtractingChanged(true)
+            val saved = extractionService.processDelta(delta)
+            if (saved > 0) {
+                settingsRepository.setLastProcessedEntryCount(entries.size.toLong())
+                Log.i(TAG, "Saved $saved memory fact(s) from ${delta.size} log line(s)")
+            } else {
+                Log.w(TAG, "Extraction produced no facts for ${delta.size} log line(s)")
+            }
+        } finally {
+            onExtractingChanged(false)
+        }
+    }
+
+    companion object {
+        private const val TAG = "MemoryExtraction"
     }
 }

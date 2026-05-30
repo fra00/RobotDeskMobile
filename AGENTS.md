@@ -64,11 +64,12 @@ Le linee guida dettagliate sono in **`.cursor/rules/*.mdc`**:
 3. Per tool → `docs/TOOL_ARCHITECTURE.md`.
 4. Per input esterni → `docs/INPUT_ARCHITECTURE.md`.
 5. Per pipeline STT (orchestrator + provider) → `docs/STT_ARCHITECTURE.md`.
-6. Per contesto robot / silenzio notifiche → `docs/ROBOT_CONTEXT.md`.
-7. Per policy risoluzione autonoma (tool diretto vs catena) → `docs/AGENT_REASONING.md`.
-8. Per espressioni occhi (campo `emotion` LLM) → `docs/ROBOT_EXPRESSIONS.md`.
-9. Scope minimo: una capability per volta.
-10. Non committare segreti; usare `local.properties.example`.
+6. Per task schedulati / promemoria vocali → `docs/SCHEDULED_TASKS.md`.
+7. Per contesto robot / silenzio notifiche → `docs/ROBOT_CONTEXT.md`.
+8. Per policy risoluzione autonoma (tool diretto vs catena) → `docs/AGENT_REASONING.md`.
+9. Per espressioni occhi (campo `emotion` LLM) → `docs/ROBOT_EXPRESSIONS.md`.
+10. Scope minimo: una capability per volta.
+11. Non committare segreti; usare `local.properties.example`.
 
 ## Tool disponibili
 
@@ -81,7 +82,9 @@ Le linee guida dettagliate sono in **`.cursor/rules/*.mdc`**:
 | `open_browser` | LOCAL | Apre URL nel browser |
 | `play_spotify` | LOCAL | Apre Spotify con ricerca (artista, genere, musica) |
 | `set_robot_context` | LOCAL | Contesto robot (lavoro/call/riunione) e silenzio notifiche robot-only |
-| `set_reminder` | LOCAL | Imposta promemoria/sveglia |
+| `set_reminder` | LOCAL | Schedula task (annuncio vocale + notifica a scadenza) |
+| `get_reminders` | LOCAL | Elenca promemoria attivi |
+| `delete_reminder` | LOCAL | Cancella promemoria per id |
 | `set_volume` | LOCAL | Controlla volume media |
 | `show_notification` | LOCAL | Mostra notifica di sistema |
 
@@ -90,6 +93,7 @@ Le linee guida dettagliate sono in **`.cursor/rules/*.mdc`**:
 | Input | Priorità | Descrizione |
 |-------|----------|-------------|
 | `notification` | DEFERRED | Notifiche da app (WhatsApp, SMS, etc.) |
+| `scheduled_task` | DEFERRED | Promemoria utente a scadenza (voce + notifica) |
 | `hardware_button` | BLOCKING | Pulsante fisico ESP32 (futuro) |
 | `sensor_reading` | DEFERRED | Sensori ambientali (futuro) |
 

@@ -35,13 +35,15 @@ class FakeSpeechToTextDataSource : SpeechToTextDataSource {
 
     override suspend fun listenWithChunks(listener: SpeechToTextDataSource.ChunkListener?): Result<String> {
         listenCallCount++
-        val script = scripts.removeFirstOrNull()
-            ?: return Result.failure(
+        val script = scripts.poll()
+        if (script == null) {
+            return Result.failure(
                 SpeechRecognitionException(
                     errorCode = SpeechRecognizer.ERROR_SPEECH_TIMEOUT,
                     message = "No scripted listen",
                 ),
             )
+        }
 
         script.error?.let { return Result.failure(it) }
 

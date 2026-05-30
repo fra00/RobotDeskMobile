@@ -25,6 +25,7 @@
 Il robot può ricevere input da diverse fonti oltre alla voce:
 
 - **Notifiche di sistema** (WhatsApp, SMS, email, calendario)
+- **Task schedulati** (promemoria utente a scadenza — vedi `docs/SCHEDULED_TASKS.md`)
 - **Pulsanti hardware** (ESP32 futuro)
 - **Sensori ambientali** (temperatura, luminosità — futuro)
 
