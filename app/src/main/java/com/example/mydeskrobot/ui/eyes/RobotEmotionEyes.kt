@@ -74,5 +74,17 @@ object RobotEmotionEyes {
             right = EyeGeometry.drowsy().copy(rotationDeg = -5f),
             enableBlink = false,
         )
+
+        RobotEmotion.WINK -> EyePairSpec(
+            left = EyeGeometry.winkClosed(),
+            right = EyeGeometry.winkOpen(),
+            enableBlink = false,
+        )
+
+        RobotEmotion.LOVING -> EyePairSpec(
+            left = EyeGeometry.loving(),
+            right = EyeGeometry.loving(),
+            enableBlink = true,
+        )
     }
 }

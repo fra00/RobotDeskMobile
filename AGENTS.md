@@ -64,6 +64,8 @@ Le linee guida dettagliate sono in **`.cursor/rules/*.mdc`**:
 3. Per tool → `docs/TOOL_ARCHITECTURE.md`.
 4. Per input esterni → `docs/INPUT_ARCHITECTURE.md`.
 5. Per contesto robot / silenzio notifiche → `docs/ROBOT_CONTEXT.md`.
+6. Per policy risoluzione autonoma (tool diretto vs catena) → `docs/AGENT_REASONING.md`.
+7. Per espressioni occhi (campo `emotion` LLM) → `docs/ROBOT_EXPRESSIONS.md`.
 5. Scope minimo: una capability per volta.
 6. Non committare segreti; usare `local.properties.example`.
 

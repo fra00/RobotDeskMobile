@@ -15,4 +15,8 @@ enum class RobotEmotion {
     SLEEPING,
     /** Occhi assonnati — sveglia di notte. */
     DROWSY,
+    /** Un occhio chiuso, uno aperto (occhiolino). */
+    WINK,
+    /** Espressione affettuosa / innamorato (più dolce di HAPPY). */
+    LOVING,
 }

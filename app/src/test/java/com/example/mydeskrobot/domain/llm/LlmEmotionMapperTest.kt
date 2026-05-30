@@ -15,8 +15,18 @@ class LlmEmotionMapperTest {
     }
 
     @Test
+    fun mapsExpressionCommands() {
+        assertEquals(RobotEmotion.SLEEPING, LlmEmotionMapper.fromLlmValue("occhi_chiusi"))
+        assertEquals(RobotEmotion.THINKING, LlmEmotionMapper.fromLlmValue("thinking"))
+        assertEquals(RobotEmotion.BORED, LlmEmotionMapper.fromLlmValue("noia"))
+        assertEquals(RobotEmotion.WINK, LlmEmotionMapper.fromLlmValue("occhiolino"))
+        assertEquals(RobotEmotion.LOVING, LlmEmotionMapper.fromLlmValue("innamorato"))
+    }
+
+    @Test
     fun unknownReturnsNull() {
         assertNull(LlmEmotionMapper.fromLlmValue("ecstatic"))
         assertNull(LlmEmotionMapper.fromLlmValue(null))
+        assertNull(LlmEmotionMapper.fromLlmValue("listening"))
     }
 }

@@ -213,3 +213,19 @@ private fun RobotEyesDrowsyPreview() {
         RobotEyes(emotion = RobotEmotion.DROWSY)
     }
 }
+
+@Preview(showBackground = true, name = "Wink")
+@Composable
+private fun RobotEyesWinkPreview() {
+    MyDeskRobotTheme {
+        RobotEyes(emotion = RobotEmotion.WINK)
+    }
+}
+
+@Preview(showBackground = true, name = "Loving")
+@Composable
+private fun RobotEyesLovingPreview() {
+    MyDeskRobotTheme {
+        RobotEyes(emotion = RobotEmotion.LOVING)
+    }
+}

@@ -58,6 +58,15 @@ data class EyeGeometry(
         fun sleeping() = EyeGeometry(scaleX = 1.05f, scaleY = 0.06f, offsetYFraction = 0.02f)
 
         fun drowsy() = EyeGeometry(scaleX = 1f, scaleY = 0.48f, offsetYFraction = 0.08f, arcCurve = -0.15f)
+
+        /** Occhio chiuso in uno strizzamento (linea orizzontale). */
+        fun winkClosed() = EyeGeometry(scaleX = 1.05f, scaleY = 0.08f, offsetYFraction = 0.02f)
+
+        /** Occhio aperto accanto a un occhiolino. */
+        fun winkOpen() = EyeGeometry(scaleX = 1.05f, scaleY = 0.88f, arcCurve = 1f)
+
+        /** Sorriso morbido, occhi leggermente più grandi. */
+        fun loving() = EyeGeometry(scaleX = 1.12f, scaleY = 0.95f, arcCurve = 1.15f)
     }
 }
 

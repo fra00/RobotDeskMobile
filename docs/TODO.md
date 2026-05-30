@@ -1,7 +1,8 @@
+- Roadmap agente / gap vs draft Claude → `docs/Drafts/AgentEvolution-GapAnalysis.md`
 - Tool per prender appunti
 - Tool per lista cose da fare spesa, o altro
 - ~~Tool per leggere sito e riassumere~~ (`web_search` + `fetch_url` — vedi `docs/WEB_SEARCH.md`) 
-- tool per news 
+- tool per news <- da fare non riesce a estrarre le news principali con fectch , contenuto troppo grande
 - Tool per pianificazioni nel tempo 
 - tool per ragionamento autonomo
 - sistema di gestione stato d'animo robot
