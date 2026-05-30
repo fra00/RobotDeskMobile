@@ -36,7 +36,7 @@
 | Web | ✅ **oltre draft** | `web_search` (SearXNG + fallback DDG HTML) + `fetch_url` |
 | Meteo | ✅ **variante** | OpenWeatherMap + API key (non Open-Meteo) |
 | Reminder / scheduled tasks | ✅ B1 | `set_reminder` + Room; scadenza = **notifica + voce** (`ScheduledTaskFired`); `get_reminders` / `delete_reminder`; boot reschedule |
-| Memoria | ⚠️ parziale | Room + `MemoryExtractionService` + injection; **no** tool LLM save/list/delete |
+| Memoria | ✅ | Room + estrazione automatica + injection + tool `save_memory` / `list_memories` / `delete_memory` (`docs/MEMORY.md`) |
 | Data/ora prompt | ✅ | `{{CURRENT_DATETIME}}` |
 | Ragionamento agente (prompt) | ✅ **oltre draft** | `AUTONOMOUS PROBLEM SOLVING`, `docs/AGENT_REASONING.md` |
 | Altri tool | ✅ | `play_spotify`, `open_browser`, `set_volume`, `show_notification` |
@@ -51,7 +51,7 @@
 | Voce draft | Gap |
 |------------|-----|
 | Heartbeat | Nessun scheduler / `InputSource` / prompt HEARTBEAT |
-| Tool memoria LLM | Nessun `save_memory` / `list_memories` / `delete_memory` |
+| ~~Tool memoria LLM~~ | ✅ implementati |
 | Heartbeat | Nessun scheduler / input source |
 | Note | Aperto in `docs/TODO.md` |
 | Lista spesa | Assente |
@@ -103,7 +103,7 @@
 
 ### Fase C — Memoria e quotidiano
 
-- [ ] Tool memoria LLM (o esporre `forget` già in repo)
+- [x] Tool memoria LLM — `docs/MEMORY.md`
 - [ ] Note (Room + tool)
 - [ ] Città meteo default in Settings
 

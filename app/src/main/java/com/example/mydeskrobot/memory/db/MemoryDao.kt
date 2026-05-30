@@ -52,6 +52,15 @@ interface MemoryDao {
     )
     suspend fun findExact(category: MemoryCategory, value: String): MemoryItemEntity?
 
+    @Query(
+        """
+        SELECT * FROM memory_items
+        WHERE id = :id AND isDeleted = 0
+        LIMIT 1
+        """
+    )
+    suspend fun findActiveById(id: Long): MemoryItemEntity?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(item: MemoryItemEntity): Long
 

@@ -65,6 +65,7 @@ Le linee guida dettagliate sono in **`.cursor/rules/*.mdc`**:
 4. Per input esterni → `docs/INPUT_ARCHITECTURE.md`.
 5. Per pipeline STT (orchestrator + provider) → `docs/STT_ARCHITECTURE.md`.
 6. Per task schedulati / promemoria vocali → `docs/SCHEDULED_TASKS.md`.
+7. Per memoria utente (estrazione + tool) → `docs/MEMORY.md`.
 7. Per contesto robot / silenzio notifiche → `docs/ROBOT_CONTEXT.md`.
 8. Per policy risoluzione autonoma (tool diretto vs catena) → `docs/AGENT_REASONING.md`.
 9. Per espressioni occhi (campo `emotion` LLM) → `docs/ROBOT_EXPRESSIONS.md`.
@@ -85,6 +86,9 @@ Le linee guida dettagliate sono in **`.cursor/rules/*.mdc`**:
 | `set_reminder` | LOCAL | Schedula task (annuncio vocale + notifica a scadenza) |
 | `get_reminders` | LOCAL | Elenca promemoria attivi |
 | `delete_reminder` | LOCAL | Cancella promemoria per id |
+| `save_memory` | LOCAL | Salva fatto utente in Room |
+| `list_memories` | LOCAL | Elenca memorie attive |
+| `delete_memory` | LOCAL | Dimentica memoria per id o testo |
 | `set_volume` | LOCAL | Controlla volume media |
 | `show_notification` | LOCAL | Mostra notifica di sistema |
 

@@ -15,9 +15,12 @@ import com.example.mydeskrobot.integration.tool.local.BrowserTool
 import com.example.mydeskrobot.integration.tool.local.SpotifyTool
 import com.example.mydeskrobot.integration.tool.local.CameraTool
 import com.example.mydeskrobot.integration.tool.local.NotificationTool
+import com.example.mydeskrobot.integration.tool.local.DeleteMemoryTool
 import com.example.mydeskrobot.integration.tool.local.DeleteReminderTool
 import com.example.mydeskrobot.integration.tool.local.GetRemindersTool
+import com.example.mydeskrobot.integration.tool.local.ListMemoriesTool
 import com.example.mydeskrobot.integration.tool.local.ReminderTool
+import com.example.mydeskrobot.integration.tool.local.SaveMemoryTool
 import com.example.mydeskrobot.integration.tool.local.VolumeTool
 import com.example.mydeskrobot.data.search.SearchSettingsRepository
 import com.example.mydeskrobot.integration.tool.remote.ChainedWebSearchEngine
@@ -52,7 +55,8 @@ object ReasoningModule {
         val basePrompt = LlmPromptLoader.loadSystemPrompt(context)
         
         val llmClient = LlmClientFactory.create(llmSettings)
-        
+        val memoryRepository = UserMemoryRepository.create(context)
+
         val tools = buildList {
             add(CameraTool(visionImageCapture))
             
@@ -62,6 +66,9 @@ object ReasoningModule {
             add(ReminderTool(context))
             add(GetRemindersTool(context))
             add(DeleteReminderTool(context))
+            add(SaveMemoryTool(memoryRepository))
+            add(ListMemoriesTool(memoryRepository))
+            add(DeleteMemoryTool(memoryRepository))
             add(VolumeTool(context))
             add(NotificationTool(context))
             
@@ -84,7 +91,6 @@ object ReasoningModule {
         }
         
         val toolRouter = ToolRouter(tools)
-        val memoryRepository = UserMemoryRepository.create(context)
         val memoryContextProvider = MemoryPromptContextProviderImpl(memoryRepository)
         val robotContextRepository = RobotContextRepository(context)
         val robotContextProvider = RobotContextPromptProviderImpl(robotContextRepository)

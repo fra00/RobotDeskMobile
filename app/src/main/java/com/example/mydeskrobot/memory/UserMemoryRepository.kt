@@ -41,7 +41,10 @@ class UserMemoryRepository(
     }
 
     suspend fun getCoreIdentity(limit: Int = 2): List<MemoryItemEntity> =
-        dao.getByCategory(MemoryCategory.IDENTITY, limit)
+        getByCategory(MemoryCategory.IDENTITY, limit)
+
+    suspend fun getByCategory(category: MemoryCategory, limit: Int): List<MemoryItemEntity> =
+        dao.getByCategory(category, limit)
 
     suspend fun searchRelevant(query: String, limit: Int): List<MemoryItemEntity> =
         dao.searchByQuery(query.trim(), limit)
@@ -55,6 +58,13 @@ class UserMemoryRepository(
 
     suspend fun forgetByText(query: String): Int =
         dao.softDeleteByText(query.trim(), System.currentTimeMillis())
+
+    suspend fun deleteById(id: Long): Boolean {
+        if (id <= 0L) return false
+        val existing = dao.findActiveById(id) ?: return false
+        dao.softDeleteById(existing.id, System.currentTimeMillis())
+        return true
+    }
 
     suspend fun resetMemory() {
         dao.clearAll()
