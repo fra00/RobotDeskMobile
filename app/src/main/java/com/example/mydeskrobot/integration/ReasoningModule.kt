@@ -1,6 +1,7 @@
 package com.example.mydeskrobot.integration
 
 import android.content.Context
+import com.example.mydeskrobot.data.lists.ListItemRepository
 import com.example.mydeskrobot.data.llm.LlmPromptLoader
 import com.example.mydeskrobot.domain.llm.LlmSettings
 import com.example.mydeskrobot.domain.vision.VisionImageCapture
@@ -11,8 +12,12 @@ import com.example.mydeskrobot.integration.memory.MemoryPromptContextProviderImp
 import com.example.mydeskrobot.integration.tool.local.SetRobotContextTool
 import com.example.mydeskrobot.integration.tool.Tool
 import com.example.mydeskrobot.integration.tool.ToolRouter
+import com.example.mydeskrobot.integration.tool.local.AddListItemTool
 import com.example.mydeskrobot.integration.tool.local.BrowserTool
+import com.example.mydeskrobot.integration.tool.local.DeleteListItemTool
+import com.example.mydeskrobot.integration.tool.local.ListItemsTool
 import com.example.mydeskrobot.integration.tool.local.SpotifyTool
+import com.example.mydeskrobot.integration.tool.local.UpdateListItemTool
 import com.example.mydeskrobot.integration.tool.local.CameraTool
 import com.example.mydeskrobot.integration.tool.local.NotificationTool
 import com.example.mydeskrobot.integration.tool.local.DeleteMemoryTool
@@ -56,6 +61,7 @@ object ReasoningModule {
         
         val llmClient = LlmClientFactory.create(llmSettings)
         val memoryRepository = UserMemoryRepository.create(context)
+        val listItemRepository = ListItemRepository.create(context)
 
         val tools = buildList {
             add(CameraTool(visionImageCapture))
@@ -69,6 +75,10 @@ object ReasoningModule {
             add(SaveMemoryTool(memoryRepository))
             add(ListMemoriesTool(memoryRepository))
             add(DeleteMemoryTool(memoryRepository))
+            add(AddListItemTool(listItemRepository))
+            add(ListItemsTool(listItemRepository))
+            add(UpdateListItemTool(listItemRepository))
+            add(DeleteListItemTool(listItemRepository))
             add(VolumeTool(context))
             add(NotificationTool(context))
             

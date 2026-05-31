@@ -90,6 +90,10 @@ Le linee guida dettagliate sono in **`.cursor/rules/*.mdc`**:
 | `save_memory` | LOCAL | Salva fatto utente in Room |
 | `list_memories` | LOCAL | Elenca memorie attive |
 | `delete_memory` | LOCAL | Dimentica memoria per id o testo |
+| `add_list_item` | LOCAL | Aggiunge nota/todo/spesa |
+| `list_items` | LOCAL | Elenca elementi lista strutturata |
+| `update_list_item` | LOCAL | Aggiorna testo o checked |
+| `delete_list_item` | LOCAL | Rimuove elemento per id o testo |
 | `set_volume` | LOCAL | Controlla volume media |
 | `show_notification` | LOCAL | Mostra notifica di sistema |
 
