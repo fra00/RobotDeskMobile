@@ -35,10 +35,12 @@ fun SettingsDialog(
     onOpenSttSettings: () -> Unit,
     onOpenVoskModelSettings: () -> Unit,
     onOpenNotificationSettings: () -> Unit,
+    onOpenHeartbeatSettings: () -> Unit,
     isVoskModelReady: Boolean,
     sttProviderName: String,
     notificationsEnabled: Boolean,
     isNotificationAccessGranted: Boolean,
+    heartbeatEnabled: Boolean,
     onNotificationsEnabledChange: (Boolean) -> Unit,
     onSaveNotifications: () -> Unit,
 ) {
@@ -82,6 +84,15 @@ fun SettingsDialog(
                         stringResource(R.string.vosk_model_status_not_downloaded)
                     },
                     onClick = onOpenVoskModelSettings,
+                )
+                SettingsRow(
+                    label = stringResource(R.string.settings_heartbeat),
+                    value = if (heartbeatEnabled) {
+                        stringResource(R.string.heartbeat_status_enabled)
+                    } else {
+                        stringResource(R.string.heartbeat_status_disabled)
+                    },
+                    onClick = onOpenHeartbeatSettings,
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 HorizontalDivider()

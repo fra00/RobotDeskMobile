@@ -83,7 +83,11 @@ class ToolChainOrchestrator(
         
         if (!confirmed) {
             conversationHistory.addUserMessage("No, annulla")
-            return ReasoningResult.Success("Ok, annullato.", "neutral")
+            return ReasoningResult.Success(
+                finalText = "Ok, annullato.",
+                emotion = "neutral",
+                speakConfidence = 1.0,
+            )
         }
         
         conversationHistory.addUserMessage("Sì, procedi")
@@ -92,7 +96,11 @@ class ToolChainOrchestrator(
         conversationHistory.addToolResult(pending.tool.name, toolResult)
         
         if (!pending.tool.awaitResult) {
-            return ReasoningResult.Success(pending.lastText, pending.lastEmotion)
+            return ReasoningResult.Success(
+                finalText = pending.lastText,
+                emotion = pending.lastEmotion,
+                speakConfidence = 1.0,
+            )
         }
         
         return executeChain(onIntermediateResponse)
@@ -145,7 +153,11 @@ class ToolChainOrchestrator(
             
             when (val action = parsed.action) {
                 is LlmAction.None -> {
-                    return ReasoningResult.Success(parsed.text, parsed.emotion)
+                    return ReasoningResult.Success(
+                        finalText = parsed.text,
+                        emotion = parsed.emotion,
+                        speakConfidence = parsed.speakConfidence,
+                    )
                 }
                 
                 is LlmAction.ToolCall -> {
@@ -156,6 +168,7 @@ class ToolChainOrchestrator(
                                 text = parsed.text,
                                 emotion = parsed.emotion,
                                 isToolExecuting = false,
+                                speakConfidence = parsed.speakConfidence,
                             )
                         )
                     }
@@ -177,7 +190,11 @@ class ToolChainOrchestrator(
                             else -> parsed.text
                         }
                         val emotion = if (toolFailureText != null) "confused" else parsed.emotion
-                        return ReasoningResult.Success(finalText, emotion)
+                        return ReasoningResult.Success(
+                            finalText = finalText,
+                            emotion = emotion,
+                            speakConfidence = parsed.speakConfidence,
+                        )
                     }
                 }
                 
@@ -228,7 +245,11 @@ class ToolChainOrchestrator(
         
         return when (val action = parsed.action) {
             is LlmAction.None -> {
-                ReasoningResult.Success(parsed.text, parsed.emotion)
+                ReasoningResult.Success(
+                    finalText = parsed.text,
+                    emotion = parsed.emotion,
+                    speakConfidence = parsed.speakConfidence,
+                )
             }
             
             is LlmAction.ToolCall -> {
@@ -239,6 +260,7 @@ class ToolChainOrchestrator(
                             text = parsed.text,
                             emotion = parsed.emotion,
                             isToolExecuting = false,
+                            speakConfidence = parsed.speakConfidence,
                         )
                     )
                 }
@@ -259,7 +281,11 @@ class ToolChainOrchestrator(
                         else -> parsed.text
                     }
                     val emotion = if (toolFailureText != null) "confused" else parsed.emotion
-                    ReasoningResult.Success(finalText, emotion)
+                    ReasoningResult.Success(
+                        finalText = finalText,
+                        emotion = emotion,
+                        speakConfidence = parsed.speakConfidence,
+                    )
                 } else {
                     executeChain(onIntermediateResponse)
                 }

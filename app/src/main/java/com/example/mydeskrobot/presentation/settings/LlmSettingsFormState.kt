@@ -1,5 +1,6 @@
 package com.example.mydeskrobot.presentation.settings
 
+import com.example.mydeskrobot.data.heartbeat.HeartbeatSettings
 import com.example.mydeskrobot.data.speech.VoskModelManager
 import com.example.mydeskrobot.domain.llm.LlmProvider
 import com.example.mydeskrobot.domain.llm.LlmSettings
@@ -37,8 +38,10 @@ data class SettingsUiState(
     val showVoskModelDialog: Boolean = false,
     val showSttDialog: Boolean = false,
     val showNotificationDialog: Boolean = false,
+    val showHeartbeatDialog: Boolean = false,
     val form: LlmSettingsFormState = LlmSettingsFormState(),
     val memoryForm: MemorySettingsFormState = MemorySettingsFormState(),
+    val heartbeatForm: HeartbeatSettingsFormState = HeartbeatSettingsFormState(),
     val voskModelState: VoskModelManager.ModelState = VoskModelManager.ModelState.NotDownloaded,
     val sttProvider: SttProvider = SttProvider.ANDROID,
     val notificationsEnabled: Boolean = false,
@@ -59,4 +62,20 @@ data class MemorySettingsFormState(
 fun MemorySettings.toFormState(): MemorySettingsFormState = MemorySettingsFormState(
     enabled = enabled,
     intervalSeconds = intervalSeconds,
+)
+
+data class HeartbeatSettingsFormState(
+    val enabled: Boolean = false,
+    val intervalMinutes: Int = 10,
+    val startHour: Int = 7,
+    val endHour: Int = 23,
+    val proactiveThreshold: Float = 0.75f,
+)
+
+fun HeartbeatSettings.toFormState(): HeartbeatSettingsFormState = HeartbeatSettingsFormState(
+    enabled = enabled,
+    intervalMinutes = intervalMinutes,
+    startHour = startHour,
+    endHour = endHour,
+    proactiveThreshold = proactiveThreshold,
 )

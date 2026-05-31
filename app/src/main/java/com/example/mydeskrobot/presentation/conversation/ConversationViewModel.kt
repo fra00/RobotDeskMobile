@@ -35,6 +35,7 @@ import com.example.mydeskrobot.memory.MemorySettingsRepository
 import com.example.mydeskrobot.memory.UserMemoryRepository
 import com.example.mydeskrobot.memory.extract.MemoryExtractionScheduler
 import com.example.mydeskrobot.memory.extract.MemoryExtractionService
+import com.example.mydeskrobot.presentation.settings.HeartbeatSettingsFormState
 import com.example.mydeskrobot.presentation.settings.LlmSettingsFormState
 import com.example.mydeskrobot.presentation.settings.MemorySettingsFormState
 import com.example.mydeskrobot.presentation.settings.SettingsUiState
@@ -49,8 +50,18 @@ import com.example.mydeskrobot.reasoning.model.SystemInputEnvelope
 import com.example.mydeskrobot.integration.input.DeferredInputQueue
 import com.example.mydeskrobot.integration.input.InputPolicyEngine
 import com.example.mydeskrobot.data.context.RobotContextRepository
+import com.example.mydeskrobot.data.heartbeat.HeartbeatSettingsRepository
 import com.example.mydeskrobot.data.input.InputSettingsRepository
+import com.example.mydeskrobot.data.mood.MoodRepository
+import com.example.mydeskrobot.data.workingmemory.WorkingMemoryRepository
+import com.example.mydeskrobot.data.awareness.UserAwarenessRepository
+import com.example.mydeskrobot.data.reflection.WeeklyStatsRepository
+import com.example.mydeskrobot.domain.awareness.UserStateTracker
 import com.example.mydeskrobot.domain.context.RobotContextPolicy
+import com.example.mydeskrobot.domain.mood.MoodManager
+import com.example.mydeskrobot.domain.mood.MoodTrigger
+import com.example.mydeskrobot.domain.reflection.WeeklyStats
+import com.example.mydeskrobot.integration.input.heartbeat.HeartbeatScheduler
 import com.example.mydeskrobot.R
 import com.example.mydeskrobot.data.speech.SttSettingsRepository
 import com.example.mydeskrobot.data.speech.VoskModelManager
@@ -121,6 +132,19 @@ class ConversationViewModel(
     private val deferredInputQueue = DeferredInputQueue()
     private val inputSettingsRepository = InputSettingsRepository(appContext)
     private val robotContextRepository = RobotContextRepository(appContext)
+    private val heartbeatSettingsRepository = HeartbeatSettingsRepository(appContext)
+    /** True when the current LLM turn was triggered by a heartbeat input. */
+    private var currentInputIsHeartbeat = false
+    private val moodRepository = MoodRepository(appContext)
+    private val moodManager = MoodManager(moodRepository, scope = viewModelScope)
+    private var moodMonitorJob: Job? = null
+    private val workingMemoryRepository = WorkingMemoryRepository(appContext)
+    private val weeklyStatsRepository = WeeklyStatsRepository(appContext)
+    private val userAwarenessRepository = UserAwarenessRepository(appContext)
+    /** Timestamp of last proactive speak, for tracking response. */
+    private var lastProactiveSpeakTime: Long? = null
+    /** Topic of last proactive speak, for attribution. */
+    private var lastProactiveTopic: String? = null
     private val memoryExtractionScheduler by lazy {
         val prompt = LlmPromptLoader.loadMemoryExtractorPrompt(appContext)
         val extractionClient = LlmClientFactory.create(runBlockingLoadSettings())
@@ -152,6 +176,9 @@ class ConversationViewModel(
         private const val ANGRY_RECOVERY_MS = 2_500L
         private const val BORED_RECHECK_MS = 5_000L
         private const val NIGHT_MODE_RECHECK_MS = 60_000L
+        private const val MOOD_RECHECK_MS = 30_000L
+        /** Time window to consider user response as "positive" to proactive speak. */
+        private const val PROACTIVE_RESPONSE_WINDOW_MS = 5 * 60_000L
     }
 
     init {
@@ -207,6 +234,10 @@ class ConversationViewModel(
             is ConversationUiEvent.OnNotificationEnabledChange -> updateNotificationEnabled(event.enabled)
             is ConversationUiEvent.OnNotificationPackageToggle -> toggleNotificationPackage(event.packageName)
             ConversationUiEvent.OnSaveNotificationSettings -> saveNotificationSettings()
+            ConversationUiEvent.OnOpenHeartbeatSettings -> openHeartbeatSettings()
+            ConversationUiEvent.OnDismissHeartbeatSettings -> dismissHeartbeatSettings()
+            is ConversationUiEvent.OnHeartbeatFormChange -> updateHeartbeatForm(event.form)
+            ConversationUiEvent.OnSaveHeartbeatSettings -> saveHeartbeatSettings()
         }
     }
 
@@ -455,6 +486,58 @@ class ConversationViewModel(
         }
     }
 
+    private fun openHeartbeatSettings() {
+        viewModelScope.launch {
+            val settings = heartbeatSettingsRepository.load()
+            _settingsUiState.update {
+                it.copy(
+                    showMainDialog = false,
+                    showHeartbeatDialog = true,
+                    heartbeatForm = settings.toFormState(),
+                    feedbackMessage = null,
+                )
+            }
+        }
+    }
+
+    private fun dismissHeartbeatSettings() {
+        _settingsUiState.update {
+            it.copy(showHeartbeatDialog = false, showMainDialog = true)
+        }
+    }
+
+    private fun updateHeartbeatForm(form: HeartbeatSettingsFormState) {
+        _settingsUiState.update { it.copy(heartbeatForm = form, feedbackMessage = null) }
+    }
+
+    private fun saveHeartbeatSettings() {
+        val form = _settingsUiState.value.heartbeatForm
+        viewModelScope.launch {
+            heartbeatSettingsRepository.update(
+                enabled = form.enabled,
+                intervalMinutes = form.intervalMinutes,
+                startHour = form.startHour,
+                endHour = form.endHour,
+                proactiveThreshold = form.proactiveThreshold,
+            )
+
+            if (form.enabled && _uiState.value.isHotwordListeningActive) {
+                HeartbeatScheduler.schedule(appContext, form.intervalMinutes)
+            } else {
+                HeartbeatScheduler.cancel(appContext)
+            }
+
+            _settingsUiState.update {
+                it.copy(
+                    showHeartbeatDialog = false,
+                    showMainDialog = true,
+                    feedbackMessage = appContext.getString(R.string.heartbeat_settings_saved),
+                    feedbackIsError = false,
+                )
+            }
+        }
+    }
+
     private fun updateLlmProvider(provider: com.example.mydeskrobot.domain.llm.LlmProvider) {
         _settingsUiState.update { state ->
             val form = state.form.copy(provider = provider)
@@ -602,7 +685,18 @@ class ConversationViewModel(
         }
         startBoredIdleMonitor()
         startNightModeMonitor()
+        startMoodMonitor()
         memoryExtractionScheduler.start()
+        startHeartbeatIfEnabled()
+    }
+
+    private fun startHeartbeatIfEnabled() {
+        viewModelScope.launch {
+            val settings = heartbeatSettingsRepository.load()
+            if (settings.enabled) {
+                HeartbeatScheduler.schedule(appContext, settings.intervalMinutes)
+            }
+        }
     }
 
     fun disableHotwordListening() {
@@ -615,8 +709,10 @@ class ConversationViewModel(
         clearVisionPipeline()
         stopBoredIdleMonitor()
         stopNightModeMonitor()
+        stopMoodMonitor()
         ttsRepository.stop()
         HotwordServiceStarter.stop(appContext)
+        HeartbeatScheduler.cancel(appContext)
         _uiState.update {
             it.copy(
                 phase = ConversationPhase.Idle,
@@ -841,6 +937,19 @@ class ConversationViewModel(
         emotionTransitionJob?.cancel()
         HotwordController.beginAssistantTurn()
 
+        viewModelScope.launch { heartbeatSettingsRepository.recordInteraction() }
+        viewModelScope.launch { workingMemoryRepository.recordInteraction() }
+        viewModelScope.launch {
+            weeklyStatsRepository.recordInteraction()
+            checkProactiveSpeakResponse()
+        }
+        viewModelScope.launch {
+            userAwarenessRepository.update { current ->
+                UserStateTracker.analyzeUserText(phrase, current)
+            }
+        }
+        moodManager.recordInteraction()
+
         val state = _uiState.value
         conversationLogBeforeCurrentTurn = state.conversationLog
         _uiState.update {
@@ -971,11 +1080,25 @@ class ConversationViewModel(
     private suspend fun handleReasoningResult(result: ReasoningResult) {
         when (result) {
             is ReasoningResult.Success -> {
+                if (shouldSuppressHeartbeat(result)) {
+                    Log.i(TAG, "Heartbeat suppressed: confidence ${result.speakConfidence} below threshold")
+                    currentInputIsHeartbeat = false
+                    finalizeTurnWithoutSpeech(LlmEmotionMapper.fromLlmValue(result.emotion))
+                    return
+                }
+                val wasHeartbeat = currentInputIsHeartbeat
+                currentInputIsHeartbeat = false
+
                 if (result.finalText.isBlank()) {
-                    // Text already emitted via intermediate (e.g. tool with chain_status=complete).
-                    // Just finalize the turn and resume listening without re-speaking.
                     finalizeTurnWithoutSpeech(LlmEmotionMapper.fromLlmValue(result.emotion))
                 } else {
+                    if (wasHeartbeat) {
+                        viewModelScope.launch {
+                            workingMemoryRepository.recordProactiveSpeak()
+                            weeklyStatsRepository.recordProactiveSpeak()
+                        }
+                        markProactiveSpeakForTracking(extractTopicFromText(result.finalText))
+                    }
                     val reply = LlmAssistantReply(
                         text = result.finalText,
                         emotion = LlmEmotionMapper.fromLlmValue(result.emotion),
@@ -986,16 +1109,19 @@ class ConversationViewModel(
             }
 
             is ReasoningResult.Error -> {
+                currentInputIsHeartbeat = false
                 handleLlmFailure(result.message)
             }
 
             is ReasoningResult.MaxStepsReached -> {
+                currentInputIsHeartbeat = false
                 val text = result.lastText.ifBlank { messages.emptyReplyError() }
                 val reply = LlmAssistantReply(text = text, emotion = null, imageRequired = false)
                 deliverAssistantReply(reply)
             }
 
             is ReasoningResult.NeedsConfirmation -> {
+                currentInputIsHeartbeat = false
                 val reply = LlmAssistantReply(
                     text = result.prompt,
                     emotion = null,
@@ -1004,6 +1130,16 @@ class ConversationViewModel(
                 deliverAssistantReply(reply)
             }
         }
+    }
+
+    private suspend fun shouldSuppressHeartbeat(result: ReasoningResult.Success): Boolean {
+        if (!currentInputIsHeartbeat) return false
+
+        val confidence = result.speakConfidence ?: return false
+        if (result.finalText.isBlank()) return true
+
+        val settings = heartbeatSettingsRepository.load()
+        return confidence < settings.proactiveThreshold
     }
 
     /**
@@ -1019,6 +1155,7 @@ class ConversationViewModel(
 
         conversationLogBeforeCurrentTurn = null
         lastLlmEmotion = emotion ?: lastLlmEmotion
+        lastLlmEmotion?.let { moodManager.onLlmEmotion(it) }
         resumeListeningAfterAssistantTurn(emotionOverride = lastLlmEmotion)
     }
 
@@ -1068,7 +1205,14 @@ class ConversationViewModel(
 
         lastAssistantResponse = spokenText
         lastLlmEmotion = reply.emotion ?: fallbackEmotion
+        lastLlmEmotion?.let { moodManager.onLlmEmotion(it) }
         conversationLogBeforeCurrentTurn = null
+
+        viewModelScope.launch {
+            userAwarenessRepository.update { current ->
+                UserStateTracker.analyzeRobotResponse(spokenText, current)
+            }
+        }
 
         _uiState.update {
             it.copy(
@@ -1333,12 +1477,133 @@ class ConversationViewModel(
         nightModeMonitorJob = null
     }
 
+    private fun startMoodMonitor() {
+        stopMoodMonitor()
+        viewModelScope.launch { moodManager.initialize() }
+        moodMonitorJob = viewModelScope.launch {
+            moodManager.currentMood.collect { mood ->
+                syncMoodWithUi(mood.baseEmotion)
+            }
+        }
+        viewModelScope.launch {
+            while (true) {
+                delay(MOOD_RECHECK_MS)
+                moodManager.checkIdleTransition()
+                moodManager.checkDecay()
+                workingMemoryRepository.checkAndResetIfNewDay()
+                userAwarenessRepository.checkAndResetIfNewDay()
+                checkProactiveSpeakTimeout()
+                checkAndTriggerReflection()
+            }
+        }
+    }
+
+    private fun stopMoodMonitor() {
+        moodMonitorJob?.cancel()
+        moodMonitorJob = null
+    }
+
+    private fun syncMoodWithUi(moodEmotion: RobotEmotion) {
+        val state = _uiState.value
+        if (!state.isHotwordListeningActive) return
+        if (state.phase !is ConversationPhase.WaitingForHotword) return
+
+        if (state.isNightMode) {
+            if (moodEmotion != RobotEmotion.SLEEPING && moodEmotion != RobotEmotion.DROWSY) {
+                return
+            }
+        }
+
+        _uiState.update { it.copy(emotion = moodEmotion) }
+    }
+
+    /**
+     * Check if user responded to the last proactive speak within 5 minutes.
+     * If so, record it as a positive response.
+     */
+    private suspend fun checkProactiveSpeakResponse() {
+        val lastSpeak = lastProactiveSpeakTime ?: return
+        val elapsed = System.currentTimeMillis() - lastSpeak
+        val withinWindow = elapsed < PROACTIVE_RESPONSE_WINDOW_MS
+
+        if (withinWindow) {
+            weeklyStatsRepository.recordPositiveResponse(lastProactiveTopic)
+            lastProactiveSpeakTime = null
+            lastProactiveTopic = null
+        }
+    }
+
+    /**
+     * Check if the proactive speak response window has expired without response.
+     * If so, record it as ignored.
+     */
+    private suspend fun checkProactiveSpeakTimeout() {
+        val lastSpeak = lastProactiveSpeakTime ?: return
+        val elapsed = System.currentTimeMillis() - lastSpeak
+
+        if (elapsed >= PROACTIVE_RESPONSE_WINDOW_MS) {
+            weeklyStatsRepository.recordIgnoredSuggestion(lastProactiveTopic)
+            lastProactiveSpeakTime = null
+            lastProactiveTopic = null
+        }
+    }
+
+    /**
+     * Mark a proactive speak for response tracking.
+     */
+    private fun markProactiveSpeakForTracking(topic: String?) {
+        lastProactiveSpeakTime = System.currentTimeMillis()
+        lastProactiveTopic = topic
+    }
+
+    /**
+     * Extract a topic keyword from proactive speak text.
+     * Simple heuristic: first noun-like word after common prefixes.
+     */
+    private fun extractTopicFromText(text: String): String? {
+        val lower = text.lowercase()
+        val keywords = listOf(
+            "meteo", "tempo", "pioggia", "sole",
+            "promemoria", "reminder", "ricorda",
+            "cane", "gatto", "animale",
+            "pranzo", "cena", "colazione",
+            "riunione", "meeting", "call",
+            "email", "messaggio", "notifica",
+        )
+        return keywords.firstOrNull { lower.contains(it) }
+    }
+
+    /**
+     * Check if weekly reflection is due and trigger it.
+     */
+    private suspend fun checkAndTriggerReflection() {
+        if (!weeklyStatsRepository.isReflectionDue()) return
+
+        val stats = weeklyStatsRepository.load()
+        val reflection = RobotInput.WeeklyReflection(
+            totalInteractions = stats.totalInteractions,
+            totalProactiveSpeaks = stats.totalProactiveSpeaks,
+            positiveResponses = stats.positiveResponses,
+            ignoredSuggestions = stats.ignoredSuggestions,
+            usefulTopics = stats.topUsefulTopics(),
+            ignoredTopics = stats.topIgnoredTopics(),
+            successRatePercent = (stats.successRate() * 100).toInt(),
+        )
+
+        val envelope = SystemInputEnvelope.from(reflection)
+        Log.i(TAG, "Triggering weekly reflection")
+        SystemInputDispatcher.emit(SystemInputEvent.InputReceived(envelope))
+        weeklyStatsRepository.markReflectionDone()
+    }
+
     private fun syncNightModeWithStandby() {
         if (!_uiState.value.isHotwordListeningActive) return
 
         val night = isNightModeNow()
         val state = _uiState.value
         if (night == state.isNightMode) return
+
+        moodManager.onTrigger(if (night) MoodTrigger.NightMode else MoodTrigger.DayMode)
 
         if (state.phase is ConversationPhase.WaitingForHotword) {
             _uiState.update {
@@ -1404,10 +1669,11 @@ class ConversationViewModel(
             Log.d(TAG, "Mic not active, dropping system input")
             return
         }
-        if (envelope.input is RobotInput.Notification) {
+        if (envelope.input is RobotInput.Notification || envelope.input is RobotInput.Heartbeat) {
             val stored = kotlinx.coroutines.runBlocking { robotContextRepository.getStoredState() }
             if (RobotContextPolicy.shouldDropNotifications(stored)) {
-                Log.d(TAG, "DROP system notification (robot context silent)")
+                val kind = if (envelope.input is RobotInput.Heartbeat) "heartbeat" else "notification"
+                Log.d(TAG, "DROP system $kind (robot context silent)")
                 return
             }
         }
@@ -1436,17 +1702,23 @@ class ConversationViewModel(
         val state = _uiState.value
         conversationLogBeforeCurrentTurn = state.conversationLog
 
+        currentInputIsHeartbeat = envelope.input is RobotInput.Heartbeat
+
         val sourceLabel = when (val input = envelope.input) {
             is RobotInput.Notification -> input.appLabel
             is RobotInput.ScheduledTaskFired -> "Promemoria"
             is RobotInput.HardwareButton -> "Pulsante"
             is RobotInput.SensorReading -> input.sensorType
+            is RobotInput.Heartbeat -> "Heartbeat"
+            is RobotInput.WeeklyReflection -> "Riflessione"
         }
         val summaryText = when (val input = envelope.input) {
             is RobotInput.Notification -> input.text ?: input.title ?: "Nuova notifica"
             is RobotInput.ScheduledTaskFired -> input.message
             is RobotInput.HardwareButton -> input.action
             is RobotInput.SensorReading -> "${input.value} ${input.unit}"
+            is RobotInput.Heartbeat -> "tick autonomo"
+            is RobotInput.WeeklyReflection -> "auto-analisi settimanale"
         }
 
         _uiState.update {
@@ -1502,6 +1774,7 @@ class ConversationViewModel(
         emotionTransitionJob?.cancel()
         stopBoredIdleMonitor()
         stopNightModeMonitor()
+        stopMoodMonitor()
         ttsRepository.stop()
         if (_uiState.value.isHotwordListeningActive) {
             HotwordServiceStarter.stop(appContext)

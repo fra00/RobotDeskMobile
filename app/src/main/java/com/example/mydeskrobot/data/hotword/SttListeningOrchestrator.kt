@@ -210,7 +210,7 @@ class SttListeningOrchestrator(
             if (chunk.isFinal) return@ChunkListener
             val partial = chunk.text.trim()
             if (partial.isNotEmpty()) {
-                sessionScope.launch {
+                 sessionScope.launch {
                     onEvent(HotwordEvent.UtteranceInProgress(partial))
                 }
             }

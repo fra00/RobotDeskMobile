@@ -235,4 +235,63 @@ class LlmResponseParserTest {
         
         assertEquals("Usando text field", result.text)
     }
+
+    @Test
+    fun `parse speak_confidence present`() {
+        val json = """
+            {
+                "reply": "Promemoria tra poco",
+                "emotion": "happy",
+                "speak_confidence": 0.85
+            }
+        """.trimIndent()
+
+        val result = parser.parse(json)
+
+        assertEquals(0.85, result.speakConfidence!!, 0.001)
+    }
+
+    @Test
+    fun `parse speak_confidence missing returns null`() {
+        val json = """
+            {
+                "reply": "Ciao",
+                "emotion": "neutral"
+            }
+        """.trimIndent()
+
+        val result = parser.parse(json)
+
+        assertNull(result.speakConfidence)
+    }
+
+    @Test
+    fun `parse speak_confidence clamped to 0-1 range`() {
+        val jsonHigh = """{"reply": "test", "speak_confidence": 1.5}"""
+        val jsonLow = """{"reply": "test", "speak_confidence": -0.2}"""
+
+        val resultHigh = parser.parse(jsonHigh)
+        val resultLow = parser.parse(jsonLow)
+
+        assertEquals(1.0, resultHigh.speakConfidence!!, 0.001)
+        assertEquals(0.0, resultLow.speakConfidence!!, 0.001)
+    }
+
+    @Test
+    fun `parse heartbeat response with empty reply and zero confidence`() {
+        val json = """
+            {
+                "reply": "",
+                "emotion": "neutral",
+                "speak_confidence": 0.0,
+                "action": {"type": "none"}
+            }
+        """.trimIndent()
+
+        val result = parser.parse(json)
+
+        assertEquals("", result.text)
+        assertEquals(0.0, result.speakConfidence!!, 0.001)
+        assertEquals(LlmAction.None, result.action)
+    }
 }

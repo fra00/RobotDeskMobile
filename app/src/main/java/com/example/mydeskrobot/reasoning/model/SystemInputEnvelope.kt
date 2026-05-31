@@ -94,6 +94,84 @@ data class SystemInputEnvelope(
         }
 
         /**
+         * Creates an envelope from a [RobotInput.Heartbeat].
+         */
+        fun fromHeartbeat(heartbeat: RobotInput.Heartbeat): SystemInputEnvelope {
+            val timeLabel = "${heartbeat.currentHour}:${heartbeat.currentMinute.toString().padStart(2, '0')}"
+            val formatted = buildString {
+                append("[SYSTEM_INPUT: heartbeat]\n")
+                append("Ora: $timeLabel\n")
+                append("Giorno: ${heartbeat.dayOfWeek}\n")
+                append("Minuti dall'ultima interazione: ${heartbeat.minutesSinceLastInteraction}\n")
+                if (heartbeat.moodLabel != null) {
+                    val intensityPct = heartbeat.moodIntensity?.let { (it * 100).toInt() } ?: 50
+                    append("Stato emotivo: ${heartbeat.moodLabel} ($intensityPct%)\n")
+                }
+                if (heartbeat.userMood != null && heartbeat.userMood != "unknown") {
+                    append("Umore utente percepito: ${heartbeat.userMood}\n")
+                }
+                if (heartbeat.userProbablyKnows.isNotEmpty()) {
+                    append("L'utente probabilmente sa già: ${heartbeat.userProbablyKnows.joinToString(", ")}\n")
+                }
+                if (heartbeat.todayInteractions > 0) {
+                    append("Interazioni oggi: ${heartbeat.todayInteractions}\n")
+                }
+                if (heartbeat.proactiveSpeaksToday > 0) {
+                    append("Interventi proattivi oggi: ${heartbeat.proactiveSpeaksToday}\n")
+                }
+                heartbeat.minutesSinceLastProactiveSpeak?.let { mins ->
+                    append("Minuti dall'ultimo intervento: $mins\n")
+                }
+                if (heartbeat.topicsDiscussedToday.isNotEmpty()) {
+                    append("Topic già discussi oggi: ${heartbeat.topicsDiscussedToday.joinToString(", ")}\n")
+                }
+                if (heartbeat.pendingRemindersCount > 0) {
+                    append("Promemoria attivi: ${heartbeat.pendingRemindersCount}\n")
+                }
+                heartbeat.relevantRoutines.forEach { routine ->
+                    append("Routine: $routine\n")
+                }
+            }.trimEnd()
+
+            val dedupKey = "heartbeat:${heartbeat.timestamp / 60000}"
+
+            return SystemInputEnvelope(
+                input = heartbeat,
+                formattedForLlm = formatted,
+                dedupKey = dedupKey,
+            )
+        }
+
+        /**
+         * Creates an envelope from a [RobotInput.WeeklyReflection].
+         */
+        fun fromWeeklyReflection(reflection: RobotInput.WeeklyReflection): SystemInputEnvelope {
+            val formatted = buildString {
+                append("[SYSTEM_INPUT: weekly_reflection]\n")
+                append("Questa settimana:\n")
+                append("- Interazioni utente: ${reflection.totalInteractions}\n")
+                append("- Interventi proattivi: ${reflection.totalProactiveSpeaks}\n")
+                append("- Risposte positive: ${reflection.positiveResponses}\n")
+                append("- Ignorati/rifiutati: ${reflection.ignoredSuggestions}\n")
+                append("- Tasso di successo: ${reflection.successRatePercent}%\n")
+                if (reflection.usefulTopics.isNotEmpty()) {
+                    append("- Topic utili: ${reflection.usefulTopics.joinToString(", ")}\n")
+                }
+                if (reflection.ignoredTopics.isNotEmpty()) {
+                    append("- Topic ignorati: ${reflection.ignoredTopics.joinToString(", ")}\n")
+                }
+            }.trimEnd()
+
+            val dedupKey = "reflection:${reflection.timestamp}"
+
+            return SystemInputEnvelope(
+                input = reflection,
+                formattedForLlm = formatted,
+                dedupKey = dedupKey,
+            )
+        }
+
+        /**
          * Factory method that dispatches to the appropriate builder.
          */
         fun from(input: RobotInput): SystemInputEnvelope = when (input) {
@@ -101,6 +179,8 @@ data class SystemInputEnvelope(
             is RobotInput.HardwareButton -> fromHardwareButton(input)
             is RobotInput.SensorReading -> fromSensorReading(input)
             is RobotInput.ScheduledTaskFired -> fromScheduledTask(input)
+            is RobotInput.Heartbeat -> fromHeartbeat(input)
+            is RobotInput.WeeklyReflection -> fromWeeklyReflection(input)
         }
     }
 }

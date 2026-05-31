@@ -147,4 +147,17 @@
     <string name="notification_settings_enabled">Abilitato</string>
     <string name="notification_settings_disabled">Disabilitato</string>
     <string name="notification_settings_saved">Impostazioni notifiche salvate</string>
+
+    <string name="settings_heartbeat">Proattività</string>
+    <string name="heartbeat_settings_title">Proattività (Heartbeat)</string>
+    <string name="heartbeat_enabled_label">Abilita interventi spontanei</string>
+    <string name="heartbeat_interval_label">Intervallo controllo: %1$d min</string>
+    <string name="heartbeat_time_window_label">Fascia oraria: %1$d:00 – %2$d:00</string>
+    <string name="heartbeat_start_hour">Da:</string>
+    <string name="heartbeat_end_hour">A:</string>
+    <string name="heartbeat_threshold_label">Soglia fiducia: %1$d%%</string>
+    <string name="heartbeat_threshold_hint">Valori alti = meno interventi, più rilevanti</string>
+    <string name="heartbeat_status_enabled">Attivo</string>
+    <string name="heartbeat_status_disabled">Disattivo</string>
+    <string name="heartbeat_settings_saved">Impostazioni proattività salvate</string>
 </resources>

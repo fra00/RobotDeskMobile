@@ -1,6 +1,7 @@
 package com.example.mydeskrobot.presentation.conversation
 
 import com.example.mydeskrobot.domain.llm.LlmProvider
+import com.example.mydeskrobot.presentation.settings.HeartbeatSettingsFormState
 import com.example.mydeskrobot.presentation.settings.LlmSettingsFormState
 import com.example.mydeskrobot.presentation.settings.MemorySettingsFormState
 
@@ -61,4 +62,12 @@ sealed interface ConversationUiEvent {
     data class OnNotificationPackageToggle(val packageName: String) : ConversationUiEvent
 
     data object OnSaveNotificationSettings : ConversationUiEvent
+
+    data object OnOpenHeartbeatSettings : ConversationUiEvent
+
+    data object OnDismissHeartbeatSettings : ConversationUiEvent
+
+    data class OnHeartbeatFormChange(val form: HeartbeatSettingsFormState) : ConversationUiEvent
+
+    data object OnSaveHeartbeatSettings : ConversationUiEvent
 }

@@ -65,4 +65,62 @@ sealed class RobotInput {
         override val sourceId: String = "scheduled_task"
         override val priority: InputPriority = InputPriority.DEFERRED
     }
+
+    /**
+     * Periodic tick for autonomous agent proactivity.
+     * The robot evaluates context and decides whether to speak or stay silent.
+     */
+    data class Heartbeat(
+        val minutesSinceLastInteraction: Long,
+        val currentHour: Int,
+        val currentMinute: Int,
+        val dayOfWeek: String,
+        val pendingRemindersCount: Int,
+        val relevantRoutines: List<String>,
+        /** Current autonomous mood of the robot (e.g. "bored", "happy"). */
+        val moodLabel: String? = null,
+        /** Current mood intensity (0.0–1.0). */
+        val moodIntensity: Float? = null,
+        /** Number of user interactions today. */
+        val todayInteractions: Int = 0,
+        /** Number of proactive speaks today (to avoid being too chatty). */
+        val proactiveSpeaksToday: Int = 0,
+        /** Topics already discussed today (to avoid repetition). */
+        val topicsDiscussedToday: List<String> = emptyList(),
+        /** Minutes since last proactive speak (cooldown). */
+        val minutesSinceLastProactiveSpeak: Long? = null,
+        /** Inferred user mood (Theory of Mind). */
+        val userMood: String? = null,
+        /** Topics the user probably already knows about. */
+        val userProbablyKnows: List<String> = emptyList(),
+        override val timestamp: Long = System.currentTimeMillis(),
+    ) : RobotInput() {
+        override val sourceId: String = "heartbeat"
+        override val priority: InputPriority = InputPriority.DEFERRED
+    }
+
+    /**
+     * Weekly self-reflection trigger.
+     * The robot analyzes its behavior and learns what works.
+     */
+    data class WeeklyReflection(
+        /** Total user interactions this week. */
+        val totalInteractions: Int,
+        /** Total proactive speaks (heartbeat interventions). */
+        val totalProactiveSpeaks: Int,
+        /** Proactive speaks with positive user engagement. */
+        val positiveResponses: Int,
+        /** Proactive speaks that were ignored. */
+        val ignoredSuggestions: Int,
+        /** Topics that led to positive engagement. */
+        val usefulTopics: List<String>,
+        /** Topics that were ignored or disliked. */
+        val ignoredTopics: List<String>,
+        /** Success rate as percentage (0-100). */
+        val successRatePercent: Int,
+        override val timestamp: Long = System.currentTimeMillis(),
+    ) : RobotInput() {
+        override val sourceId: String = "weekly_reflection"
+        override val priority: InputPriority = InputPriority.DEFERRED
+    }
 }

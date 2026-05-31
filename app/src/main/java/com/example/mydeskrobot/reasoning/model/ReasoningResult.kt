@@ -8,6 +8,7 @@ sealed class ReasoningResult {
     data class Success(
         val finalText: String,
         val emotion: String? = null,
+        val speakConfidence: Double? = null,
     ) : ReasoningResult()
     
     /** Reasoning requires user confirmation to proceed */

@@ -18,6 +18,7 @@ data class ParsedLlmResponse(
     val text: String,
     val emotion: String? = null,
     val action: LlmAction = LlmAction.None,
+    val speakConfidence: Double? = null,
 )
 
 /**
@@ -30,6 +31,8 @@ internal data class LlmResponseJson(
     @Json(name = "imageRequired")
     val imageRequired: Boolean? = null,
     val action: ActionJson? = null,
+    @Json(name = "speak_confidence")
+    val speakConfidence: Double? = null,
 ) {
     fun spokenText(): String = reply?.trim().orEmpty().ifBlank { text?.trim().orEmpty() }
 }
@@ -76,6 +79,7 @@ class LlmResponseParser(
                     text = json.spokenText(),
                     emotion = json.emotion?.trim()?.lowercase(),
                     action = parseAction(json),
+                    speakConfidence = json.speakConfidence?.coerceIn(0.0, 1.0),
                 )
             }
             // JSON extraction found something but Moshi parsing failed

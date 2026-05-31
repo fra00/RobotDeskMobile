@@ -66,11 +66,12 @@ Le linee guida dettagliate sono in **`.cursor/rules/*.mdc`**:
 5. Per pipeline STT (orchestrator + provider) → `docs/STT_ARCHITECTURE.md`.
 6. Per task schedulati / promemoria vocali → `docs/SCHEDULED_TASKS.md`.
 7. Per memoria utente (estrazione + tool) → `docs/MEMORY.md`.
-7. Per contesto robot / silenzio notifiche → `docs/ROBOT_CONTEXT.md`.
-8. Per policy risoluzione autonoma (tool diretto vs catena) → `docs/AGENT_REASONING.md`.
-9. Per espressioni occhi (campo `emotion` LLM) → `docs/ROBOT_EXPRESSIONS.md`.
-10. Scope minimo: una capability per volta.
-11. Non committare segreti; usare `local.properties.example`.
+8. Per contesto robot / silenzio notifiche → `docs/ROBOT_CONTEXT.md`.
+9. Per policy risoluzione autonoma (tool diretto vs catena) → `docs/AGENT_REASONING.md`.
+10. Per espressioni occhi (campo `emotion` LLM) → `docs/ROBOT_EXPRESSIONS.md`.
+11. **Per visione agente autonomo (heartbeat, OODA, emozioni)** → `docs/Drafts/AUTONOMOUS_AGENT_VISION.md`.
+12. Scope minimo: una capability per volta.
+13. Non committare segreti; usare `local.properties.example`.
 
 ## Tool disponibili
 

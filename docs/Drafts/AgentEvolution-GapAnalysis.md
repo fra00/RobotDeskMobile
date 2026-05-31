@@ -2,6 +2,7 @@
 
 > **Scopo:** punto fisso per dibattito e pianificazione.  
 > **Riferimento:** `docs/Drafts/AnalysysClaude.md` (roadmap Claude, non aggiornata allo stato repo).  
+> **Visione completa:** `docs/Drafts/AUTONOMOUS_AGENT_VISION.md` (architettura cognitiva, 6 pilastri, roadmap H1–H6).  
 > **Ultimo allineamento codice:** maggio 2026.
 
 ---
@@ -53,7 +54,7 @@
 | Heartbeat | Nessun scheduler / `InputSource` / prompt HEARTBEAT |
 | ~~Tool memoria LLM~~ | ✅ implementati |
 | Heartbeat | Nessun scheduler / input source |
-| Note | Aperto in `docs/TODO.md` |
+.| Note | Aperto in `docs/TODO.md` |
 | Lista spesa | Assente |
 | `detect_presence` / `analyze_environment` | Assenti (solo `take_photo`) |
 | Open-Meteo | Non usato (OWM sì) |

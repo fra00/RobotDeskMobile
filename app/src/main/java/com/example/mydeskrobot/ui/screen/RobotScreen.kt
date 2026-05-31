@@ -36,6 +36,7 @@ import com.example.mydeskrobot.presentation.conversation.ConversationUiEvent
 import com.example.mydeskrobot.presentation.conversation.ConversationUiState
 import com.example.mydeskrobot.presentation.settings.SettingsUiState
 import com.example.mydeskrobot.ui.components.ConversationHistoryDialog
+import com.example.mydeskrobot.ui.components.HeartbeatSettingsDialog
 import com.example.mydeskrobot.ui.components.LlmSettingsDialog
 import com.example.mydeskrobot.ui.components.MicButton
 import com.example.mydeskrobot.ui.components.MemoryExtractingIndicator
@@ -235,10 +236,12 @@ fun RobotScreen(
             onOpenSttSettings = { onEvent(ConversationUiEvent.OnOpenSttSettings) },
             onOpenVoskModelSettings = { onEvent(ConversationUiEvent.OnOpenVoskModelSettings) },
             onOpenNotificationSettings = { onEvent(ConversationUiEvent.OnOpenNotificationSettings) },
+            onOpenHeartbeatSettings = { onEvent(ConversationUiEvent.OnOpenHeartbeatSettings) },
             isVoskModelReady = settingsUiState.voskModelState is com.example.mydeskrobot.data.speech.VoskModelManager.ModelState.Ready,
             sttProviderName = sttProviderName,
             notificationsEnabled = settingsUiState.notificationsEnabled,
             isNotificationAccessGranted = settingsUiState.notificationAccessGranted,
+            heartbeatEnabled = settingsUiState.heartbeatForm.enabled,
             onNotificationsEnabledChange = { onEvent(ConversationUiEvent.OnNotificationEnabledChange(it)) },
             onSaveNotifications = { onEvent(ConversationUiEvent.OnSaveNotificationSettings) },
         )
@@ -299,6 +302,15 @@ fun RobotScreen(
             onPackageToggle = { onEvent(ConversationUiEvent.OnNotificationPackageToggle(it)) },
             onDismiss = { onEvent(ConversationUiEvent.OnDismissNotificationSettings) },
             onSave = { onEvent(ConversationUiEvent.OnSaveNotificationSettings) },
+        )
+    }
+
+    if (settingsUiState.showHeartbeatDialog) {
+        HeartbeatSettingsDialog(
+            form = settingsUiState.heartbeatForm,
+            onFormChange = { onEvent(ConversationUiEvent.OnHeartbeatFormChange(it)) },
+            onSave = { onEvent(ConversationUiEvent.OnSaveHeartbeatSettings) },
+            onDismiss = { onEvent(ConversationUiEvent.OnDismissHeartbeatSettings) },
         )
     }
 }

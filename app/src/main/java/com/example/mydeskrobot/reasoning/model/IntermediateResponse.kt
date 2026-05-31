@@ -16,4 +16,7 @@ data class IntermediateResponse(
     
     /** Name of the tool being executed (if isToolExecuting) */
     val toolName: String? = null,
+    
+    /** LLM's confidence that the response is worth speaking (for heartbeat filtering) */
+    val speakConfidence: Double? = null,
 )
