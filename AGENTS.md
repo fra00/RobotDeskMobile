@@ -78,6 +78,7 @@ Le linee guida dettagliate sono in **`.cursor/rules/*.mdc`**:
 | Tool | Località | Descrizione |
 |------|----------|-------------|
 | `take_photo` | LOCAL | Scatta foto con la camera |
+| `detect_presence` | LOCAL | Verifica silenziosa presenza alla scrivania (heartbeat) |
 | `get_weather` | REMOTE | Meteo da OpenWeatherMap |
 | `web_search` | REMOTE | Ricerca web via SearXNG JSON (config: `SEARX_BASE_URL`) |
 | `fetch_url` | REMOTE | Legge pagina web come testo (OkHttp + Jsoup) |

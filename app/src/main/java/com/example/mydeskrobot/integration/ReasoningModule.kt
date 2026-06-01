@@ -19,6 +19,7 @@ import com.example.mydeskrobot.integration.tool.local.ListItemsTool
 import com.example.mydeskrobot.integration.tool.local.SpotifyTool
 import com.example.mydeskrobot.integration.tool.local.UpdateListItemTool
 import com.example.mydeskrobot.integration.tool.local.CameraTool
+import com.example.mydeskrobot.integration.tool.local.DetectPresenceTool
 import com.example.mydeskrobot.integration.tool.local.NotificationTool
 import com.example.mydeskrobot.integration.tool.local.DeleteMemoryTool
 import com.example.mydeskrobot.integration.tool.local.DeleteReminderTool
@@ -65,7 +66,8 @@ object ReasoningModule {
 
         val tools = buildList {
             add(CameraTool(visionImageCapture))
-            
+            add(DetectPresenceTool(visionImageCapture, llmClient, context))
+
             add(BrowserTool(context))
             add(SpotifyTool(context))
             add(SetRobotContextTool(RobotContextRepository(context)))

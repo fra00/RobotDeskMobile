@@ -1057,14 +1057,14 @@ class ConversationViewModel(
 
     private fun toolPhaseFor(toolName: String?): ConversationPhase {
         return when (toolName) {
-            "take_photo" -> ConversationPhase.CapturingImage
+            "take_photo", "detect_presence" -> ConversationPhase.CapturingImage
             else -> ConversationPhase.Thinking
         }
     }
 
     private fun toolStatusMessage(toolName: String?): String {
         return when (toolName) {
-            "take_photo" -> messages.capturingImageStatus()
+            "take_photo", "detect_presence" -> messages.capturingImageStatus()
             "open_browser" -> messages.openingBrowserStatus()
             "play_spotify" -> messages.openingSpotifyStatus()
             "set_robot_context" -> messages.settingRobotContextStatus()
