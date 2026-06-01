@@ -70,6 +70,7 @@ Le linee guida dettagliate sono in **`.cursor/rules/*.mdc`**:
 9. Per policy risoluzione autonoma (tool diretto vs catena) → `docs/AGENT_REASONING.md`.
 10. Per espressioni occhi (campo `emotion` LLM) → `docs/ROBOT_EXPRESSIONS.md`.
 11. **Per visione agente autonomo (heartbeat, OODA, emozioni)** → `docs/Drafts/AUTONOMOUS_AGENT_VISION.md`.
+12. **Umore centralizzato (SSOT)** → `MoodManager` + `STATO ROBOT` iniettato in ogni turno LLM; poke occhi e scuse cambiano `RobotMood` (non solo la UI).
 12. Scope minimo: una capability per volta.
 13. Non committare segreti; usare `local.properties.example`.
 

@@ -58,8 +58,14 @@ import com.example.mydeskrobot.data.awareness.UserAwarenessRepository
 import com.example.mydeskrobot.data.reflection.WeeklyStatsRepository
 import com.example.mydeskrobot.domain.awareness.UserStateTracker
 import com.example.mydeskrobot.domain.context.RobotContextPolicy
+import com.example.mydeskrobot.domain.interaction.EyePokeSide
+import com.example.mydeskrobot.domain.interaction.EyePokeTracker
 import com.example.mydeskrobot.domain.mood.MoodManager
 import com.example.mydeskrobot.domain.mood.MoodTrigger
+import com.example.mydeskrobot.domain.mood.RobotMood
+import com.example.mydeskrobot.domain.mood.UserInteractionTone
+import com.example.mydeskrobot.domain.mood.UserInteractionToneDetector
+import com.example.mydeskrobot.integration.mood.DelegatingMoodContextProvider
 import com.example.mydeskrobot.domain.reflection.WeeklyStats
 import com.example.mydeskrobot.integration.input.heartbeat.HeartbeatScheduler
 import com.example.mydeskrobot.R
@@ -90,6 +96,7 @@ class ConversationViewModel(
     private val messages: ConversationMessages,
     private var reasoningEngine: ReasoningEngine,
     private val llmSettingsRepository: LlmSettingsRepository,
+    private val moodContextProvider: DelegatingMoodContextProvider,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(
@@ -106,7 +113,8 @@ class ConversationViewModel(
 
     private var llmJob: Job? = null
     private var emotionTransitionJob: Job? = null
-    private var boredIdleJob: Job? = null
+    private var eyePokeSquishJob: Job? = null
+    private val eyePokeTracker = EyePokeTracker()
     private var nightModeMonitorJob: Job? = null
     private var lastAssistantResponse: String? = null
     /** Emozione suggerita dall'ultima risposta LLM (persiste fino al prossimo input utente). */
@@ -171,17 +179,17 @@ class ConversationViewModel(
     companion object {
         private const val TAG = "ConversationVM"
         private const val SURPRISED_FLASH_MS = 450L
-        private const val HAPPY_AFTER_WAKE_MS = 1_800L
         private const val INTERRUPT_SURPRISED_MS = 280L
         private const val ANGRY_RECOVERY_MS = 2_500L
-        private const val BORED_RECHECK_MS = 5_000L
         private const val NIGHT_MODE_RECHECK_MS = 60_000L
         private const val MOOD_RECHECK_MS = 30_000L
         /** Time window to consider user response as "positive" to proactive speak. */
         private const val PROACTIVE_RESPONSE_WINDOW_MS = 5 * 60_000L
+        private const val EYE_SQUISH_HOLD_MS = 1_200L
     }
 
     init {
+        moodContextProvider.snapshotProvider = { moodManager.currentMood.value }
         viewModelScope.launch {
             HotwordEventDispatcher.events.collect { event ->
                 when (event) {
@@ -207,6 +215,8 @@ class ConversationViewModel(
     fun onEvent(event: ConversationUiEvent) {
         when (event) {
             ConversationUiEvent.OnToggleHotwordListening -> toggleHotwordListening()
+            ConversationUiEvent.OnBackgroundTapActivateListening -> onBackgroundTapActivateListening()
+            is ConversationUiEvent.OnEyePoked -> onEyePoked(event.side)
             ConversationUiEvent.OnOpenSettings -> openSettings()
             ConversationUiEvent.OnDismissSettings -> dismissSettings()
             ConversationUiEvent.OnOpenLlmSettings -> openLlmSettings()
@@ -638,6 +648,7 @@ class ConversationViewModel(
             context = appContext,
             visionImageCapture = visionImageCapture,
             llmSettings = settings,
+            moodContextProvider = moodContextProvider,
         )
         return true
     }
@@ -647,6 +658,50 @@ class ConversationViewModel(
             disableHotwordListening()
         } else {
             enableHotwordListening()
+        }
+    }
+
+    /**
+     * Tap on the main background (not controls): opens voice session like wake word.
+     */
+    private fun onBackgroundTapActivateListening() {
+        val state = _uiState.value
+        if (!state.isHotwordListeningActive) return
+        if (state.phase !is ConversationPhase.WaitingForHotword) return
+        if (voiceSessionActive) return
+        if (isAssistantTurnInProgress()) return
+        if (!HotwordController.isRunning()) return
+
+        HotwordController.activateVoiceSession()
+    }
+
+    /**
+     * User poked an eye: close it briefly; repeated pokes escalate annoyance → anger.
+     */
+    private fun onEyePoked(side: EyePokeSide) {
+        if (!_uiState.value.isHotwordListeningActive) return
+
+        val reaction = eyePokeTracker.recordPoke()
+        val count = eyePokeTracker.recentPokeCount()
+        moodManager.recordEyePoke(reaction.tier, count)
+
+        _uiState.update {
+            it.copy(
+                eyeSquishLeft = it.eyeSquishLeft || side == EyePokeSide.LEFT,
+                eyeSquishRight = it.eyeSquishRight || side == EyePokeSide.RIGHT,
+            )
+        }
+
+        scheduleEyeSquishRelease()
+    }
+
+    private fun scheduleEyeSquishRelease() {
+        eyePokeSquishJob?.cancel()
+        eyePokeSquishJob = viewModelScope.launch {
+            delay(EYE_SQUISH_HOLD_MS)
+            _uiState.update {
+                it.copy(eyeSquishLeft = false, eyeSquishRight = false)
+            }
         }
     }
 
@@ -683,7 +738,6 @@ class ConversationViewModel(
                 currentUtterance = "",
             )
         }
-        startBoredIdleMonitor()
         startNightModeMonitor()
         startMoodMonitor()
         memoryExtractionScheduler.start()
@@ -703,11 +757,11 @@ class ConversationViewModel(
         llmTurnGeneration++
         llmJob?.cancel()
         emotionTransitionJob?.cancel()
+        eyePokeSquishJob?.cancel()
         queuedUtteranceForLlm = null
         voiceSessionActive = false
         openVoiceSessionAfterSystemInput = false
         clearVisionPipeline()
-        stopBoredIdleMonitor()
         stopNightModeMonitor()
         stopMoodMonitor()
         ttsRepository.stop()
@@ -720,6 +774,8 @@ class ConversationViewModel(
                 statusMessage = messages.idleStatus(),
                 isHotwordListeningActive = false,
                 currentUtterance = "",
+                eyeSquishLeft = false,
+                eyeSquishRight = false,
             )
         }
         memoryExtractionScheduler.stop()
@@ -768,16 +824,7 @@ class ConversationViewModel(
             delay(SURPRISED_FLASH_MS)
             if (!_uiState.value.isHotwordListeningActive) return@launch
             if (_uiState.value.phase !is ConversationPhase.ActiveListening) return@launch
-
-            val moodAfterSurprise = if (night) RobotEmotion.DROWSY else RobotEmotion.HAPPY
-            _uiState.update { it.copy(emotion = moodAfterSurprise) }
-
-            delay(HAPPY_AFTER_WAKE_MS)
-            if (!_uiState.value.isHotwordListeningActive) return@launch
-            if (_uiState.value.phase !is ConversationPhase.ActiveListening) return@launch
-            if (_uiState.value.emotion == moodAfterSurprise) {
-                _uiState.update { it.copy(emotion = RobotEmotion.LISTENING) }
-            }
+            refreshUiEmotionFromMood()
         }
     }
 
@@ -794,9 +841,13 @@ class ConversationViewModel(
         _uiState.update {
             it.copy(
                 phase = ConversationPhase.ActiveListening,
-                emotion = RobotEmotion.LISTENING,
                 currentUtterance = text.trim(),
                 statusMessage = messages.activeListeningStatus(exitPhrase),
+                emotion = deriveDisplayEmotion(
+                    mood = moodManager.currentMood.value,
+                    phase = ConversationPhase.ActiveListening,
+                    isNightMode = it.isNightMode,
+                ),
             )
         }
     }
@@ -948,7 +999,7 @@ class ConversationViewModel(
                 UserStateTracker.analyzeUserText(phrase, current)
             }
         }
-        moodManager.recordInteraction()
+        applyMoodTriggerForUserPhrase(phrase)
 
         val state = _uiState.value
         conversationLogBeforeCurrentTurn = state.conversationLog
@@ -1155,8 +1206,8 @@ class ConversationViewModel(
 
         conversationLogBeforeCurrentTurn = null
         lastLlmEmotion = emotion ?: lastLlmEmotion
-        lastLlmEmotion?.let { moodManager.onLlmEmotion(it) }
-        resumeListeningAfterAssistantTurn(emotionOverride = lastLlmEmotion)
+        lastLlmEmotion?.let { moodManager.applyAssistantDeclaredEmotion(it) }
+        resumeListeningAfterAssistantTurn()
     }
 
     /**
@@ -1178,9 +1229,14 @@ class ConversationViewModel(
         _uiState.update {
             it.copy(
                 phase = ConversationPhase.ActiveListening,
-                emotion = lastLlmEmotion ?: RobotEmotion.LISTENING,
                 statusMessage = messages.activeListeningStatus(exitPhrase),
                 currentUtterance = "",
+                emotion = deriveDisplayEmotion(
+                    mood = moodManager.currentMood.value,
+                    phase = ConversationPhase.ActiveListening,
+                    isNightMode = it.isNightMode,
+                    speakingOverride = lastLlmEmotion,
+                ),
             )
         }
         HotwordController.clearPendingPhrase()
@@ -1205,7 +1261,7 @@ class ConversationViewModel(
 
         lastAssistantResponse = spokenText
         lastLlmEmotion = reply.emotion ?: fallbackEmotion
-        lastLlmEmotion?.let { moodManager.onLlmEmotion(it) }
+        lastLlmEmotion?.let { moodManager.applyAssistantDeclaredEmotion(it) }
         conversationLogBeforeCurrentTurn = null
 
         viewModelScope.launch {
@@ -1217,11 +1273,11 @@ class ConversationViewModel(
         _uiState.update {
             it.copy(
                 conversationLog = appendRobotLine(it.conversationLog, spokenText),
-                emotion = reply.emotion ?: fallbackEmotion ?: it.emotion,
             )
         }
+        refreshUiEmotionFromMood(speakingOverride = lastLlmEmotion)
 
-        speakResponse(text = spokenText, llmEmotion = reply.emotion ?: fallbackEmotion)
+        speakResponse(text = spokenText, llmEmotion = lastLlmEmotion)
     }
 
     private fun handleVisionCaptureFailure(error: Throwable?) {
@@ -1240,7 +1296,13 @@ class ConversationViewModel(
         if (!_uiState.value.isHotwordListeningActive) return
 
         ttsInterruptHandled = false
-        val speakingEmotion = llmEmotion ?: RobotEmotion.SPEAKING
+        val state = _uiState.value
+        val speakingEmotion = deriveDisplayEmotion(
+            mood = moodManager.currentMood.value,
+            phase = ConversationPhase.Speaking,
+            isNightMode = state.isNightMode,
+            speakingOverride = llmEmotion,
+        )
         _uiState.update {
             it.copy(
                 phase = ConversationPhase.Speaking,
@@ -1290,7 +1352,7 @@ class ConversationViewModel(
 
         scheduleEmotionTransition(
             delayMs = INTERRUPT_SURPRISED_MS,
-            targetEmotion = RobotEmotion.LISTENING,
+            targetEmotion = moodManager.currentMood.value.baseEmotion,
         ) { phase -> phase is ConversationPhase.ActiveListening }
     }
 
@@ -1312,11 +1374,11 @@ class ConversationViewModel(
         } else {
             ConversationPhase.WaitingForHotword
         }
-        val emotion = emotionOverride ?: lastLlmEmotion ?: if (listeningPhase is ConversationPhase.ActiveListening) {
-            RobotEmotion.LISTENING
-        } else {
-            standbyEmotionFor(_uiState.value.isNightMode)
-        }
+        val emotion = emotionOverride ?: deriveDisplayEmotion(
+            mood = moodManager.currentMood.value,
+            phase = listeningPhase,
+            isNightMode = _uiState.value.isNightMode,
+        )
         val status = if (listeningPhase is ConversationPhase.ActiveListening) {
             messages.activeListeningStatus(exitPhrase)
         } else {
@@ -1414,50 +1476,62 @@ class ConversationViewModel(
             phase is ConversationPhase.Speaking
     }
 
-    private fun startBoredIdleMonitor() {
-        stopBoredIdleMonitor()
-        boredIdleJob = viewModelScope.launch {
-            while (isActive) {
-                delay(boredIdleConfig.idleBeforeBoredMs)
-                if (!canShowBoredInStandby()) {
-                    delay(BORED_RECHECK_MS)
-                    continue
-                }
-                showBoredExpressionBriefly()
-                delay(boredIdleConfig.repeatIntervalMs)
-            }
-        }
-    }
-
-    private fun stopBoredIdleMonitor() {
-        boredIdleJob?.cancel()
-        boredIdleJob = null
-    }
-
-    private fun canShowBoredInStandby(): Boolean {
-        val state = _uiState.value
-        return state.isHotwordListeningActive &&
-            state.phase is ConversationPhase.WaitingForHotword &&
-            !state.isNightMode
-    }
-
-    private suspend fun showBoredExpressionBriefly() {
-        if (!canShowBoredInStandby()) return
-
-        emotionTransitionJob?.cancel()
-        _uiState.update { it.copy(emotion = RobotEmotion.BORED) }
-
-        delay(boredIdleConfig.boredDurationMs)
-
-        if (canShowBoredInStandby() && _uiState.value.emotion == RobotEmotion.BORED) {
-            _uiState.update { it.copy(emotion = RobotEmotion.NEUTRAL) }
-        }
-    }
-
     private fun isNightModeNow(): Boolean = NightModeHelper.isNightMode(nightModeConfig)
 
+    private fun applyMoodTriggerForUserPhrase(phrase: String) {
+        when (UserInteractionToneDetector.detect(phrase)) {
+            UserInteractionTone.APOLOGY -> moodManager.recordApology()
+            UserInteractionTone.POSITIVE -> moodManager.recordPositiveInteraction()
+            UserInteractionTone.NEUTRAL -> moodManager.touchLastInteraction()
+        }
+    }
+
+    private fun deriveDisplayEmotion(
+        mood: RobotMood,
+        phase: ConversationPhase,
+        isNightMode: Boolean,
+        speakingOverride: RobotEmotion? = null,
+    ): RobotEmotion = when (phase) {
+        is ConversationPhase.Thinking,
+        is ConversationPhase.CapturingImage,
+        -> RobotEmotion.THINKING
+        is ConversationPhase.Speaking -> speakingOverride ?: mood.baseEmotion
+        is ConversationPhase.WaitingForHotword -> resolveStandbyEmotion(mood, isNightMode)
+        is ConversationPhase.ActiveListening -> mood.baseEmotion
+        is ConversationPhase.Idle -> RobotEmotion.NEUTRAL
+        is ConversationPhase.Error -> mood.baseEmotion
+    }
+
+    private fun resolveStandbyEmotion(mood: RobotMood, isNightMode: Boolean): RobotEmotion {
+        if (isNightMode) {
+            if (mood.baseEmotion == RobotEmotion.SLEEPING || mood.baseEmotion == RobotEmotion.DROWSY) {
+                return mood.baseEmotion
+            }
+            return RobotEmotion.SLEEPING
+        }
+        return mood.baseEmotion
+    }
+
+    private fun refreshUiEmotionFromMood(speakingOverride: RobotEmotion? = null) {
+        val state = _uiState.value
+        if (!state.isHotwordListeningActive) return
+        val phase = state.phase
+        if (phase is ConversationPhase.Thinking || phase is ConversationPhase.CapturingImage) return
+        if (phase is ConversationPhase.Speaking && speakingOverride == null) return
+
+        val emotion = deriveDisplayEmotion(
+            mood = moodManager.currentMood.value,
+            phase = phase,
+            isNightMode = state.isNightMode,
+            speakingOverride = speakingOverride,
+        )
+        if (state.emotion != emotion) {
+            _uiState.update { it.copy(emotion = emotion) }
+        }
+    }
+
     private fun standbyEmotionFor(night: Boolean): RobotEmotion =
-        if (night) RobotEmotion.SLEEPING else RobotEmotion.NEUTRAL
+        resolveStandbyEmotion(moodManager.currentMood.value, night)
 
     private fun standbyStatusFor(night: Boolean): String =
         if (night) messages.waitingForHotwordNight(wakePhrase) else messages.waitingForHotword(wakePhrase)
@@ -1481,8 +1555,8 @@ class ConversationViewModel(
         stopMoodMonitor()
         viewModelScope.launch { moodManager.initialize() }
         moodMonitorJob = viewModelScope.launch {
-            moodManager.currentMood.collect { mood ->
-                syncMoodWithUi(mood.baseEmotion)
+            moodManager.currentMood.collect {
+                refreshUiEmotionFromMood()
             }
         }
         viewModelScope.launch {
@@ -1501,20 +1575,6 @@ class ConversationViewModel(
     private fun stopMoodMonitor() {
         moodMonitorJob?.cancel()
         moodMonitorJob = null
-    }
-
-    private fun syncMoodWithUi(moodEmotion: RobotEmotion) {
-        val state = _uiState.value
-        if (!state.isHotwordListeningActive) return
-        if (state.phase !is ConversationPhase.WaitingForHotword) return
-
-        if (state.isNightMode) {
-            if (moodEmotion != RobotEmotion.SLEEPING && moodEmotion != RobotEmotion.DROWSY) {
-                return
-            }
-        }
-
-        _uiState.update { it.copy(emotion = moodEmotion) }
     }
 
     /**
@@ -1609,10 +1669,10 @@ class ConversationViewModel(
             _uiState.update {
                 it.copy(
                     isNightMode = night,
-                    emotion = standbyEmotionFor(night),
                     statusMessage = standbyStatusFor(night),
                 )
             }
+            refreshUiEmotionFromMood()
         } else {
             _uiState.update { it.copy(isNightMode = night) }
         }
@@ -1630,8 +1690,11 @@ class ConversationViewModel(
         }
         scheduleEmotionTransition(
             delayMs = ANGRY_RECOVERY_MS,
-            targetEmotion = RobotEmotion.CONFUSED,
-        ) { phase -> phase is ConversationPhase.ActiveListening }
+            targetEmotion = moodManager.currentMood.value.baseEmotion,
+        ) { phase ->
+            phase is ConversationPhase.ActiveListening ||
+                phase is ConversationPhase.WaitingForHotword
+        }
     }
 
     private fun scheduleEmotionTransition(
@@ -1772,7 +1835,6 @@ class ConversationViewModel(
     override fun onCleared() {
         llmJob?.cancel()
         emotionTransitionJob?.cancel()
-        stopBoredIdleMonitor()
         stopNightModeMonitor()
         stopMoodMonitor()
         ttsRepository.stop()

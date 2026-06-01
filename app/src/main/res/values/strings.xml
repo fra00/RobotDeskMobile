@@ -66,6 +66,9 @@
 
     <string name="cd_hotword_inactive">Attiva ascolto always-on</string>
     <string name="cd_hotword_active">Disattiva ascolto always-on</string>
+    <string name="cd_robot_eye_left">Occhio sinistro del robot</string>
+    <string name="cd_robot_eye_right">Occhio destro del robot</string>
+    <string name="cd_robot_background_tap">Attiva ascolto</string>
     <string name="cd_mic_listening">Trascrizione in corso</string>
 
     <string name="notification_channel_hotword">Ascolto wake word</string>

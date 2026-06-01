@@ -23,6 +23,7 @@ class ReasoningEngineImpl(
     private val baseSystemPrompt: String,
     private val memoryContextProvider: MemoryContextProvider? = null,
     private val robotContextProvider: RobotContextProvider? = null,
+    private val moodContextProvider: MoodContextProvider? = null,
     maxChainSteps: Int = 10,
 ) : ReasoningEngine {
 
@@ -120,6 +121,7 @@ class ReasoningEngineImpl(
         val toolPrompt = buildFullSystemPrompt()
         val memoryContext = memoryContextProvider?.buildContextFor(userText).orEmpty()
         val robotContext = robotContextProvider?.buildContextSection().orEmpty()
+        val moodContext = moodContextProvider?.buildContextSection().orEmpty()
 
         return buildString {
             append(toolPrompt)
@@ -130,6 +132,10 @@ class ReasoningEngineImpl(
             if (robotContext.isNotBlank()) {
                 append("\n\n")
                 append(robotContext)
+            }
+            if (moodContext.isNotBlank()) {
+                append("\n\n")
+                append(moodContext)
             }
         }
     }

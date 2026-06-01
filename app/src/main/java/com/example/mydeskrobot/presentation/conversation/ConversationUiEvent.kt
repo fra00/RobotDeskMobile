@@ -1,5 +1,6 @@
 package com.example.mydeskrobot.presentation.conversation
 
+import com.example.mydeskrobot.domain.interaction.EyePokeSide
 import com.example.mydeskrobot.domain.llm.LlmProvider
 import com.example.mydeskrobot.presentation.settings.HeartbeatSettingsFormState
 import com.example.mydeskrobot.presentation.settings.LlmSettingsFormState
@@ -8,6 +9,11 @@ import com.example.mydeskrobot.presentation.settings.MemorySettingsFormState
 sealed interface ConversationUiEvent {
 
     data object OnToggleHotwordListening : ConversationUiEvent
+
+    /** Tap on background (not controls) — same as wake word when in standby. */
+    data object OnBackgroundTapActivateListening : ConversationUiEvent
+
+    data class OnEyePoked(val side: EyePokeSide) : ConversationUiEvent
 
     data object OnOpenSettings : ConversationUiEvent
 

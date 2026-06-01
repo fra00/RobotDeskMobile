@@ -36,6 +36,8 @@ import com.example.mydeskrobot.integration.tool.remote.SearxngWebSearchEngine
 import com.example.mydeskrobot.integration.tool.remote.WebSearchTool
 import com.example.mydeskrobot.integration.tool.remote.WeatherTool
 import com.example.mydeskrobot.memory.UserMemoryRepository
+import com.example.mydeskrobot.integration.mood.DelegatingMoodContextProvider
+import com.example.mydeskrobot.reasoning.MoodContextProvider
 import com.example.mydeskrobot.reasoning.ReasoningEngine
 import com.example.mydeskrobot.reasoning.ReasoningEngineImpl
 
@@ -56,6 +58,7 @@ object ReasoningModule {
         context: Context,
         visionImageCapture: VisionImageCapture,
         llmSettings: LlmSettings,
+        moodContextProvider: MoodContextProvider = DelegatingMoodContextProvider(),
         additionalTools: List<Tool> = emptyList(),
     ): ReasoningEngine {
         val basePrompt = LlmPromptLoader.loadSystemPrompt(context)
@@ -113,6 +116,7 @@ object ReasoningModule {
             baseSystemPrompt = basePrompt,
             memoryContextProvider = memoryContextProvider,
             robotContextProvider = robotContextProvider,
+            moodContextProvider = moodContextProvider,
             maxChainSteps = 10,
         )
     }

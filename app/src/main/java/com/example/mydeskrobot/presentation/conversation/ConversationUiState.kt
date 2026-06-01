@@ -17,6 +17,10 @@ data class ConversationUiState(
     val isNightMode: Boolean = false,
     /** True while background LLM scans conversation log for durable user memories. */
     val isMemoryExtracting: Boolean = false,
+    /** User poked left eye — force closed until cleared. */
+    val eyeSquishLeft: Boolean = false,
+    /** User poked right eye — force closed until cleared. */
+    val eyeSquishRight: Boolean = false,
 ) {
     val displayText: String
         get() = buildString {

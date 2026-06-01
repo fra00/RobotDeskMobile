@@ -1,6 +1,8 @@
 package com.example.mydeskrobot.ui.screen
 
 import android.content.res.Configuration
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -30,6 +32,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.example.mydeskrobot.R
+import com.example.mydeskrobot.domain.interaction.EyePokeSide
 import com.example.mydeskrobot.domain.model.RobotEmotion
 import com.example.mydeskrobot.presentation.conversation.ConversationPhase
 import com.example.mydeskrobot.presentation.conversation.ConversationUiEvent
@@ -65,6 +68,10 @@ fun RobotScreen(
     var showHistory by remember { mutableStateOf(false) }
     val showHistoryButton = uiState.isHotwordListeningActive || uiState.displayText.isNotBlank()
     val layout = rememberScreenLayout()
+    val backgroundTapInteraction = remember { MutableInteractionSource() }
+    val canTapBackgroundToWake =
+        uiState.isHotwordListeningActive &&
+            uiState.phase is ConversationPhase.WaitingForHotword
 
     Box(
         modifier = modifier.fillMaxSize(),
@@ -77,6 +84,17 @@ fun RobotScreen(
                     end = layout.horizontalInset,
                     top = layout.topInset,
                     bottom = layout.bottomInset,
+                )
+                .then(
+                    if (canTapBackgroundToWake) {
+                        Modifier.clickable(
+                            interactionSource = backgroundTapInteraction,
+                            indication = null,
+                            onClick = { onEvent(ConversationUiEvent.OnBackgroundTapActivateListening) },
+                        )
+                    } else {
+                        Modifier
+                    },
                 ),
             contentAlignment = Alignment.Center,
         ) {
@@ -86,6 +104,12 @@ fun RobotScreen(
                 minEyeSize = layout.minEyeSize,
                 maxEyeSize = layout.maxEyeSize,
                 eyeGap = layout.eyeGap,
+                squishLeft = uiState.eyeSquishLeft,
+                squishRight = uiState.eyeSquishRight,
+                onLeftEyeClick = { onEvent(ConversationUiEvent.OnEyePoked(EyePokeSide.LEFT)) },
+                onRightEyeClick = { onEvent(ConversationUiEvent.OnEyePoked(EyePokeSide.RIGHT)) },
+                leftEyeContentDescription = stringResource(R.string.cd_robot_eye_left),
+                rightEyeContentDescription = stringResource(R.string.cd_robot_eye_right),
             )
 
             if (

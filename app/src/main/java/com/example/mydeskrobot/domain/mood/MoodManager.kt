@@ -10,8 +10,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 /**
- * Manages the robot's autonomous mood state.
- * Coordinates between [MoodEngine] (rules) and [MoodRepository] (persistence).
+ * Manages the robot's autonomous mood state (single writer for [RobotMood]).
  */
 class MoodManager(
     private val repository: MoodRepository,
@@ -33,16 +32,12 @@ class MoodManager(
         val current = _currentMood.value
         val now = System.currentTimeMillis()
 
-        if (trigger is MoodTrigger.UserInteraction) {
+        if (trigger is MoodTrigger.PositiveInteraction || trigger is MoodTrigger.UserApology) {
             lastInteractionTime = now
         }
 
         val newMood = engine.evaluate(current, trigger, now)
-        if (newMood != null && newMood != current) {
-            Log.i(TAG, "Mood transition: ${current.baseEmotion} → ${newMood.baseEmotion} (trigger: $trigger)")
-            _currentMood.value = newMood
-            scope.launch { repository.save(newMood) }
-        }
+        applyMoodIfChanged(current, newMood)
     }
 
     fun onLlmEmotion(emotion: RobotEmotion) {
@@ -58,20 +53,43 @@ class MoodManager(
         val current = _currentMood.value
         val now = System.currentTimeMillis()
         val decayed = engine.checkDecay(current, now)
-        if (decayed != null) {
-            Log.i(TAG, "Mood decay: ${current.baseEmotion} → ${decayed.baseEmotion}")
-            _currentMood.value = decayed
-            scope.launch { repository.save(decayed) }
-        }
+        applyMoodIfChanged(current, decayed)
     }
 
-    fun recordInteraction() {
+    /** Updates idle timer only; does not change mood (neutral questions while annoyed). */
+    fun touchLastInteraction() {
         lastInteractionTime = System.currentTimeMillis()
-        onTrigger(MoodTrigger.UserInteraction)
+    }
+
+    fun recordPositiveInteraction() {
+        lastInteractionTime = System.currentTimeMillis()
+        onTrigger(MoodTrigger.PositiveInteraction)
+    }
+
+    fun recordApology() {
+        lastInteractionTime = System.currentTimeMillis()
+        onTrigger(MoodTrigger.UserApology)
+    }
+
+    fun recordEyePoke(tier: Int, count: Int) {
+        onTrigger(MoodTrigger.EyePoked(tier, count))
+    }
+
+    /** Sync persistent mood with emotion declared in the assistant JSON reply. */
+    fun applyAssistantDeclaredEmotion(emotion: RobotEmotion) {
+        onTrigger(MoodTrigger.AssistantDeclaredEmotion(emotion))
     }
 
     fun getIdleMinutes(): Long =
         (System.currentTimeMillis() - lastInteractionTime) / 60_000L
+
+    private fun applyMoodIfChanged(previous: RobotMood, newMood: RobotMood?) {
+        if (newMood != null && newMood != previous) {
+            Log.i(TAG, "Mood transition: ${previous.baseEmotion} → ${newMood.baseEmotion}")
+            _currentMood.value = newMood
+            scope.launch { repository.save(newMood) }
+        }
+    }
 
     companion object {
         private const val TAG = "MoodManager"

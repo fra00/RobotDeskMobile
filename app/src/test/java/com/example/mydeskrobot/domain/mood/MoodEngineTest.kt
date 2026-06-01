@@ -48,25 +48,109 @@ class MoodEngineTest {
     }
 
     @Test
-    fun `user interaction transitions to happy`() {
+    fun `positive interaction transitions to happy`() {
         val neutral = RobotMood(RobotEmotion.NEUTRAL, 0.5f, baseTime, null)
-        val result = engine.evaluate(neutral, MoodTrigger.UserInteraction, baseTime + 1000)
+        val result = engine.evaluate(neutral, MoodTrigger.PositiveInteraction, baseTime + 1000)
 
         assertNotNull(result)
         assertEquals(RobotEmotion.HAPPY, result!!.baseEmotion)
         assertEquals(0.4f, result.intensity)
-        assertEquals(MoodReason.USER_RETURNED, result.reason)
+        assertEquals(MoodReason.POSITIVE_INTERACTION, result.reason)
     }
 
     @Test
-    fun `user interaction refreshes happy mood timestamp`() {
-        val happy = RobotMood(RobotEmotion.HAPPY, 0.4f, baseTime, MoodReason.USER_RETURNED)
+    fun `positive interaction refreshes happy mood timestamp`() {
+        val happy = RobotMood(RobotEmotion.HAPPY, 0.4f, baseTime, MoodReason.POSITIVE_INTERACTION)
         val newTime = baseTime + 10 * 60_000
-        val result = engine.evaluate(happy, MoodTrigger.UserInteraction, newTime)
+        val result = engine.evaluate(happy, MoodTrigger.PositiveInteraction, newTime)
 
         assertNotNull(result)
         assertEquals(RobotEmotion.HAPPY, result!!.baseEmotion)
         assertEquals(newTime, result.since)
+    }
+
+    @Test
+    fun `positive interaction does not happy when annoyed from eye poke`() {
+        val annoyed = RobotMood(RobotEmotion.ANGRY, 0.7f, baseTime, MoodReason.EYE_POKE)
+        val result = engine.evaluate(annoyed, MoodTrigger.PositiveInteraction, baseTime + 1000)
+
+        assertNull(result)
+    }
+
+    @Test
+    fun `eye poke tier 1 transitions to confused`() {
+        val neutral = RobotMood(RobotEmotion.NEUTRAL, 0.5f, baseTime, null)
+        val result = engine.evaluate(neutral, MoodTrigger.EyePoked(tier = 1, count = 1), baseTime + 1000)
+
+        assertNotNull(result)
+        assertEquals(RobotEmotion.CONFUSED, result!!.baseEmotion)
+        assertEquals(MoodReason.EYE_POKE, result.reason)
+    }
+
+    @Test
+    fun `eye poke tier 2 transitions to angry`() {
+        val neutral = RobotMood(RobotEmotion.NEUTRAL, 0.5f, baseTime, null)
+        val result = engine.evaluate(neutral, MoodTrigger.EyePoked(tier = 2, count = 3), baseTime + 1000)
+
+        assertNotNull(result)
+        assertEquals(RobotEmotion.ANGRY, result!!.baseEmotion)
+        assertEquals(0.65f, result.intensity)
+    }
+
+    @Test
+    fun `user apology softens angry from eye poke`() {
+        val angry = RobotMood(RobotEmotion.ANGRY, 0.7f, baseTime, MoodReason.EYE_POKE)
+        val result = engine.evaluate(angry, MoodTrigger.UserApology, baseTime + 1000)
+
+        assertNotNull(result)
+        assertEquals(RobotEmotion.CONFUSED, result!!.baseEmotion)
+        assertEquals(MoodReason.USER_APOLOGY, result.reason)
+    }
+
+    @Test
+    fun `user apology on confused from eye poke goes neutral`() {
+        val confused = RobotMood(RobotEmotion.CONFUSED, 0.4f, baseTime, MoodReason.EYE_POKE)
+        val result = engine.evaluate(confused, MoodTrigger.UserApology, baseTime + 1000)
+
+        assertNotNull(result)
+        assertEquals(RobotEmotion.NEUTRAL, result!!.baseEmotion)
+    }
+
+    @Test
+    fun `assistant declared neutral aligns angry eye poke mood`() {
+        val angry = RobotMood(RobotEmotion.ANGRY, 0.7f, baseTime, MoodReason.EYE_POKE)
+        val result = engine.evaluate(
+            angry,
+            MoodTrigger.AssistantDeclaredEmotion(RobotEmotion.NEUTRAL),
+            baseTime + 1000,
+        )
+
+        assertNotNull(result)
+        assertEquals(RobotEmotion.NEUTRAL, result!!.baseEmotion)
+        assertNull(result.reason)
+    }
+
+    @Test
+    fun `assistant declared happy does not override active eye poke annoyance`() {
+        val angry = RobotMood(RobotEmotion.ANGRY, 0.7f, baseTime, MoodReason.EYE_POKE)
+        val result = engine.evaluate(
+            angry,
+            MoodTrigger.AssistantDeclaredEmotion(RobotEmotion.HAPPY),
+            baseTime + 1000,
+        )
+
+        assertNull(result)
+    }
+
+    @Test
+    fun `eye poke annoyance decays to neutral`() {
+        val config = MoodConfig(eyePokeAnnoyanceDecayMinutes = 8)
+        val engine = MoodEngine(config)
+        val angry = RobotMood(RobotEmotion.ANGRY, 0.7f, baseTime, MoodReason.EYE_POKE)
+        val decayed = engine.checkDecay(angry, baseTime + 8 * 60_000)
+
+        assertNotNull(decayed)
+        assertEquals(RobotEmotion.NEUTRAL, decayed!!.baseEmotion)
     }
 
     @Test
@@ -174,7 +258,7 @@ class MoodEngineTest {
 
     @Test
     fun `happy prevents idle transition`() {
-        val happy = RobotMood(RobotEmotion.HAPPY, 0.4f, baseTime, MoodReason.USER_RETURNED)
+        val happy = RobotMood(RobotEmotion.HAPPY, 0.4f, baseTime, MoodReason.POSITIVE_INTERACTION)
         val result = engine.evaluate(happy, MoodTrigger.IdleTime(30), baseTime + 30 * 60_000)
 
         assertNull(result)
@@ -184,7 +268,7 @@ class MoodEngineTest {
     fun `happy decays after configured time`() {
         val config = MoodConfig(happyDecayMinutes = 20)
         val engine = MoodEngine(config)
-        val happy = RobotMood(RobotEmotion.HAPPY, 0.4f, baseTime, MoodReason.USER_RETURNED)
+        val happy = RobotMood(RobotEmotion.HAPPY, 0.4f, baseTime, MoodReason.POSITIVE_INTERACTION)
         val decayed = engine.checkDecay(happy, baseTime + 20 * 60_000)
 
         assertNotNull(decayed)
@@ -195,7 +279,7 @@ class MoodEngineTest {
     fun `happy does not decay before configured time`() {
         val config = MoodConfig(happyDecayMinutes = 20)
         val engine = MoodEngine(config)
-        val happy = RobotMood(RobotEmotion.HAPPY, 0.4f, baseTime, MoodReason.USER_RETURNED)
+        val happy = RobotMood(RobotEmotion.HAPPY, 0.4f, baseTime, MoodReason.POSITIVE_INTERACTION)
         val decayed = engine.checkDecay(happy, baseTime + 19 * 60_000)
 
         assertNull(decayed)

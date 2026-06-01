@@ -17,6 +17,7 @@ import com.example.mydeskrobot.domain.time.NightModeConfig
 import com.example.mydeskrobot.domain.speech.WakePhraseMatcher
 import com.example.mydeskrobot.domain.vision.VisionImageCapture
 import com.example.mydeskrobot.integration.ReasoningModule
+import com.example.mydeskrobot.integration.mood.DelegatingMoodContextProvider
 import kotlinx.coroutines.runBlocking
 
 class ConversationViewModelFactory(
@@ -176,10 +177,12 @@ class ConversationViewModelFactory(
 
         val llmSettingsRepository = LlmSettingsRepositoryImpl.create(appContext)
         val initialLlmSettings = runBlocking { llmSettingsRepository.load() }
+        val moodContextProvider = DelegatingMoodContextProvider()
         val reasoningEngine = ReasoningModule.createReasoningEngine(
             context = appContext,
             visionImageCapture = visionImageCapture,
             llmSettings = initialLlmSettings,
+            moodContextProvider = moodContextProvider,
         )
 
         return ConversationViewModel(
@@ -196,6 +199,7 @@ class ConversationViewModelFactory(
             messages = messages,
             reasoningEngine = reasoningEngine,
             llmSettingsRepository = llmSettingsRepository,
+            moodContextProvider = moodContextProvider,
         ) as T
     }
 

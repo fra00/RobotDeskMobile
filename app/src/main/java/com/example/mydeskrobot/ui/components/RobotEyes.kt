@@ -6,12 +6,18 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -36,6 +42,12 @@ fun RobotEyes(
     minEyeSize: Dp = 56.dp,
     maxEyeSize: Dp = 160.dp,
     eyeGap: Dp = 36.dp,
+    squishLeft: Boolean = false,
+    squishRight: Boolean = false,
+    onLeftEyeClick: (() -> Unit)? = null,
+    onRightEyeClick: (() -> Unit)? = null,
+    leftEyeContentDescription: String? = null,
+    rightEyeContentDescription: String? = null,
 ) {
     val spec = remember(emotion) { RobotEmotionEyes.specFor(emotion) }
     var isBlinking by remember { mutableStateOf(false) }
@@ -47,6 +59,8 @@ fun RobotEyes(
     )
 
     val pulseScale = rememberPulseScale(spec)
+    val leftInteraction = remember { MutableInteractionSource() }
+    val rightInteraction = remember { MutableInteractionSource() }
 
     BoxWithConstraints(
         modifier = modifier.fillMaxSize(),
@@ -65,15 +79,49 @@ fun RobotEyes(
         ) {
             RobotEye(
                 target = spec.left,
-                isBlinking = isBlinking,
+                isBlinking = isBlinking || squishLeft,
                 pulseScale = pulseScale,
                 size = eyeSize,
+                modifier = Modifier
+                    .then(
+                        if (onLeftEyeClick != null) {
+                            Modifier
+                                .semantics {
+                                    role = Role.Button
+                                    leftEyeContentDescription?.let { contentDescription = it }
+                                }
+                                .clickable(
+                                    interactionSource = leftInteraction,
+                                    indication = null,
+                                    onClick = onLeftEyeClick,
+                                )
+                        } else {
+                            Modifier
+                        },
+                    ),
             )
             RobotEye(
                 target = spec.right,
-                isBlinking = isBlinking,
+                isBlinking = isBlinking || squishRight,
                 pulseScale = pulseScale,
                 size = eyeSize,
+                modifier = Modifier
+                    .then(
+                        if (onRightEyeClick != null) {
+                            Modifier
+                                .semantics {
+                                    role = Role.Button
+                                    rightEyeContentDescription?.let { contentDescription = it }
+                                }
+                                .clickable(
+                                    interactionSource = rightInteraction,
+                                    indication = null,
+                                    onClick = onRightEyeClick,
+                                )
+                        } else {
+                            Modifier
+                        },
+                    ),
             )
         }
     }

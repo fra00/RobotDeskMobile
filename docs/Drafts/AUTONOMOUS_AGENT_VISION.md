@@ -103,7 +103,11 @@ data class RobotMood(
 | Standby > 90 min | BORED → DROWSY (0.5) |
 | Reminder urgente < 15 min | → ANXIOUS (0.6) |
 | Interazione positiva recente | → HAPPY (0.4), decay 20 min |
+| Poke occhi ripetuti | → CONFUSED / ANGRY (`EYE_POKE`), decay ~8 min |
+| Scusa utente dopo poke | Riduce fastidio (non happy immediato) |
 | Notte | → SLEEPING (1.0) |
+
+**SSOT:** `MoodManager` è l’unico writer di `RobotMood`. Occhi, heartbeat e ogni turno vocale leggono lo stesso stato (`STATO ROBOT` nel prompt). Il campo `emotion` del JSON LLM è solo espressione effimera durante il TTS, non sovrascrive il mood persistente.
 
 Gli occhi mostrano il mood anche in silenzio. Il robot **sembra vivo**.
 

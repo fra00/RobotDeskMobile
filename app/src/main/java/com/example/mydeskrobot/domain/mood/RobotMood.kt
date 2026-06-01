@@ -39,6 +39,8 @@ enum class MoodReason {
     NIGHT_TIME,
     POSITIVE_INTERACTION,
     NEGATIVE_INTERACTION,
+    EYE_POKE,
+    USER_APOLOGY,
     REMINDER_URGENT,
     USER_RETURNED,
     HEARTBEAT_SUPPRESSED,
@@ -51,7 +53,11 @@ sealed interface MoodTrigger {
     data class IdleTime(val minutes: Long) : MoodTrigger
     data object NightMode : MoodTrigger
     data object DayMode : MoodTrigger
-    data object UserInteraction : MoodTrigger
+    data object PositiveInteraction : MoodTrigger
+    data object UserApology : MoodTrigger
+    data class EyePoked(val tier: Int, val count: Int) : MoodTrigger
+    /** Final JSON emotion on assistant reply — aligns persistent mood with stated expression. */
+    data class AssistantDeclaredEmotion(val emotion: RobotEmotion) : MoodTrigger
     data class LlmEmotion(val emotion: RobotEmotion) : MoodTrigger
     data class ReminderSoon(val minutesUntil: Int) : MoodTrigger
     data object HeartbeatSuppressed : MoodTrigger
@@ -64,5 +70,6 @@ data class MoodConfig(
     val idleToBoredMinutes: Int = 30,
     val boredToDrowsyMinutes: Int = 90,
     val happyDecayMinutes: Int = 20,
+    val eyePokeAnnoyanceDecayMinutes: Int = 8,
     val reminderUrgentMinutes: Int = 15,
 )
