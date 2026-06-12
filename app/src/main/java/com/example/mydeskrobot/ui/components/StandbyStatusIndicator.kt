@@ -2,13 +2,11 @@ package com.example.mydeskrobot.ui.components
 
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Sensors
 import androidx.compose.material.icons.outlined.Bed
 import androidx.compose.material.icons.outlined.Hearing
 import androidx.compose.material.icons.outlined.PowerSettingsNew
 import com.example.mydeskrobot.domain.model.RobotEmotion
-import com.example.mydeskrobot.ui.theme.RobotHappyAccent
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
@@ -31,16 +29,6 @@ fun StandbyStatusIndicator(
         (phase is ConversationPhase.Thinking || phase is ConversationPhase.CapturingImage)
     ) {
         ThinkingGearIndicator(modifier = modifier)
-        return
-    }
-
-    if (emotion == RobotEmotion.HAPPY && phase !is ConversationPhase.Thinking) {
-        Icon(
-            imageVector = Icons.Filled.Favorite,
-            contentDescription = stringResource(R.string.cd_happy_mood),
-            tint = RobotHappyAccent,
-            modifier = modifier.size(32.dp),
-        )
         return
     }
 

@@ -65,14 +65,17 @@ Le linee guida dettagliate sono in **`.cursor/rules/*.mdc`**:
 4. Per input esterni → `docs/INPUT_ARCHITECTURE.md`.
 5. Per pipeline STT (orchestrator + provider) → `docs/STT_ARCHITECTURE.md`.
 6. Per task schedulati / promemoria vocali → `docs/SCHEDULED_TASKS.md`.
-7. Per memoria utente (estrazione + tool) → `docs/MEMORY.md`.
+7. Per memoria utente (estrazione + tool + profili QUERY/VISION/PLAN/LEISURE, DayContext) → `docs/MEMORY.md`.
 8. Per contesto robot / silenzio notifiche → `docs/ROBOT_CONTEXT.md`.
-9. Per policy risoluzione autonoma (tool diretto vs catena) → `docs/AGENT_REASONING.md`.
-10. Per espressioni occhi (campo `emotion` LLM) → `docs/ROBOT_EXPRESSIONS.md`.
-11. **Per visione agente autonomo (heartbeat, OODA, emozioni)** → `docs/Drafts/AUTONOMOUS_AGENT_VISION.md`.
-12. **Umore centralizzato (SSOT)** → `MoodManager` + `STATO ROBOT` iniettato in ogni turno LLM; poke occhi e scuse cambiano `RobotMood` (non solo la UI).
-12. Scope minimo: una capability per volta.
-13. Non committare segreti; usare `local.properties.example`.
+9. Per corpo fisico ESP32 (myDeskBody) → `docs/BODY_INTEGRATION.md` + prompt dinamico `body_capabilities_prompt.txt` via `BodyPromptProviderImpl`.
+10. **Per filosofia prompt (capability + vincoli, esempi illustrativi)** → `docs/PROMPT_PHILOSOPHY.md`.
+11. Per policy risoluzione autonoma (tool diretto vs catena) → `docs/AGENT_REASONING.md`.
+12. Per espressioni occhi (campo `emotion` LLM) → `docs/ROBOT_EXPRESSIONS.md`.
+13. **Per visione agente autonomo (heartbeat, OODA, emozioni)** → `docs/Drafts/AUTONOMOUS_AGENT_VISION.md`.
+14. **Per persona cognitiva e policy autonome (spec concettuale + mapping JSON)** → `docs/nextPromptv1.md` (runtime: `llm_system_prompt.txt` + `body_capabilities_prompt.txt`).
+15. **Umore centralizzato (SSOT)** → `MoodManager` + `STATO ROBOT` iniettato in ogni turno LLM; poke occhi e scuse cambiano `RobotMood` (non solo la UI).
+16. Scope minimo: una capability per volta.
+17. Non committare segreti; usare `local.properties.example`.
 
 ## Tool disponibili
 
@@ -91,13 +94,17 @@ Le linee guida dettagliate sono in **`.cursor/rules/*.mdc`**:
 | `delete_reminder` | LOCAL | Cancella promemoria per id |
 | `save_memory` | LOCAL | Salva fatto utente in Room |
 | `list_memories` | LOCAL | Elenca memorie attive |
-| `delete_memory` | LOCAL | Dimentica memoria per id o testo |
+| `delete_memory` | LOCAL | Dimentica per id o argomento (match fuzzy, più memorie correlate) |
 | `add_list_item` | LOCAL | Aggiunge nota/todo/spesa |
 | `list_items` | LOCAL | Elenca elementi lista strutturata |
 | `update_list_item` | LOCAL | Aggiorna testo o checked |
 | `delete_list_item` | LOCAL | Rimuove elemento per id o testo |
 | `set_volume` | LOCAL | Controlla volume media |
 | `show_notification` | LOCAL | Mostra notifica di sistema |
+| `move_body_joint` | HARDWARE | Muove un joint del corpo ESP32 (myDeskBody) |
+| `move_body_joints` | HARDWARE | Muove più joint del corpo in un comando |
+| `body_home` | HARDWARE | Ritorno posizione neutra corpo |
+| `body_status` | HARDWARE | Stato motori e connettività corpo |
 
 ## Input esterni disponibili
 

@@ -2,6 +2,7 @@ package com.example.mydeskrobot.presentation.conversation
 
 import com.example.mydeskrobot.domain.interaction.EyePokeSide
 import com.example.mydeskrobot.domain.llm.LlmProvider
+import com.example.mydeskrobot.presentation.settings.BodySettingsFormState
 import com.example.mydeskrobot.presentation.settings.HeartbeatSettingsFormState
 import com.example.mydeskrobot.presentation.settings.LlmSettingsFormState
 import com.example.mydeskrobot.presentation.settings.MemorySettingsFormState
@@ -42,6 +43,36 @@ sealed interface ConversationUiEvent {
     data object OnResetMemoryManual : ConversationUiEvent
 
     data object OnReorganizeMemoryManual : ConversationUiEvent
+
+    data class OnMemoryItemValueChange(val id: Long, val value: String) : ConversationUiEvent
+
+    data class OnSaveMemoryItem(val id: Long, val value: String) : ConversationUiEvent
+
+    data class OnDeleteMemoryItem(val id: Long) : ConversationUiEvent
+
+    data object OnOpenListSettings : ConversationUiEvent
+
+    data object OnDismissListSettings : ConversationUiEvent
+
+    data class OnListItemValueChange(val id: Long, val text: String) : ConversationUiEvent
+
+    data class OnListItemCheckedChange(val id: Long, val checked: Boolean) : ConversationUiEvent
+
+    data class OnSaveListItem(val id: Long, val text: String, val checked: Boolean) : ConversationUiEvent
+
+    data class OnDeleteListItem(val id: Long) : ConversationUiEvent
+
+    data object OnOpenBodySettings : ConversationUiEvent
+
+    data object OnDismissBodySettings : ConversationUiEvent
+
+    data class OnBodyFormChange(val form: BodySettingsFormState) : ConversationUiEvent
+
+    data object OnSaveBodySettings : ConversationUiEvent
+
+    data object OnTestBodyConnection : ConversationUiEvent
+
+    data object OnTestBodyMovement : ConversationUiEvent
 
     data object OnOpenVoskModelSettings : ConversationUiEvent
 

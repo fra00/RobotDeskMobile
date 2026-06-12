@@ -7,7 +7,9 @@ import com.example.mydeskrobot.domain.llm.LlmSettings
 import com.example.mydeskrobot.domain.vision.VisionImageCapture
 import com.example.mydeskrobot.integration.llm.LlmClientFactory
 import com.example.mydeskrobot.data.context.RobotContextRepository
+import com.example.mydeskrobot.integration.context.DayContextPromptProviderImpl
 import com.example.mydeskrobot.integration.context.RobotContextPromptProviderImpl
+import com.example.mydeskrobot.data.scheduled.ScheduledTaskRepository
 import com.example.mydeskrobot.integration.memory.MemoryPromptContextProviderImpl
 import com.example.mydeskrobot.integration.tool.local.SetRobotContextTool
 import com.example.mydeskrobot.integration.tool.Tool
@@ -35,7 +37,15 @@ import com.example.mydeskrobot.integration.tool.remote.FetchUrlTool
 import com.example.mydeskrobot.integration.tool.remote.SearxngWebSearchEngine
 import com.example.mydeskrobot.integration.tool.remote.WebSearchTool
 import com.example.mydeskrobot.integration.tool.remote.WeatherTool
+import com.example.mydeskrobot.data.body.BodySettingsRepository
+import com.example.mydeskrobot.integration.body.BodyApiClient
+import com.example.mydeskrobot.integration.body.BodyPromptProviderImpl
+import com.example.mydeskrobot.integration.tool.hardware.BodyHomeTool
+import com.example.mydeskrobot.integration.tool.hardware.BodyStatusTool
+import com.example.mydeskrobot.integration.tool.hardware.MoveBodyJointTool
+import com.example.mydeskrobot.integration.tool.hardware.MoveBodyJointsTool
 import com.example.mydeskrobot.memory.UserMemoryRepository
+import kotlinx.coroutines.runBlocking
 import com.example.mydeskrobot.integration.mood.DelegatingMoodContextProvider
 import com.example.mydeskrobot.reasoning.MoodContextProvider
 import com.example.mydeskrobot.reasoning.ReasoningEngine
@@ -101,20 +111,39 @@ object ReasoningModule {
             )
             add(WebSearchTool(webSearchEngine))
             add(FetchUrlTool())
+
+            val bodySettings = runBlocking { BodySettingsRepository(context).load() }
+            BodyApiClient.createIfConfigured(bodySettings)?.let { bodyClient ->
+                add(MoveBodyJointTool(bodyClient))
+                add(MoveBodyJointsTool(bodyClient))
+                add(BodyHomeTool(bodyClient))
+                add(BodyStatusTool(bodyClient))
+            }
             
             addAll(additionalTools)
         }
         
         val toolRouter = ToolRouter(tools)
         val memoryContextProvider = MemoryPromptContextProviderImpl(memoryRepository)
+        val scheduledTaskRepository = ScheduledTaskRepository.create(context)
+        val dayContextProvider = DayContextPromptProviderImpl(
+            scheduledTaskRepository = scheduledTaskRepository,
+            listItemRepository = listItemRepository,
+        )
         val robotContextRepository = RobotContextRepository(context)
         val robotContextProvider = RobotContextPromptProviderImpl(robotContextRepository)
-        
+        val bodyCapabilitiesProvider = BodyPromptProviderImpl(
+            context = context,
+            settingsRepository = BodySettingsRepository(context),
+        )
+
         return ReasoningEngineImpl(
             llmClient = llmClient,
             toolExecutor = toolRouter,
             baseSystemPrompt = basePrompt,
             memoryContextProvider = memoryContextProvider,
+            dayContextProvider = dayContextProvider,
+            bodyCapabilitiesProvider = bodyCapabilitiesProvider,
             robotContextProvider = robotContextProvider,
             moodContextProvider = moodContextProvider,
             maxChainSteps = 10,

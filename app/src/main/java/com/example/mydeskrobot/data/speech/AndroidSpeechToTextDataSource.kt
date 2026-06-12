@@ -16,16 +16,23 @@ import kotlin.coroutines.resume
 /**
  * STT data source that reuses a single SpeechRecognizer instance to avoid
  * the system "beep" sound that occurs on every create/destroy cycle.
+ * [SttBeepSuppressor] mutes beep streams only from [SpeechRecognizer.startListening]
+ * until results/error/cancel — never during TTS ([AudioManager.STREAM_MUSIC] untouched).
  */
 class AndroidSpeechToTextDataSource(
     private val context: Context,
+    private val beepSuppressor: SttBeepSuppressor? = null,
     private val languageTag: String = Locale.ITALIAN.toLanguageTag(),
     private val segmentSilenceMs: Long = 1_000L,
 ) : SpeechToTextDataSource {
 
     companion object {
         private const val TAG = "SttDataSource"
+        private const val SEGMENT_HOLD_TAG = "segment"
+        /** Keep Android listening session open; segment boundaries are handled by the orchestrator. */
         private const val MINIMUM_LISTEN_WINDOW_MS = 15_000L
+        private const val ANDROID_POSSIBLY_COMPLETE_SILENCE_MS = 10_000L
+        private const val ANDROID_COMPLETE_SILENCE_MS = 15_000L
     }
 
     private val lock = Any()
@@ -35,6 +42,9 @@ class AndroidSpeechToTextDataSource(
 
     @Volatile
     private var isListening = false
+
+    @Volatile
+    private var segmentHoldActive = false
 
     @Volatile
     private var listenStartAtMs: Long = 0L
@@ -53,12 +63,12 @@ class AndroidSpeechToTextDataSource(
         synchronized(lock) {
             persistentRecognizer?.let { return it }
 
-            val newRecognizer = SpeechRecognizer.createSpeechRecognizer(context)
-            if (newRecognizer != null) {
+            val created = SpeechRecognizer.createSpeechRecognizer(context)
+            if (created != null) {
                 Log.d(TAG, "Created new SpeechRecognizer instance")
-                persistentRecognizer = newRecognizer
+                persistentRecognizer = created
             }
-            return newRecognizer
+            return created
         }
     }
 
@@ -77,6 +87,7 @@ class AndroidSpeechToTextDataSource(
                 }
                 isListening = false
                 listenStartAtMs = 0L
+                endListenBeepSuppressor()
             }
         }
     }
@@ -103,6 +114,8 @@ class AndroidSpeechToTextDataSource(
             persistentRecognizer = null
             isListening = false
             listenStartAtMs = 0L
+            endListenBeepSuppressor()
+            beepSuppressor?.forceRestore(SEGMENT_HOLD_TAG)
         }
     }
 
@@ -164,6 +177,7 @@ class AndroidSpeechToTextDataSource(
                             invalidateRecognizer()
                         }
                     }
+                    endListenBeepSuppressor()
                     block()
                 }
 
@@ -251,6 +265,7 @@ class AndroidSpeechToTextDataSource(
             }
 
             recognizer.setRecognitionListener(recognitionListener)
+            beginListenBeepSuppressor()
             recognizer.startListening(createRecognizerIntent(enablePartialResults = listener != null))
 
             continuation.invokeOnCancellation {
@@ -263,8 +278,21 @@ class AndroidSpeechToTextDataSource(
                         // ignore
                     }
                 }
+                endListenBeepSuppressor()
             }
         }
+    }
+
+    private fun beginListenBeepSuppressor() {
+        if (segmentHoldActive) return
+        beepSuppressor?.onListenStarted(SEGMENT_HOLD_TAG)
+        segmentHoldActive = true
+    }
+
+    private fun endListenBeepSuppressor() {
+        if (!segmentHoldActive) return
+        beepSuppressor?.onListenEnded(SEGMENT_HOLD_TAG)
+        segmentHoldActive = false
     }
 
     private fun createRecognizerIntent(enablePartialResults: Boolean): Intent =
@@ -276,19 +304,19 @@ class AndroidSpeechToTextDataSource(
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, languageTag)
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, enablePartialResults)
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
-            // Ask the engine for longer sessions to reduce start/end churn
-            // (and therefore reduce repeated system beeps).
+            // Long Android session timeouts — do NOT tie these to [segmentSilenceMs] (~1s),
+            // or the system restarts listening (and beeps) on every brief pause.
             putExtra(
                 RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS,
                 MINIMUM_LISTEN_WINDOW_MS,
             )
             putExtra(
                 RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS,
-                segmentSilenceMs,
+                ANDROID_POSSIBLY_COMPLETE_SILENCE_MS,
             )
             putExtra(
                 RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS,
-                segmentSilenceMs + 200L,
+                ANDROID_COMPLETE_SILENCE_MS,
             )
         }
 

@@ -1,5 +1,10 @@
 package com.example.mydeskrobot.reasoning
 
-fun interface MemoryContextProvider {
-    suspend fun buildContextFor(userText: String): String
+import com.example.mydeskrobot.reasoning.memory.MemoryRetrievalProfile
+
+interface MemoryContextProvider {
+    suspend fun buildContextFor(
+        userText: String,
+        profileOverride: MemoryRetrievalProfile? = null,
+    ): String
 }

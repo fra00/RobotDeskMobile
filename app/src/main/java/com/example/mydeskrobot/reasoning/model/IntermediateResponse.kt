@@ -19,4 +19,7 @@ data class IntermediateResponse(
     
     /** LLM's confidence that the response is worth speaking (for heartbeat filtering) */
     val speakConfidence: Double? = null,
+
+    /** When true, Robot UI must not TTS this reply (chain still in_progress). */
+    val suppressIntermediateSpeech: Boolean = false,
 )

@@ -1,12 +1,15 @@
 package com.example.mydeskrobot.memory.extract
 
 import android.util.Log
+import com.example.mydeskrobot.domain.time.RelativeDateNormalizer
+import com.example.mydeskrobot.integration.llm.LlmHttpErrors
 import com.example.mydeskrobot.memory.UserMemoryRepository
 import com.example.mydeskrobot.memory.db.MemoryCategory
 import com.example.mydeskrobot.reasoning.llm.LlmClient
 import com.example.mydeskrobot.reasoning.model.ConversationMessage
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
+import java.util.Locale
 
 data class ChatLogEntry(
     val id: Long,
@@ -50,7 +53,7 @@ class MemoryExtractionService(
             systemPrompt = extractorPrompt,
         )
         llmResult.exceptionOrNull()?.let { error ->
-            Log.w(TAG, "Memory extractor LLM failed", error)
+            Log.w(TAG, "Memory extractor LLM failed: ${LlmHttpErrors.formatForLog(error)}", error)
             return 0
         }
         val raw = llmResult.getOrNull()?.content?.trim().orEmpty()
@@ -72,8 +75,13 @@ class MemoryExtractionService(
         var saved = 0
         val sourceMessageId = newEntries.maxOf { it.id }
         payload.facts.forEach { fact ->
-            val value = fact.value?.trim().orEmpty()
-            if (value.isBlank()) return@forEach
+            val rawValue = fact.value?.trim().orEmpty()
+            if (rawValue.isBlank()) return@forEach
+            if (isSkippableOneOffTask(rawValue)) {
+                Log.d(TAG, "Skipping one-off task fact: ${rawValue.take(80)}")
+                return@forEach
+            }
+            val value = RelativeDateNormalizer.normalize(rawValue)
             val category = parseCategory(fact.category) ?: MemoryCategory.FACT
             val confidence = (fact.confidence ?: 0.5f).coerceIn(0f, 1f)
             memoryRepository.upsert(
@@ -93,6 +101,11 @@ class MemoryExtractionService(
     private fun parsePayload(raw: String): MemoryExtractionPayload? {
         val json = extractJsonBody(raw)
         return runCatching { adapter.fromJson(json) }.getOrNull()
+    }
+
+    private fun isSkippableOneOffTask(value: String): Boolean {
+        val lower = value.lowercase(Locale.ITALIAN)
+        return lower.contains("devo") && !lower.contains("ogni ")
     }
 
     private fun parseCategory(raw: String?): MemoryCategory? {

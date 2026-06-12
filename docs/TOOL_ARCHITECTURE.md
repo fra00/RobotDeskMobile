@@ -1709,14 +1709,16 @@ STEP 6 - LOCAL: open_browser(url: "https://amazon.it/...")
 □ 7.4 Test end-to-end con catene complesse
 ```
 
-### Fase 8: Preparazione Hardware ESP32 (1-2 giorni)
+### Fase 8: Hardware ESP32 myDeskBody (HTTP LAN) — implementato
 
 ```
-□ 8.1 Definire Esp32Controller interface
-□ 8.2 Creare mock controller per test
-□ 8.3 Stub tools: MoveHeadTool, SetLedTool
-□ 8.4 Definire protocollo BLE/WiFi per comandi
+✓ 8.1 BodyApiClient (OkHttp) + BodySettingsRepository
+✓ 8.2 Tool HARDWARE: move_body_joint, move_body_joints, body_home, body_status
+✓ 8.3 UI Impostazioni: URL, prova connessione, test movimento
+✓ 8.4 Protocollo HTTP REST myDeskBody (GET /status, POST /joint/*, /home, /test)
 ```
+
+Dettagli: `docs/BODY_INTEGRATION.md`. BLE generico resta fuori scope v1.
 
 ### Fase 9: Polish e Documentazione (1 giorno)
 

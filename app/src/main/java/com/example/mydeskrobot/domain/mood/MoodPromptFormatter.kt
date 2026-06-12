@@ -1,5 +1,7 @@
 package com.example.mydeskrobot.domain.mood
 
+import com.example.mydeskrobot.domain.model.RobotEmotion
+
 /**
  * Formats autonomous robot mood for LLM system prompt injection.
  */
@@ -17,6 +19,12 @@ object MoodPromptFormatter {
                 appendLine("- Motivo: $reasonLine")
             }
             appendLine("- Regola: tono e emotion coerenti con questo stato; non contraddire (es. non dire \"benissimo\" se arrabbiato o annoiato).")
+            if (mood.reason == MoodReason.NIGHT_TIME ||
+                mood.baseEmotion == RobotEmotion.DROWSY ||
+                mood.baseEmotion == RobotEmotion.SLEEPING
+            ) {
+                appendLine("- Interazione notturna legittima: rispondi breve e stanco, senza tono colpevole verso l'utente.")
+            }
             if (mood.reason == MoodReason.EYE_POKE) {
                 appendLine("- Scuse sincere dell'utente possono ammorbidire il tono; non diventare subito entusiasta.")
             }

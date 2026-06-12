@@ -5,6 +5,8 @@ import com.example.mydeskrobot.domain.model.RobotEmotion
 data class ConversationUiState(
     val phase: ConversationPhase = ConversationPhase.Idle,
     val emotion: RobotEmotion = RobotEmotion.NEUTRAL,
+    /** Mood intensity 0–1; drives eye expression exaggeration. */
+    val emotionIntensity: Float = 0.5f,
     val statusMessage: String = "",
     /** Dialogo: righe Tu / Robot. */
     val conversationLog: String = "",

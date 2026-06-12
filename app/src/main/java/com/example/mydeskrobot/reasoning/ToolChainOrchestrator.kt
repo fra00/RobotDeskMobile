@@ -1,5 +1,6 @@
 package com.example.mydeskrobot.reasoning
 
+import com.example.mydeskrobot.integration.llm.LlmHttpErrors
 import com.example.mydeskrobot.reasoning.llm.LlmClient
 import com.example.mydeskrobot.reasoning.model.ChainStatus
 import com.example.mydeskrobot.reasoning.model.IntermediateResponse
@@ -31,6 +32,7 @@ class ToolChainOrchestrator(
     private var systemPrompt: String,
     private val maxChainSteps: Int = 10,
     private val timeoutMs: Long = 60_000,
+    private val onBeforeLlmTurn: (suspend (hasPendingImage: Boolean, stepIndex: Int) -> Unit)? = null,
 ) {
     fun updateSystemPrompt(value: String) {
         systemPrompt = value
@@ -40,11 +42,13 @@ class ToolChainOrchestrator(
     private var pendingConfirmation: PendingConfirmation? = null
     /** Image returned by a tool (e.g. take_photo) to forward to the next LLM call. */
     private var pendingImageBytes: ByteArray? = null
-    
+    private var originalUserText: String = ""
+
     suspend fun processUserInput(
         userText: String,
         onIntermediateResponse: suspend (IntermediateResponse) -> Unit,
     ): ReasoningResult {
+        originalUserText = userText
         conversationHistory.addUserMessage(userText)
         return executeChain(onIntermediateResponse)
     }
@@ -54,6 +58,7 @@ class ToolChainOrchestrator(
         imageBytes: ByteArray,
         onIntermediateResponse: suspend (IntermediateResponse) -> Unit,
     ): ReasoningResult {
+        originalUserText = userText
         conversationHistory.addUserMessage(userText)
         return executeChainWithImage(imageBytes, onIntermediateResponse)
     }
@@ -110,7 +115,10 @@ class ToolChainOrchestrator(
         conversationHistory.clear()
         pendingConfirmation = null
         pendingImageBytes = null
+        originalUserText = ""
     }
+
+    fun getOriginalUserText(): String = originalUserText
     
     private suspend fun executeChain(
         onIntermediateResponse: suspend (IntermediateResponse) -> Unit,
@@ -120,10 +128,11 @@ class ToolChainOrchestrator(
         
         while (step < maxChainSteps) {
             step++
-            
+
             val imageForThisTurn = pendingImageBytes
+            onBeforeLlmTurn?.invoke(imageForThisTurn != null, step)
             pendingImageBytes = null
-            
+
             val llmResult = if (imageForThisTurn != null) {
                 llmClient.chatWithImage(
                     messages = conversationHistory.toMessages(),
@@ -138,7 +147,8 @@ class ToolChainOrchestrator(
             }
             
             if (llmResult.isFailure) {
-                val error = llmResult.exceptionOrNull()?.message ?: "LLM communication error"
+                val error = llmResult.exceptionOrNull()?.let { LlmHttpErrors.formatForLog(it) }
+                    ?: "LLM communication error"
                 return ReasoningResult.Error(error)
             }
             
@@ -169,6 +179,8 @@ class ToolChainOrchestrator(
                                 emotion = parsed.emotion,
                                 isToolExecuting = false,
                                 speakConfidence = parsed.speakConfidence,
+                                suppressIntermediateSpeech = ChainSpeechPolicy
+                                    .suppressIntermediateSpeech(action.chainStatus),
                             )
                         )
                     }
@@ -231,7 +243,8 @@ class ToolChainOrchestrator(
         )
         
         if (llmResult.isFailure) {
-            val error = llmResult.exceptionOrNull()?.message ?: "LLM communication error"
+            val error = llmResult.exceptionOrNull()?.let { LlmHttpErrors.formatForLog(it) }
+                ?: "LLM communication error"
             return ReasoningResult.Error(error)
         }
         
@@ -261,6 +274,8 @@ class ToolChainOrchestrator(
                             emotion = parsed.emotion,
                             isToolExecuting = false,
                             speakConfidence = parsed.speakConfidence,
+                            suppressIntermediateSpeech = ChainSpeechPolicy
+                                .suppressIntermediateSpeech(action.chainStatus),
                         )
                     )
                 }
@@ -374,6 +389,9 @@ class ToolChainOrchestrator(
                 "set_robot_context" -> "Non sono riuscito ad impostare il contesto. $message"
                 "web_search" -> "Non sono riuscito a cercare sul web. $message"
                 "fetch_url" -> "Non sono riuscito a leggere la pagina. $message"
+                "move_body_joint", "move_body_joints" -> "Non sono riuscito a muovere il corpo. $message"
+                "body_home" -> "Non sono riuscito a tornare in posizione neutra. $message"
+                "body_status" -> "Non sono riuscito a leggere lo stato del corpo. $message"
                 else -> "Operazione $toolName non riuscita. $message"
             }
         }

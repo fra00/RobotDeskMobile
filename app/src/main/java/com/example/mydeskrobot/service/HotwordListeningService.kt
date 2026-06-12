@@ -19,6 +19,7 @@ import com.example.mydeskrobot.data.hotword.SttListeningOrchestrator
 import com.example.mydeskrobot.data.power.DeviceStayAwakeManager
 import com.example.mydeskrobot.data.speech.AndroidSpeechToTextDataSource
 import com.example.mydeskrobot.data.speech.SpeechToTextDataSource
+import com.example.mydeskrobot.data.speech.SttBeepSuppressor
 import com.example.mydeskrobot.data.speech.SttSettingsRepository
 import com.example.mydeskrobot.data.speech.VoskModelManager
 import com.example.mydeskrobot.data.speech.VoskSpeechToTextDataSource
@@ -77,6 +78,7 @@ class HotwordListeningService : Service() {
     private lateinit var sttSettingsRepository: SttSettingsRepository
     private var speechDataSource: SpeechToTextDataSource? = null
     private var orchestrator: SttListeningOrchestrator? = null
+    private var sttBeepSuppressor: SttBeepSuppressor? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -188,7 +190,14 @@ class HotwordListeningService : Service() {
         Log.d(TAG, "startListeningLoop")
         listenJob?.cancel()
 
-        val dataSource = createSpeechDataSource()
+        val provider = runBlocking { sttSettingsRepository.getProvider() }
+        val useAndroidBeepSuppressor = provider == SttProvider.ANDROID ||
+            (provider == SttProvider.VOSK && !voskModelManager.isModelReady())
+        if (useAndroidBeepSuppressor) {
+            sttBeepSuppressor = SttBeepSuppressor(applicationContext)
+        }
+
+        val dataSource = createSpeechDataSource(sttBeepSuppressor)
         speechDataSource = dataSource
 
         if (!dataSource.isRecognitionAvailable()) {
@@ -218,7 +227,7 @@ class HotwordListeningService : Service() {
         }
     }
 
-    private fun createSpeechDataSource(): SpeechToTextDataSource {
+    private fun createSpeechDataSource(beepSuppressor: SttBeepSuppressor?): SpeechToTextDataSource {
         val provider = runBlocking { sttSettingsRepository.getProvider() }
         val segmentMs = listeningConfig.segmentSilenceMs
 
@@ -234,15 +243,17 @@ class HotwordListeningService : Service() {
                 } else {
                     Log.w(TAG, "Vosk selected but model not ready, falling back to Android STT")
                     AndroidSpeechToTextDataSource(
-                        applicationContext,
+                        context = applicationContext,
+                        beepSuppressor = beepSuppressor,
                         segmentSilenceMs = segmentMs,
                     )
                 }
             }
             SttProvider.ANDROID -> {
-                Log.d(TAG, "Using Android STT (system beeps may occur) segmentSilenceMs=$segmentMs")
+                Log.d(TAG, "Using Android STT with beep suppressor segmentSilenceMs=$segmentMs")
                 AndroidSpeechToTextDataSource(
-                    applicationContext,
+                    context = applicationContext,
+                    beepSuppressor = beepSuppressor,
                     segmentSilenceMs = segmentMs,
                 )
             }
@@ -261,6 +272,8 @@ class HotwordListeningService : Service() {
         bargeInEchoReference = null
         speechDataSource?.release()
         speechDataSource = null
+        sttBeepSuppressor?.forceRestore("stop")
+        sttBeepSuppressor = null
     }
 
     private fun buildListeningConfig(): ListeningConfig {
@@ -323,6 +336,7 @@ class HotwordListeningService : Service() {
     }
 
     private fun createNotificationChannel() {
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.O) return
         val manager = getSystemService(NotificationManager::class.java) ?: return
         val channel = NotificationChannel(
             CHANNEL_ID,

@@ -82,6 +82,15 @@ interface MemoryDao {
     )
     suspend fun softDeleteByText(query: String, now: Long): Int
 
+    @Query(
+        """
+        UPDATE memory_items
+        SET value = :value, updatedAt = :now
+        WHERE id = :id AND isDeleted = 0
+        """
+    )
+    suspend fun updateValue(id: Long, value: String, now: Long): Int
+
     @Query("DELETE FROM memory_items")
     suspend fun clearAll()
 

@@ -5,6 +5,7 @@ import com.example.mydeskrobot.data.speech.VoskModelManager
 import com.example.mydeskrobot.domain.llm.LlmProvider
 import com.example.mydeskrobot.domain.llm.LlmSettings
 import com.example.mydeskrobot.domain.speech.SttProvider
+import com.example.mydeskrobot.data.body.BodySettings
 import com.example.mydeskrobot.memory.MemorySettings
 
 data class LlmSettingsFormState(
@@ -35,6 +36,8 @@ data class SettingsUiState(
     val showMainDialog: Boolean = false,
     val showLlmDialog: Boolean = false,
     val showMemoryDialog: Boolean = false,
+    val showListDialog: Boolean = false,
+    val showBodyDialog: Boolean = false,
     val showVoskModelDialog: Boolean = false,
     val showSttDialog: Boolean = false,
     val showNotificationDialog: Boolean = false,
@@ -49,9 +52,22 @@ data class SettingsUiState(
     val notificationAllowedPackages: Set<String> = emptySet(),
     val isSaving: Boolean = false,
     val isTesting: Boolean = false,
-    val memoryListPreview: List<String> = emptyList(),
+    val memoryEditItems: List<MemoryItemUi> = emptyList(),
+    val listEditItems: List<ListItemUi> = emptyList(),
+    val bodyForm: BodySettingsFormState = BodySettingsFormState(),
+    val bodyTesting: Boolean = false,
     val feedbackMessage: String? = null,
     val feedbackIsError: Boolean = false,
+)
+
+data class BodySettingsFormState(
+    val enabled: Boolean = false,
+    val baseUrl: String = "",
+)
+
+fun BodySettings.toFormState(): BodySettingsFormState = BodySettingsFormState(
+    enabled = enabled,
+    baseUrl = baseUrl,
 )
 
 data class MemorySettingsFormState(

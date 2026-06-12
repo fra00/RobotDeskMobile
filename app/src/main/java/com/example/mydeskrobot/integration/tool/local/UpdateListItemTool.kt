@@ -2,6 +2,7 @@ package com.example.mydeskrobot.integration.tool.local
 
 import android.content.Context
 import com.example.mydeskrobot.data.lists.ListItemRepository
+import com.example.mydeskrobot.domain.time.RelativeDateNormalizer
 import com.example.mydeskrobot.integration.tool.Tool
 import com.example.mydeskrobot.integration.tool.ToolLocality
 import com.example.mydeskrobot.reasoning.model.ToolInvocation
@@ -58,7 +59,8 @@ class UpdateListItemTool(
             )
         }
 
-        val text = invocation.params["text"] as? String
+        val rawText = invocation.params["text"] as? String
+        val text = rawText?.let { RelativeDateNormalizer.normalize(it.trim()) }
         val checked = ListToolSupport.parseChecked(invocation.params["checked"])
 
         if (text == null && checked == null) {

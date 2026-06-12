@@ -10,8 +10,12 @@ val Purple40 = Color(0xFF6650a4)
 val PurpleGrey40 = Color(0xFF625b71)
 val Pink40 = Color(0xFF7D5260)
 
-/** Colore base degli occhi del robot (senza pupilla). */
+/** Colore base degli occhi del robot (sclera). */
 val RobotEyeWhite = Color(0xFFF5F5F5)
+
+/** Pupilla e highlight. */
+val RobotPupilDark = Color(0xFF1A1A1A)
+val RobotPupilHighlight = Color(0x55FFFFFF)
 
 /** Accento per stato felice (cuori). */
 val RobotHappyAccent = Color(0xFFFF6B9D)

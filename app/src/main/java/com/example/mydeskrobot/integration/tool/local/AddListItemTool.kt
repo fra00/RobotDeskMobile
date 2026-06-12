@@ -2,6 +2,7 @@ package com.example.mydeskrobot.integration.tool.local
 
 import android.content.Context
 import com.example.mydeskrobot.data.lists.ListItemRepository
+import com.example.mydeskrobot.domain.time.RelativeDateNormalizer
 import com.example.mydeskrobot.integration.tool.Tool
 import com.example.mydeskrobot.integration.tool.ToolLocality
 import com.example.mydeskrobot.reasoning.model.ToolInvocation
@@ -32,7 +33,7 @@ class AddListItemTool(
                 ToolParameter(
                     name = "text",
                     type = "string",
-                    description = "Item text in Italian",
+                    description = "Item text in Italian; resolve oggi/domani/weekdays to absolute dates (e.g. \"il 3 giugno 2026\")",
                     required = true,
                 ),
                 ToolParameter(
@@ -54,14 +55,15 @@ class AddListItemTool(
                 code = "MISSING_PARAM",
             )
 
-        val text = (invocation.params["text"] as? String)?.trim().orEmpty()
-        if (text.isBlank()) {
+        val rawText = (invocation.params["text"] as? String)?.trim().orEmpty()
+        if (rawText.isBlank()) {
             return ToolResult.Error(
                 message = "Parametro 'text' mancante o vuoto",
                 code = "MISSING_PARAM",
             )
         }
 
+        val text = RelativeDateNormalizer.normalize(rawText)
         val checked = ListToolSupport.parseChecked(invocation.params["checked"]) ?: false
 
         val id = repository.add(type, text, checked)

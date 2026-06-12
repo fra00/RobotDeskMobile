@@ -22,7 +22,7 @@ class ListMemoriesTool(
     override fun getDefinition(): ToolDefinition {
         return ToolDefinition(
             name = name,
-            description = "List stored user memories (optionally filter by category or search text).",
+            description = "List stored user memories (optionally filter by category or search text). Use query for topic search (e.g. cane, lavoro). After result, answer using value fields from memories, not count alone.",
             parameters = listOf(
                 ToolParameter(
                     name = "category",
@@ -33,7 +33,7 @@ class ListMemoriesTool(
                 ToolParameter(
                     name = "query",
                     type = "string",
-                    description = "Optional substring to search in memory text",
+                    description = "Optional topic/search text (fuzzy match, not exact wording)",
                     required = false,
                 ),
                 ToolParameter(

@@ -3,6 +3,7 @@ package com.example.mydeskrobot.integration.tool.local
 import android.content.Context
 import com.example.mydeskrobot.integration.tool.Tool
 import com.example.mydeskrobot.integration.tool.ToolLocality
+import com.example.mydeskrobot.domain.time.RelativeDateNormalizer
 import com.example.mydeskrobot.memory.UserMemoryRepository
 import com.example.mydeskrobot.memory.db.MemoryCategory
 import com.example.mydeskrobot.reasoning.model.ToolInvocation
@@ -27,7 +28,7 @@ class SaveMemoryTool(
                 ToolParameter(
                     name = "value",
                     type = "string",
-                    description = "Short normalized fact in Italian (e.g. \"L'utente si chiama Francesco\")",
+                    description = "Short normalized fact in Italian; resolve oggi/domani/weekdays to absolute dates (e.g. \"il 3 giugno 2026\")",
                     required = true,
                 ),
                 ToolParameter(
@@ -49,13 +50,15 @@ class SaveMemoryTool(
     }
 
     override suspend fun execute(invocation: ToolInvocation): ToolResult {
-        val value = (invocation.params["value"] as? String)?.trim().orEmpty()
-        if (value.isBlank()) {
+        val rawValue = (invocation.params["value"] as? String)?.trim().orEmpty()
+        if (rawValue.isBlank()) {
             return ToolResult.Error(
                 message = "Parametro 'value' mancante o vuoto",
                 code = "MISSING_PARAM",
             )
         }
+
+        val value = RelativeDateNormalizer.normalize(rawValue)
 
         val category = MemoryToolSupport.parseCategory(invocation.params["category"])
             ?: MemoryCategory.FACT

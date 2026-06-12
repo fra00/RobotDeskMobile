@@ -32,6 +32,8 @@ fun SettingsDialog(
     onDismiss: () -> Unit,
     onOpenLlmSettings: () -> Unit,
     onOpenMemorySettings: () -> Unit,
+    onOpenListSettings: () -> Unit,
+    onOpenBodySettings: () -> Unit,
     onOpenSttSettings: () -> Unit,
     onOpenVoskModelSettings: () -> Unit,
     onOpenNotificationSettings: () -> Unit,
@@ -69,6 +71,22 @@ fun SettingsDialog(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable(onClick = onOpenMemorySettings)
+                        .padding(vertical = 12.dp),
+                )
+                Text(
+                    text = stringResource(R.string.settings_lists),
+                    style = MaterialTheme.typography.bodyLarge,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(onClick = onOpenListSettings)
+                        .padding(vertical = 12.dp),
+                )
+                Text(
+                    text = stringResource(R.string.settings_body),
+                    style = MaterialTheme.typography.bodyLarge,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(onClick = onOpenBodySettings)
                         .padding(vertical = 12.dp),
                 )
                 SettingsRow(

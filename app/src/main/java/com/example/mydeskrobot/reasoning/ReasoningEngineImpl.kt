@@ -1,6 +1,7 @@
 package com.example.mydeskrobot.reasoning
 
 import com.example.mydeskrobot.reasoning.llm.LlmClient
+import com.example.mydeskrobot.reasoning.memory.MemoryRetrievalProfile
 import com.example.mydeskrobot.reasoning.model.IntermediateResponse
 import com.example.mydeskrobot.reasoning.model.ReasoningResult
 import com.example.mydeskrobot.reasoning.model.SystemInputEnvelope
@@ -22,6 +23,8 @@ class ReasoningEngineImpl(
     private val toolExecutor: ToolExecutor,
     private val baseSystemPrompt: String,
     private val memoryContextProvider: MemoryContextProvider? = null,
+    private val dayContextProvider: DayContextProvider? = null,
+    private val bodyCapabilitiesProvider: BodyCapabilitiesProvider? = null,
     private val robotContextProvider: RobotContextProvider? = null,
     private val moodContextProvider: MoodContextProvider? = null,
     maxChainSteps: Int = 10,
@@ -32,14 +35,23 @@ class ReasoningEngineImpl(
     }
     
     private val responseParser = LlmResponseParser()
-    
-    private val orchestrator = ToolChainOrchestrator(
-        llmClient = llmClient,
-        toolExecutor = toolExecutor,
-        responseParser = responseParser,
-        systemPrompt = buildFullSystemPrompt(),
-        maxChainSteps = maxChainSteps,
-    )
+
+    private val orchestrator: ToolChainOrchestrator
+
+    init {
+        orchestrator = ToolChainOrchestrator(
+            llmClient = llmClient,
+            toolExecutor = toolExecutor,
+            responseParser = responseParser,
+            systemPrompt = buildFullSystemPrompt(),
+            maxChainSteps = maxChainSteps,
+            onBeforeLlmTurn = { hasPendingImage, _ ->
+                if (hasPendingImage && memoryContextProvider != null) {
+                    refreshSystemPromptForVision(orchestrator.getOriginalUserText())
+                }
+            },
+        )
+    }
     
     override suspend fun processUserInput(
         userText: String,
@@ -117,17 +129,41 @@ class ReasoningEngineImpl(
         orchestrator.updateSystemPrompt(buildPromptWithContext(""))
     }
 
-    private suspend fun buildPromptWithContext(userText: String): String {
+    private suspend fun refreshSystemPromptForVision(userText: String) {
+        orchestrator.updateSystemPrompt(
+            buildPromptWithContext(
+                userText = userText,
+                memoryProfileOverride = MemoryRetrievalProfile.VISION,
+            ),
+        )
+    }
+
+    private suspend fun buildPromptWithContext(
+        userText: String,
+        memoryProfileOverride: MemoryRetrievalProfile? = null,
+    ): String {
         val toolPrompt = buildFullSystemPrompt()
-        val memoryContext = memoryContextProvider?.buildContextFor(userText).orEmpty()
+        val bodyContext = bodyCapabilitiesProvider?.buildContextSection().orEmpty()
+        val memoryContext = memoryContextProvider
+            ?.buildContextFor(userText, memoryProfileOverride)
+            .orEmpty()
+        val dayContext = dayContextProvider?.buildContextSection(userText).orEmpty()
         val robotContext = robotContextProvider?.buildContextSection().orEmpty()
         val moodContext = moodContextProvider?.buildContextSection().orEmpty()
 
         return buildString {
             append(toolPrompt)
+            if (bodyContext.isNotBlank()) {
+                append("\n\n")
+                append(bodyContext)
+            }
             if (memoryContext.isNotBlank()) {
                 append("\n\n")
                 append(memoryContext)
+            }
+            if (dayContext.isNotBlank()) {
+                append("\n\n")
+                append(dayContext)
             }
             if (robotContext.isNotBlank()) {
                 append("\n\n")

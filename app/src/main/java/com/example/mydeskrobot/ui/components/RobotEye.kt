@@ -17,25 +17,40 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.example.mydeskrobot.ui.eyes.EyeExpressionSpec
 import com.example.mydeskrobot.ui.eyes.EyeGeometry
+import com.example.mydeskrobot.ui.eyes.EyeMotion
+import com.example.mydeskrobot.ui.eyes.drawEyebrow
+import com.example.mydeskrobot.ui.eyes.drawPupil
 import com.example.mydeskrobot.ui.theme.RobotEyeWhite
+import com.example.mydeskrobot.ui.theme.RobotPupilDark
+import com.example.mydeskrobot.ui.theme.RobotPupilHighlight
 
 @Composable
 fun RobotEye(
-    target: EyeGeometry,
+    expression: EyeExpressionSpec,
     isBlinking: Boolean,
     pulseScale: Float,
+    pupilDriftOffset: Float = 0f,
+    droopExtraScaleY: Float = 1f,
     modifier: Modifier = Modifier,
-    size: Dp = 56.dp,
-    color: Color = RobotEyeWhite,
+    eyeSize: Dp = 56.dp,
+    scleraColor: Color = RobotEyeWhite,
 ) {
+    val target = expression.geometry
+    val showFeatures = !isBlinking && expression.pupil.visible
+
     val animatedScaleX by animateFloatAsState(
         targetValue = (if (isBlinking) 1f else target.scaleX) * pulseScale,
         animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
         label = "eyeScaleX",
     )
     val animatedScaleY by animateFloatAsState(
-        targetValue = if (isBlinking) 0.06f else target.scaleY * pulseScale,
+        targetValue = if (isBlinking) {
+            0.06f
+        } else {
+            target.scaleY * pulseScale * droopExtraScaleY
+        },
         animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
         label = "eyeScaleY",
     )
@@ -60,7 +75,15 @@ fun RobotEye(
         label = "eyeArc",
     )
 
-    Canvas(modifier = modifier.size(size)) {
+    val pupilOffsetX = if (showFeatures && expression.motion == EyeMotion.PUPIL_DRIFT) {
+        expression.pupil.offsetXFraction + pupilDriftOffset * expression.pupil.driftAmplitude
+    } else if (showFeatures) {
+        expression.pupil.offsetXFraction
+    } else {
+        0f
+    }
+
+    Canvas(modifier = modifier.size(eyeSize)) {
         val geom = EyeGeometry(
             scaleX = animatedScaleX,
             scaleY = animatedScaleY,
@@ -69,34 +92,52 @@ fun RobotEye(
             offsetYFraction = animatedOffsetY,
             arcCurve = animatedArc,
         )
-        drawRobotEye(color = color, size = this.size, geometry = geom)
-    }
-}
+        val centerX = size.width / 2f + geom.offsetXFraction * size.width
+        val centerY = size.height / 2f + geom.offsetYFraction * size.height
+        val radiusX = size.width / 2f * geom.scaleX
+        val radiusY = size.height / 2f * geom.scaleY
+        val tiltInward = geom.rotationDeg <= 0f
 
-private fun DrawScope.drawRobotEye(
-    color: Color,
-    size: Size,
-    geometry: EyeGeometry,
-) {
-    val centerX = size.width / 2f + geometry.offsetXFraction * size.width
-    val centerY = size.height / 2f + geometry.offsetYFraction * size.height
-    val radiusX = size.width / 2f * geometry.scaleX
-    val radiusY = size.height / 2f * geometry.scaleY
-
-    rotate(degrees = geometry.rotationDeg, pivot = Offset(centerX, centerY)) {
-        when {
-            geometry.arcCurve > 1.5f -> drawAngryEye(
-                color = color,
+        if (showFeatures) {
+            drawEyebrow(
+                color = scleraColor,
                 centerX = centerX,
                 centerY = centerY,
                 radiusX = radiusX,
                 radiusY = radiusY,
-                tiltInward = geometry.rotationDeg <= 0f,
+                rotationDeg = geom.rotationDeg,
+                spec = expression.eyebrow,
+                tiltInward = tiltInward,
             )
-            geometry.arcCurve > 0.35f -> drawHappyEye(color, centerX, centerY, radiusX, radiusY)
-            geometry.arcCurve < -0.35f -> drawSadEye(color, centerX, centerY, radiusX, radiusY)
-            geometry.arcCurve <= -0.18f -> drawBoredEye(color, centerX, centerY, radiusX, radiusY)
-            else -> drawOvalEye(color, centerX, centerY, radiusX, radiusY)
+        }
+
+        rotate(degrees = geom.rotationDeg, pivot = Offset(centerX, centerY)) {
+            when {
+                geom.arcCurve > 1.5f -> drawAngryEye(
+                    color = scleraColor,
+                    centerX = centerX,
+                    centerY = centerY,
+                    radiusX = radiusX,
+                    radiusY = radiusY,
+                    tiltInward = tiltInward,
+                )
+                geom.arcCurve > 0.35f -> drawHappyEye(scleraColor, centerX, centerY, radiusX, radiusY)
+                geom.arcCurve < -0.35f -> drawSadEye(scleraColor, centerX, centerY, radiusX, radiusY)
+                geom.arcCurve <= -0.18f -> drawBoredEye(scleraColor, centerX, centerY, radiusX, radiusY)
+                else -> drawOvalEye(scleraColor, centerX, centerY, radiusX, radiusY)
+            }
+
+            if (showFeatures) {
+                drawPupil(
+                    pupilColor = RobotPupilDark,
+                    highlightColor = RobotPupilHighlight,
+                    centerX = centerX,
+                    centerY = centerY,
+                    radiusX = radiusX,
+                    radiusY = radiusY,
+                    spec = expression.pupil.copy(offsetXFraction = pupilOffsetX),
+                )
+            }
         }
     }
 }
@@ -147,7 +188,7 @@ private fun DrawScope.drawHappyEye(
     drawPath(path, color)
 }
 
-/** Occhio inclinato verso il centro del viso (rabbia). */
+/** Angry sclera — sharper inward tilt. */
 private fun DrawScope.drawAngryEye(
     color: Color,
     centerX: Float,
@@ -158,22 +199,21 @@ private fun DrawScope.drawAngryEye(
 ) {
     val path = Path().apply {
         if (tiltInward) {
-            moveTo(centerX - radiusX, centerY - radiusY * 0.15f)
-            lineTo(centerX + radiusX, centerY - radiusY)
-            lineTo(centerX + radiusX, centerY + radiusY * 0.9f)
-            lineTo(centerX - radiusX, centerY + radiusY * 0.35f)
+            moveTo(centerX - radiusX, centerY - radiusY * 0.05f)
+            lineTo(centerX + radiusX * 0.92f, centerY - radiusY * 1.05f)
+            lineTo(centerX + radiusX, centerY + radiusY * 0.95f)
+            lineTo(centerX - radiusX * 0.75f, centerY + radiusY * 0.25f)
         } else {
-            moveTo(centerX - radiusX, centerY - radiusY)
-            lineTo(centerX + radiusX, centerY - radiusY * 0.15f)
-            lineTo(centerX + radiusX, centerY + radiusY * 0.35f)
-            lineTo(centerX - radiusX, centerY + radiusY * 0.9f)
+            moveTo(centerX - radiusX * 0.92f, centerY - radiusY * 1.05f)
+            lineTo(centerX + radiusX, centerY - radiusY * 0.05f)
+            lineTo(centerX + radiusX * 0.75f, centerY + radiusY * 0.25f)
+            lineTo(centerX - radiusX, centerY + radiusY * 0.95f)
         }
         close()
     }
     drawPath(path, color)
 }
 
-/** Palpebra calata con taglio orizzontale in alto (noia). */
 private fun DrawScope.drawBoredEye(
     color: Color,
     centerX: Float,

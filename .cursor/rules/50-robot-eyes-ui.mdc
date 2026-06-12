@@ -37,11 +37,11 @@ enum class RobotEmotion {
 
 - Un Composable `RobotEyes(emotion: RobotEmotion, modifier: Modifier)`.
 - Due occhi come sotto-composable `RobotEye` o canvas unico — stesso API animazione per sinistro/destro.
-- Parametri animabili (esempi):
-  - apertura palpebra (0f chiuso → 1f aperto)
-  - offset pupilla X/Y
-  - scala “sorpresa” (pupilla grande)
-  - inclinazione palpebra (rabbia vs felicità)
+- Parametri (via `EyeExpressionMapper` + `emotionIntensity` 0–1):
+  - geometria sclera (`EyeGeometry`)
+  - pupilla scura (`PupilSpec`) con offset direzione sguardo
+  - sopracciglia (`EyebrowSpec`: arco felice, V arrabbiata, calata triste)
+  - micro-motion: shake, bounce, pupil drift, slow droop, surprised pop
   - blink periodico in `NEUTRAL` / `BORED`
 
 ## Linee guida animazione
@@ -50,7 +50,7 @@ enum class RobotEmotion {
 |-----------|----------------------------------------------------------|
 | NEUTRAL   | blink lento, pupilla centrata                           |
 | HAPPY     | palpebre arcuate, leggero “bounce”                      |
-| ANGRY     | palpebre inclinate verso il centro, pupille strette     |
+| ANGRY     | V-brow, sclera inclinata, pupille verso il centro, shake |
 | BORED     | palpebre semi-chiuse, movimento lento/minimo            |
 | SURPRISED | occhi grandi, pupille dilatate, breve hold              |
 | CONFUSED  | pupille offset alternati o oscillazione leggera         |

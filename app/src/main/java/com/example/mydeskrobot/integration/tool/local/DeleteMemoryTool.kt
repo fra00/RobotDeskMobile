@@ -21,23 +21,23 @@ class DeleteMemoryTool(
     override fun getDefinition(): ToolDefinition {
         return ToolDefinition(
             name = name,
-            description = "Forget a stored memory by id (from list_memories) or by matching text.",
+            description = "Forget stored memories by id or by topic (natural language; fuzzy match, not exact text).",
             parameters = listOf(
                 ToolParameter(
                     name = "memory_id",
                     type = "integer",
-                    description = "Memory id to delete",
+                    description = "Single memory id to delete (from list_memories)",
                     required = false,
                 ),
                 ToolParameter(
                     name = "query",
                     type = "string",
-                    description = "Substring match on memory value (if memory_id omitted)",
+                    description = "Topic keywords from the user request (e.g. \"cane Brina\"); deletes all related memories",
                     required = false,
                 ),
             ),
-            returns = "success (boolean), deleted_count (integer)",
-            example = """{"name": "delete_memory", "params": {"query": "Francesco"}, "await_result": true}""",
+            returns = "success, deleted_count, deleted_memories (text snippets)",
+            example = """{"name": "delete_memory", "params": {"query": "cane Brina"}, "await_result": true}""",
         )
     }
 
@@ -71,8 +71,8 @@ class DeleteMemoryTool(
             )
         }
 
-        val deletedCount = memoryRepository.forgetByText(query)
-        if (deletedCount == 0) {
+        val result = memoryRepository.forgetByTopic(query)
+        if (result.deletedCount == 0) {
             return ToolResult.Error(
                 message = "Nessuna memoria trovata per \"$query\"",
                 code = "NOT_FOUND",
@@ -83,8 +83,9 @@ class DeleteMemoryTool(
         return ToolResult.Success(
             data = mapOf(
                 "success" to true,
-                "deleted_count" to deletedCount,
+                "deleted_count" to result.deletedCount,
                 "query" to query,
+                "deleted_memories" to result.deletedValues,
             ),
         )
     }

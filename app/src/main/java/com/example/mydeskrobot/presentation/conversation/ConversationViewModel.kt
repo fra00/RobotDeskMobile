@@ -31,13 +31,20 @@ import com.example.mydeskrobot.domain.llm.LlmSettings
 import com.example.mydeskrobot.domain.llm.LlmSettingsRepository
 import com.example.mydeskrobot.integration.ReasoningModule
 import com.example.mydeskrobot.integration.llm.LlmClientFactory
+import com.example.mydeskrobot.integration.llm.LlmHttpErrors
+import com.example.mydeskrobot.memory.ForgetByTopicResult
 import com.example.mydeskrobot.memory.MemorySettingsRepository
 import com.example.mydeskrobot.memory.UserMemoryRepository
 import com.example.mydeskrobot.memory.extract.MemoryExtractionScheduler
 import com.example.mydeskrobot.memory.extract.MemoryExtractionService
+import com.example.mydeskrobot.presentation.settings.BodySettingsFormState
 import com.example.mydeskrobot.presentation.settings.HeartbeatSettingsFormState
 import com.example.mydeskrobot.presentation.settings.LlmSettingsFormState
+import com.example.mydeskrobot.presentation.settings.ListItemUi
+import com.example.mydeskrobot.presentation.settings.MemoryItemUi
 import com.example.mydeskrobot.presentation.settings.MemorySettingsFormState
+import com.example.mydeskrobot.presentation.settings.toListItemUi
+import com.example.mydeskrobot.presentation.settings.toUi
 import com.example.mydeskrobot.presentation.settings.SettingsUiState
 import com.example.mydeskrobot.presentation.settings.toDomain
 import com.example.mydeskrobot.presentation.settings.toFormState
@@ -50,7 +57,14 @@ import com.example.mydeskrobot.reasoning.model.SystemInputEnvelope
 import com.example.mydeskrobot.integration.input.DeferredInputQueue
 import com.example.mydeskrobot.integration.input.InputPolicyEngine
 import com.example.mydeskrobot.data.context.RobotContextRepository
+import com.example.mydeskrobot.data.body.BodySettings
+import com.example.mydeskrobot.data.body.BodySettingsRepository
 import com.example.mydeskrobot.data.heartbeat.HeartbeatSettingsRepository
+import com.example.mydeskrobot.integration.body.BodyApiClient
+import com.example.mydeskrobot.integration.body.BodyApiResult
+import com.example.mydeskrobot.integration.body.BodyExpressionContext
+import com.example.mydeskrobot.integration.body.BodyExpressionController
+import com.example.mydeskrobot.integration.body.BodyUrl
 import com.example.mydeskrobot.data.input.InputSettingsRepository
 import com.example.mydeskrobot.data.mood.MoodRepository
 import com.example.mydeskrobot.data.workingmemory.WorkingMemoryRepository
@@ -131,9 +145,8 @@ class ConversationViewModel(
     private var conversationLogBeforeCurrentTurn: String? = null
     /** True while hotword orchestrator is in active voice session (not standby-only). */
     private var voiceSessionActive = false
-    /** After a system input in standby, open voice session when the robot finishes speaking. */
-    private var openVoiceSessionAfterSystemInput = false
     private val memoryRepository = UserMemoryRepository.create(appContext)
+    private val listItemRepository = com.example.mydeskrobot.data.lists.ListItemRepository.create(appContext)
     private val memorySettingsRepository = MemorySettingsRepository(appContext)
     private val voskModelManager = VoskModelManager(appContext)
     private val sttSettingsRepository = SttSettingsRepository(appContext)
@@ -141,10 +154,17 @@ class ConversationViewModel(
     private val inputSettingsRepository = InputSettingsRepository(appContext)
     private val robotContextRepository = RobotContextRepository(appContext)
     private val heartbeatSettingsRepository = HeartbeatSettingsRepository(appContext)
+    private val bodySettingsRepository = BodySettingsRepository(appContext)
+    /** Tracks body settings baked into [reasoningEngine]; refreshed before each LLM turn. */
+    private var engineBodySettingsKey: String? = null
     /** True when the current LLM turn was triggered by a heartbeat input. */
     private var currentInputIsHeartbeat = false
     private val moodRepository = MoodRepository(appContext)
     private val moodManager = MoodManager(moodRepository, scope = viewModelScope)
+    private val bodyExpressionController = BodyExpressionController(
+        scope = viewModelScope,
+        settingsProvider = { bodySettingsRepository.load() },
+    )
     private var moodMonitorJob: Job? = null
     private val workingMemoryRepository = WorkingMemoryRepository(appContext)
     private val weeklyStatsRepository = WeeklyStatsRepository(appContext)
@@ -165,6 +185,7 @@ class ConversationViewModel(
             scope = viewModelScope,
             settingsRepository = memorySettingsRepository,
             extractionService = extractor,
+            memoryRepository = memoryRepository,
             getConversationLog = { _uiState.value.conversationLog },
             isStandby = {
                 val state = _uiState.value
@@ -210,6 +231,9 @@ class ConversationViewModel(
             }
         }
         memoryExtractionScheduler.start()
+        viewModelScope.launch {
+            engineBodySettingsKey = bodySettingsKey(bodySettingsRepository.load())
+        }
     }
 
     fun onEvent(event: ConversationUiEvent) {
@@ -231,6 +255,15 @@ class ConversationViewModel(
             ConversationUiEvent.OnSaveMemorySettings -> saveMemorySettings()
             ConversationUiEvent.OnResetMemoryManual -> resetMemoryManual()
             ConversationUiEvent.OnReorganizeMemoryManual -> reorganizeMemoryManual()
+            is ConversationUiEvent.OnMemoryItemValueChange -> updateMemoryItemDraft(event.id, event.value)
+            is ConversationUiEvent.OnSaveMemoryItem -> saveMemoryItem(event.id, event.value)
+            is ConversationUiEvent.OnDeleteMemoryItem -> deleteMemoryItem(event.id)
+            ConversationUiEvent.OnOpenListSettings -> openListSettings()
+            ConversationUiEvent.OnDismissListSettings -> dismissListSettings()
+            is ConversationUiEvent.OnListItemValueChange -> updateListItemDraft(event.id, event.text)
+            is ConversationUiEvent.OnListItemCheckedChange -> updateListItemCheckedDraft(event.id, event.checked)
+            is ConversationUiEvent.OnSaveListItem -> saveListItem(event.id, event.text, event.checked)
+            is ConversationUiEvent.OnDeleteListItem -> deleteListItem(event.id)
             ConversationUiEvent.OnOpenVoskModelSettings -> openVoskModelSettings()
             ConversationUiEvent.OnDismissVoskModelSettings -> dismissVoskModelSettings()
             ConversationUiEvent.OnDownloadVoskModel -> downloadVoskModel()
@@ -248,6 +281,12 @@ class ConversationViewModel(
             ConversationUiEvent.OnDismissHeartbeatSettings -> dismissHeartbeatSettings()
             is ConversationUiEvent.OnHeartbeatFormChange -> updateHeartbeatForm(event.form)
             ConversationUiEvent.OnSaveHeartbeatSettings -> saveHeartbeatSettings()
+            ConversationUiEvent.OnOpenBodySettings -> openBodySettings()
+            ConversationUiEvent.OnDismissBodySettings -> dismissBodySettings()
+            is ConversationUiEvent.OnBodyFormChange -> updateBodyForm(event.form)
+            ConversationUiEvent.OnSaveBodySettings -> saveBodySettings()
+            ConversationUiEvent.OnTestBodyConnection -> testBodyConnection()
+            ConversationUiEvent.OnTestBodyMovement -> testBodyMovement()
         }
     }
 
@@ -296,18 +335,20 @@ class ConversationViewModel(
     private fun openMemorySettings() {
         viewModelScope.launch {
             val settings = memorySettingsRepository.load()
-            val preview = memoryRepository.getAllActive().map { it.value }.take(8)
             _settingsUiState.update {
                 it.copy(
                     showMainDialog = false,
                     showMemoryDialog = true,
                     memoryForm = settings.toFormState(),
-                    memoryListPreview = preview,
+                    memoryEditItems = loadMemoryEditItems(),
                     feedbackMessage = null,
                 )
             }
         }
     }
+
+    private suspend fun loadMemoryEditItems(): List<MemoryItemUi> =
+        memoryRepository.getAllActive().map { it.toUi() }
 
     private fun dismissMemorySettings() {
         _settingsUiState.update { it.copy(showMemoryDialog = false, feedbackMessage = null) }
@@ -338,7 +379,7 @@ class ConversationViewModel(
             memorySettingsRepository.setLastProcessedEntryCount(0L)
             _settingsUiState.update {
                 it.copy(
-                    memoryListPreview = emptyList(),
+                    memoryEditItems = emptyList(),
                     feedbackMessage = appContext.getString(R.string.memory_reset_done),
                     feedbackIsError = false,
                 )
@@ -349,16 +390,137 @@ class ConversationViewModel(
     private fun reorganizeMemoryManual() {
         viewModelScope.launch {
             val removed = memoryRepository.reorganize()
-            val preview = memoryRepository.getAllActive().map { it.value }.take(8)
             _settingsUiState.update {
                 it.copy(
-                    memoryListPreview = preview,
+                    memoryEditItems = loadMemoryEditItems(),
                     feedbackMessage = if (removed > 0) {
-                        "Memoria riorganizzata: $removed duplicati rimossi"
+                        appContext.getString(R.string.memory_reorganize_done, removed)
                     } else {
-                        "Memoria già ottimizzata"
+                        appContext.getString(R.string.memory_reorganize_none)
                     },
                     feedbackIsError = false,
+                )
+            }
+        }
+    }
+
+    private fun updateMemoryItemDraft(id: Long, value: String) {
+        _settingsUiState.update { state ->
+            state.copy(
+                memoryEditItems = state.memoryEditItems.map { item ->
+                    if (item.id == id) item.copy(value = value) else item
+                },
+                feedbackMessage = null,
+            )
+        }
+    }
+
+    private fun saveMemoryItem(id: Long, value: String) {
+        viewModelScope.launch {
+            val ok = memoryRepository.updateValue(id, value)
+            _settingsUiState.update {
+                it.copy(
+                    memoryEditItems = if (ok) loadMemoryEditItems() else it.memoryEditItems,
+                    feedbackMessage = if (ok) {
+                        appContext.getString(R.string.memory_item_saved)
+                    } else {
+                        "Impossibile salvare la memoria"
+                    },
+                    feedbackIsError = !ok,
+                )
+            }
+        }
+    }
+
+    private fun deleteMemoryItem(id: Long) {
+        viewModelScope.launch {
+            val ok = memoryRepository.deleteById(id)
+            _settingsUiState.update {
+                it.copy(
+                    memoryEditItems = if (ok) loadMemoryEditItems() else it.memoryEditItems,
+                    feedbackMessage = if (ok) {
+                        appContext.getString(R.string.memory_item_deleted)
+                    } else {
+                        "Memoria non trovata"
+                    },
+                    feedbackIsError = !ok,
+                )
+            }
+        }
+    }
+
+    private fun openListSettings() {
+        viewModelScope.launch {
+            _settingsUiState.update {
+                it.copy(
+                    showMainDialog = false,
+                    showListDialog = true,
+                    listEditItems = loadListEditItems(),
+                    feedbackMessage = null,
+                )
+            }
+        }
+    }
+
+    private fun dismissListSettings() {
+        _settingsUiState.update { it.copy(showListDialog = false, feedbackMessage = null) }
+    }
+
+    private suspend fun loadListEditItems(): List<ListItemUi> =
+        listItemRepository.list(limit = com.example.mydeskrobot.data.lists.ListItemRepository.MAX_LIMIT)
+            .map { it.toListItemUi() }
+
+    private fun updateListItemDraft(id: Long, text: String) {
+        _settingsUiState.update { state ->
+            state.copy(
+                listEditItems = state.listEditItems.map { item ->
+                    if (item.id == id) item.copy(text = text) else item
+                },
+                feedbackMessage = null,
+            )
+        }
+    }
+
+    private fun updateListItemCheckedDraft(id: Long, checked: Boolean) {
+        _settingsUiState.update { state ->
+            state.copy(
+                listEditItems = state.listEditItems.map { item ->
+                    if (item.id == id) item.copy(checked = checked) else item
+                },
+                feedbackMessage = null,
+            )
+        }
+    }
+
+    private fun saveListItem(id: Long, text: String, checked: Boolean) {
+        viewModelScope.launch {
+            val ok = listItemRepository.update(id, text = text, checked = checked)
+            _settingsUiState.update {
+                it.copy(
+                    listEditItems = if (ok) loadListEditItems() else it.listEditItems,
+                    feedbackMessage = if (ok) {
+                        appContext.getString(R.string.list_item_saved)
+                    } else {
+                        appContext.getString(R.string.list_item_not_found)
+                    },
+                    feedbackIsError = !ok,
+                )
+            }
+        }
+    }
+
+    private fun deleteListItem(id: Long) {
+        viewModelScope.launch {
+            val ok = listItemRepository.deleteById(id)
+            _settingsUiState.update {
+                it.copy(
+                    listEditItems = if (ok) loadListEditItems() else it.listEditItems,
+                    feedbackMessage = if (ok) {
+                        appContext.getString(R.string.list_item_deleted)
+                    } else {
+                        appContext.getString(R.string.list_item_not_found)
+                    },
+                    feedbackIsError = !ok,
                 )
             }
         }
@@ -520,6 +682,164 @@ class ConversationViewModel(
         _settingsUiState.update { it.copy(heartbeatForm = form, feedbackMessage = null) }
     }
 
+    private fun openBodySettings() {
+        viewModelScope.launch {
+            val settings = bodySettingsRepository.load()
+            _settingsUiState.update {
+                it.copy(
+                    showMainDialog = false,
+                    showBodyDialog = true,
+                    bodyForm = settings.toFormState(),
+                    bodyTesting = false,
+                    feedbackMessage = null,
+                )
+            }
+        }
+    }
+
+    private fun dismissBodySettings() {
+        _settingsUiState.update {
+            it.copy(showBodyDialog = false, showMainDialog = true, bodyTesting = false, feedbackMessage = null)
+        }
+    }
+
+    private fun updateBodyForm(form: BodySettingsFormState) {
+        _settingsUiState.update { it.copy(bodyForm = form, feedbackMessage = null) }
+    }
+
+    private fun saveBodySettings() {
+        val form = _settingsUiState.value.bodyForm
+        val normalizedUrl = BodyUrl.normalize(form.baseUrl)
+        if (form.enabled && normalizedUrl.isBlank()) {
+            _settingsUiState.update {
+                it.copy(
+                    feedbackMessage = appContext.getString(R.string.body_url_required),
+                    feedbackIsError = true,
+                )
+            }
+            return
+        }
+
+        viewModelScope.launch {
+            bodySettingsRepository.save(enabled = form.enabled, baseUrl = normalizedUrl)
+            val llmSettings = llmSettingsRepository.load()
+            val appliedNow = reloadReasoningEngine(llmSettings)
+            val message = if (appliedNow) {
+                appContext.getString(R.string.body_settings_saved)
+            } else {
+                appContext.getString(R.string.llm_save_deferred)
+            }
+            _settingsUiState.update {
+                it.copy(
+                    showBodyDialog = false,
+                    showMainDialog = true,
+                    bodyForm = form.copy(baseUrl = normalizedUrl),
+                    feedbackMessage = message,
+                    feedbackIsError = false,
+                )
+            }
+        }
+    }
+
+    private fun testBodyConnection() {
+        val form = _settingsUiState.value.bodyForm
+        val normalizedUrl = BodyUrl.normalize(form.baseUrl)
+        if (normalizedUrl.isBlank()) {
+            _settingsUiState.update {
+                it.copy(
+                    feedbackMessage = appContext.getString(R.string.body_url_required),
+                    feedbackIsError = true,
+                )
+            }
+            return
+        }
+
+        viewModelScope.launch {
+            _settingsUiState.update { it.copy(bodyTesting = true, feedbackMessage = null) }
+            val client = BodyApiClient(normalizedUrl)
+            when (val result = client.getStatus()) {
+                is BodyApiResult.Success -> {
+                    val status = result.data
+                    val ip = status.urlIp ?: status.ip ?: normalizedUrl
+                    val rssi = status.rssi?.toString() ?: "—"
+                    val moving = if (status.moving) {
+                        appContext.getString(R.string.body_status_moving_yes)
+                    } else {
+                        appContext.getString(R.string.body_status_moving_no)
+                    }
+                    val updatedUrl = BodyUrl.normalize(status.urlIp.orEmpty()).ifBlank { normalizedUrl }
+                    _settingsUiState.update { state ->
+                        state.copy(
+                            bodyForm = state.bodyForm.copy(baseUrl = updatedUrl),
+                            bodyTesting = false,
+                            feedbackMessage = appContext.getString(
+                                R.string.body_test_connection_ok,
+                                ip,
+                                rssi,
+                                moving,
+                            ),
+                            feedbackIsError = false,
+                        )
+                    }
+                }
+                is BodyApiResult.Error -> {
+                    _settingsUiState.update {
+                        it.copy(
+                            bodyTesting = false,
+                            feedbackMessage = appContext.getString(
+                                R.string.body_test_connection_failed,
+                                result.message,
+                            ),
+                            feedbackIsError = true,
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    private fun testBodyMovement() {
+        val form = _settingsUiState.value.bodyForm
+        val normalizedUrl = BodyUrl.normalize(form.baseUrl)
+        if (normalizedUrl.isBlank()) {
+            _settingsUiState.update {
+                it.copy(
+                    feedbackMessage = appContext.getString(R.string.body_url_required),
+                    feedbackIsError = true,
+                )
+            }
+            return
+        }
+
+        viewModelScope.launch {
+            _settingsUiState.update { it.copy(bodyTesting = true, feedbackMessage = null) }
+            val client = BodyApiClient(normalizedUrl)
+            when (val result = client.runTest(speed = 40)) {
+                is BodyApiResult.Success -> {
+                    _settingsUiState.update {
+                        it.copy(
+                            bodyTesting = false,
+                            feedbackMessage = appContext.getString(R.string.body_test_movement_ok),
+                            feedbackIsError = false,
+                        )
+                    }
+                }
+                is BodyApiResult.Error -> {
+                    _settingsUiState.update {
+                        it.copy(
+                            bodyTesting = false,
+                            feedbackMessage = appContext.getString(
+                                R.string.body_test_movement_failed,
+                                result.message,
+                            ),
+                            feedbackIsError = true,
+                        )
+                    }
+                }
+            }
+        }
+    }
+
     private fun saveHeartbeatSettings() {
         val form = _settingsUiState.value.heartbeatForm
         viewModelScope.launch {
@@ -623,7 +943,7 @@ class ConversationViewModel(
             val message = result.fold(
                 onSuccess = { appContext.getString(R.string.llm_test_success) },
                 onFailure = { error ->
-                    appContext.getString(R.string.llm_test_failed, error.message.orEmpty())
+                    appContext.getString(R.string.llm_test_failed, LlmHttpErrors.formatForLog(error))
                 },
             )
             _settingsUiState.update {
@@ -650,7 +970,18 @@ class ConversationViewModel(
             llmSettings = settings,
             moodContextProvider = moodContextProvider,
         )
+        engineBodySettingsKey = bodySettingsKey(runBlocking { bodySettingsRepository.load() })
         return true
+    }
+
+    private fun bodySettingsKey(settings: BodySettings): String =
+        "${settings.enabled}|${settings.baseUrl}"
+
+    private suspend fun refreshReasoningEngineIfBodySettingsChanged() {
+        val key = bodySettingsKey(bodySettingsRepository.load())
+        if (key == engineBodySettingsKey) return
+        val settings = llmSettingsRepository.load()
+        reloadReasoningEngine(settings)
     }
 
     private fun toggleHotwordListening() {
@@ -721,7 +1052,6 @@ class ConversationViewModel(
         lastAssistantResponse = null
         lastLlmEmotion = null
         voiceSessionActive = false
-        openVoiceSessionAfterSystemInput = false
         val night = isNightModeNow()
         HotwordServiceStarter.start(appContext)
         viewModelScope.launch {
@@ -760,7 +1090,6 @@ class ConversationViewModel(
         eyePokeSquishJob?.cancel()
         queuedUtteranceForLlm = null
         voiceSessionActive = false
-        openVoiceSessionAfterSystemInput = false
         clearVisionPipeline()
         stopNightModeMonitor()
         stopMoodMonitor()
@@ -803,7 +1132,6 @@ class ConversationViewModel(
     private fun onSessionStarted(initialText: String?) {
         if (!_uiState.value.isHotwordListeningActive) return
         voiceSessionActive = true
-        openVoiceSessionAfterSystemInput = false
 
         val initial = initialText?.trim().orEmpty()
 
@@ -940,11 +1268,18 @@ class ConversationViewModel(
                 }
                 "forget" -> {
                     val text = phrase.substringAfter("dimentica", "").trim()
-                    val deleted = if (text.isBlank()) 0 else memoryRepository.forgetByText(text)
-                    val reply = if (deleted > 0) {
-                        "Fatto, ho dimenticato: $text."
+                    val result = if (text.isBlank()) {
+                        ForgetByTopicResult(0, emptyList(), emptyList())
                     } else {
-                        "Non ho trovato informazioni su \"$text\" da dimenticare."
+                        memoryRepository.forgetByTopic(text)
+                    }
+                    val reply = when {
+                        result.deletedCount == 0 ->
+                            "Non ho trovato memorie su \"$text\" da dimenticare."
+                        result.deletedCount == 1 ->
+                            "Fatto, ho dimenticato una memoria su $text."
+                        else ->
+                            "Fatto, ho dimenticato ${result.deletedCount} memorie su $text."
                     }
                     speakMemoryCommandReply(phrase, reply)
                 }
@@ -1016,6 +1351,7 @@ class ConversationViewModel(
         llmJob = viewModelScope.launch {
             try {
                 if (turnId != llmTurnGeneration) return@launch
+                refreshReasoningEngineIfBodySettingsChanged()
 
                 val result = reasoningEngine.processUserInput(
                     userText = phrase,
@@ -1058,6 +1394,11 @@ class ConversationViewModel(
         }
 
         if (intermediate.text.isBlank()) return
+
+        if (intermediate.suppressIntermediateSpeech) return
+
+        val suppressSpeech = intermediate.speakConfidence != null && intermediate.speakConfidence <= 0.0
+        if (suppressSpeech) return
 
         val emotion = LlmEmotionMapper.fromLlmValue(intermediate.emotion)
         speakIntermediate(intermediate.text, emotion)
@@ -1226,14 +1567,20 @@ class ConversationViewModel(
         clearVisionPipeline()
         revertConversationLogIfTurnAborted()
         HotwordController.endAssistantTurn(postTtsCooldownMs, lastAssistantResponse)
+        val listeningPhase = listeningPhaseAfterAssistantTurn()
+        val status = if (listeningPhase is ConversationPhase.ActiveListening) {
+            messages.activeListeningStatus(exitPhrase)
+        } else {
+            standbyStatusFor(_uiState.value.isNightMode)
+        }
         _uiState.update {
             it.copy(
-                phase = ConversationPhase.ActiveListening,
-                statusMessage = messages.activeListeningStatus(exitPhrase),
+                phase = listeningPhase,
+                statusMessage = status,
                 currentUtterance = "",
                 emotion = deriveDisplayEmotion(
                     mood = moodManager.currentMood.value,
-                    phase = ConversationPhase.ActiveListening,
+                    phase = listeningPhase,
                     isNightMode = it.isNightMode,
                     speakingOverride = lastLlmEmotion,
                 ),
@@ -1362,18 +1709,7 @@ class ConversationViewModel(
         HotwordController.endAssistantTurn(postTtsCooldownMs, lastAssistantResponse)
         HotwordController.clearPendingPhrase()
 
-        val openingVoiceSession = openVoiceSessionAfterSystemInput
-        if (openingVoiceSession) {
-            openVoiceSessionAfterSystemInput = false
-            Log.i(TAG, "resumeListening: opening voice session after system input (was standby)")
-            HotwordController.activateVoiceSession()
-        }
-
-        val listeningPhase = if (voiceSessionActive || openingVoiceSession) {
-            ConversationPhase.ActiveListening
-        } else {
-            ConversationPhase.WaitingForHotword
-        }
+        val listeningPhase = listeningPhaseAfterAssistantTurn()
         val emotion = emotionOverride ?: deriveDisplayEmotion(
             mood = moodManager.currentMood.value,
             phase = listeningPhase,
@@ -1385,10 +1721,12 @@ class ConversationViewModel(
             standbyStatusFor(_uiState.value.isNightMode)
         }
 
+        val intensity = moodManager.currentMood.value.intensity
         _uiState.update {
             it.copy(
                 phase = listeningPhase,
                 emotion = emotion,
+                emotionIntensity = intensity,
                 statusMessage = status,
                 currentUtterance = "",
             )
@@ -1415,13 +1753,14 @@ class ConversationViewModel(
 
     private fun handleLlmFailure(message: String) {
         if (!_uiState.value.isHotwordListeningActive) return
+        Log.w(TAG, "handleLlmFailure: $message")
 
         conversationLogBeforeCurrentTurn = null
         HotwordController.endAssistantTurn(postTtsCooldownMs, lastAssistantResponse)
         HotwordController.clearPendingPhrase()
         _uiState.update {
             it.copy(
-                phase = ConversationPhase.ActiveListening,
+                phase = listeningPhaseAfterAssistantTurn(),
                 currentUtterance = "",
             )
         }
@@ -1430,8 +1769,22 @@ class ConversationViewModel(
 
     private fun onSessionEnded(reason: SessionEndReason) {
         if (!_uiState.value.isHotwordListeningActive) return
+        val pendingQueued = queuedUtteranceForLlm?.trim().orEmpty()
+        val pendingTranscript = _uiState.value.currentUtterance.trim()
+        val fallbackPhrase = if (pendingQueued.isNotEmpty()) pendingQueued else pendingTranscript
+        val shouldDispatchFallback =
+            reason == SessionEndReason.SILENCE_TIMEOUT &&
+                fallbackPhrase.isNotEmpty()
+
+        if (shouldDispatchFallback) {
+            Log.i(TAG, "onSessionEnded: dispatching fallback utterance before standby")
+            voiceSessionActive = false
+            queuedUtteranceForLlm = null
+            sendPhraseToLlm(fallbackPhrase)
+            return
+        }
+
         voiceSessionActive = false
-        openVoiceSessionAfterSystemInput = false
         viewModelScope.launch {
             val stored = robotContextRepository.getStoredState()
             if (RobotContextPolicy.isSessionScoped(stored)) {
@@ -1525,8 +1878,9 @@ class ConversationViewModel(
             isNightMode = state.isNightMode,
             speakingOverride = speakingOverride,
         )
-        if (state.emotion != emotion) {
-            _uiState.update { it.copy(emotion = emotion) }
+        val intensity = moodManager.currentMood.value.intensity
+        if (state.emotion != emotion || state.emotionIntensity != intensity) {
+            _uiState.update { it.copy(emotion = emotion, emotionIntensity = intensity) }
         }
     }
 
@@ -1555,7 +1909,16 @@ class ConversationViewModel(
         stopMoodMonitor()
         viewModelScope.launch { moodManager.initialize() }
         moodMonitorJob = viewModelScope.launch {
-            moodManager.currentMood.collect {
+            var previousMood = moodManager.currentMood.value
+            moodManager.currentMood.collect { current ->
+                if (current != previousMood) {
+                    bodyExpressionController.onMoodTransition(
+                        previous = previousMood,
+                        current = current,
+                        context = buildBodyExpressionContext(),
+                    )
+                    previousMood = current
+                }
                 refreshUiEmotionFromMood()
             }
         }
@@ -1575,6 +1938,16 @@ class ConversationViewModel(
     private fun stopMoodMonitor() {
         moodMonitorJob?.cancel()
         moodMonitorJob = null
+        bodyExpressionController.cancel()
+    }
+
+    private fun buildBodyExpressionContext(): BodyExpressionContext {
+        val state = _uiState.value
+        return BodyExpressionContext(
+            isStandby = state.isHotwordListeningActive && state.phase is ConversationPhase.WaitingForHotword,
+            isLlmBusy = llmJob?.isActive == true,
+            isVisionBusy = visionPipelineActive,
+        )
     }
 
     /**
@@ -1707,7 +2080,10 @@ class ConversationViewModel(
             delay(delayMs)
             if (!_uiState.value.isHotwordListeningActive) return@launch
             if (!onlyIfPhase(_uiState.value.phase)) return@launch
-            _uiState.update { it.copy(emotion = targetEmotion) }
+            val intensity = moodManager.currentMood.value.intensity
+            _uiState.update {
+                it.copy(emotion = targetEmotion, emotionIntensity = intensity)
+            }
         }
     }
 
@@ -1759,7 +2135,6 @@ class ConversationViewModel(
         val turnId = ++llmTurnGeneration
         llmJob?.cancel()
         emotionTransitionJob?.cancel()
-        openVoiceSessionAfterSystemInput = !voiceSessionActive
         HotwordController.beginAssistantTurn()
 
         val state = _uiState.value

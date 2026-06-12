@@ -36,6 +36,21 @@ interface ScheduledTaskDao {
         nowMillis: Long,
     ): List<ScheduledTaskEntity>
 
+    @Query(
+        """
+        SELECT * FROM scheduled_tasks
+        WHERE status = :status
+        AND triggerAtMillis >= :startOfDayMillis
+        AND triggerAtMillis < :endOfDayMillis
+        ORDER BY triggerAtMillis ASC
+        """,
+    )
+    suspend fun getPendingBetween(
+        status: ScheduledTaskStatus,
+        startOfDayMillis: Long,
+        endOfDayMillis: Long,
+    ): List<ScheduledTaskEntity>
+
     @Update
     suspend fun update(entity: ScheduledTaskEntity)
 

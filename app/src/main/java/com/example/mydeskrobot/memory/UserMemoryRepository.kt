@@ -20,6 +20,7 @@ class UserMemoryRepository(
         if (normalized.isBlank()) return -1L
         val now = System.currentTimeMillis()
         val existing = dao.findExact(category, normalized)
+            ?: findSemanticDuplicate(category, normalized)
         val item = if (existing != null) {
             existing.copy(
                 confidence = maxOf(existing.confidence, confidence),
@@ -46,8 +47,84 @@ class UserMemoryRepository(
     suspend fun getByCategory(category: MemoryCategory, limit: Int): List<MemoryItemEntity> =
         dao.getByCategory(category, limit)
 
-    suspend fun searchRelevant(query: String, limit: Int): List<MemoryItemEntity> =
-        dao.searchByQuery(query.trim(), limit)
+    suspend fun searchRelevant(query: String, limit: Int): List<MemoryItemEntity> {
+        val q = query.trim()
+        if (q.isBlank()) return emptyList()
+        val active = dao.getAllActive()
+        val ranked = MemoryTopicMatcher.rank(q, active, limit)
+        if (ranked.isNotEmpty()) return ranked.map { it.item }
+        val fallback = MemoryTopicMatcher.fallbackMatches(q, active).take(limit)
+        if (fallback.isNotEmpty()) return fallback.map { it.item }
+        return dao.searchByQuery(q, limit)
+    }
+
+    /**
+     * Expands common entity tokens before fuzzy search (e.g. cane → animale).
+     */
+    suspend fun searchRelevantExpanded(query: String, limit: Int): List<MemoryItemEntity> {
+        val expanded = expandQueryForSearch(query)
+        val merged = linkedMapOf<Long, MemoryItemEntity>()
+        for (q in expanded) {
+            searchRelevant(q, limit).forEach { item -> merged.putIfAbsent(item.id, item) }
+            if (merged.size >= limit) break
+        }
+        return merged.values.take(limit).toList()
+    }
+
+    suspend fun getByCategories(
+        categories: List<MemoryCategory>,
+        limitPerCategory: Int,
+    ): List<MemoryItemEntity> {
+        val merged = linkedMapOf<Long, MemoryItemEntity>()
+        for (category in categories) {
+            getByCategory(category, limitPerCategory).forEach { item ->
+                merged.putIfAbsent(item.id, item)
+            }
+        }
+        return merged.values.toList()
+    }
+
+    /**
+     * Compact entity catalog for vision: FACT + ROUTINE, deduplicated by normalized value.
+     */
+    suspend fun getVisionCatalog(limit: Int = 18): List<MemoryItemEntity> {
+        val facts = getByCategory(MemoryCategory.FACT, limit)
+        val routines = getByCategory(MemoryCategory.ROUTINE, limit)
+        val combined = (facts + routines)
+            .sortedWith(
+                compareByDescending<MemoryItemEntity> { it.confidence }
+                    .thenByDescending { it.updatedAt },
+            )
+        return deduplicateByNormalizedValue(combined).take(limit)
+    }
+
+    private fun expandQueryForSearch(query: String): List<String> {
+        val base = query.trim()
+        if (base.isBlank()) return emptyList()
+        val tokens = MemoryTopicMatcher.tokenize(base)
+        val expansions = linkedSetOf(base)
+        val entityExpansions = mapOf(
+            "cane" to listOf("animale", "cane nome", "cane"),
+            "gatto" to listOf("animale", "gatto nome", "gatto"),
+            "laboratorio" to listOf("laboratorio", "stanza", "ufficio"),
+        )
+        for (token in tokens) {
+            entityExpansions[token]?.forEach { expansions += it }
+        }
+        return expansions.toList()
+    }
+
+    private fun deduplicateByNormalizedValue(items: List<MemoryItemEntity>): List<MemoryItemEntity> {
+        val seen = mutableSetOf<String>()
+        val result = mutableListOf<MemoryItemEntity>()
+        for (item in items) {
+            val key = item.value.trim().lowercase()
+            if (seen.add(key)) {
+                result += item
+            }
+        }
+        return result
+    }
 
     suspend fun getAllActive(): List<MemoryItemEntity> = dao.getAllActive()
 
@@ -57,7 +134,49 @@ class UserMemoryRepository(
     }
 
     suspend fun forgetByText(query: String): Int =
-        dao.softDeleteByText(query.trim(), System.currentTimeMillis())
+        forgetByTopic(query).deletedCount
+
+    /**
+     * Soft-deletes all active memories that match the topic (token overlap), not exact stored text.
+     */
+    suspend fun forgetByTopic(query: String): ForgetByTopicResult {
+        val q = query.trim()
+        if (q.isBlank()) return ForgetByTopicResult(0, emptyList(), emptyList())
+
+        val active = dao.getAllActive()
+        var matches = MemoryTopicMatcher.rank(q, active)
+            .filter { it.score >= MemoryTopicMatcher.MIN_FORGET_SCORE }
+
+        if (matches.isEmpty()) {
+            matches = MemoryTopicMatcher.fallbackMatches(q, active)
+                .filter { it.score >= 0.34f }
+        }
+
+        if (matches.isEmpty()) {
+            val likeDeleted = dao.softDeleteByText(q, System.currentTimeMillis())
+            if (likeDeleted > 0) {
+                return ForgetByTopicResult(likeDeleted, listOf(q), emptyList())
+            }
+            return ForgetByTopicResult(0, emptyList(), emptyList())
+        }
+
+        val now = System.currentTimeMillis()
+        val values = mutableListOf<String>()
+        val ids = mutableListOf<Long>()
+        matches.forEach { scored ->
+            dao.softDeleteById(scored.item.id, now)
+            values += scored.item.value
+            ids += scored.item.id
+        }
+        return ForgetByTopicResult(values.size, values, ids)
+    }
+
+    suspend fun updateValue(id: Long, value: String): Boolean {
+        val normalized = value.trim()
+        if (id <= 0L || normalized.isBlank()) return false
+        val updated = dao.updateValue(id, normalized, System.currentTimeMillis())
+        return updated > 0
+    }
 
     suspend fun deleteById(id: Long): Boolean {
         if (id <= 0L) return false
@@ -82,22 +201,45 @@ class UserMemoryRepository(
 
     suspend fun reorganize(): Int {
         val active = dao.getAllActive()
-        val grouped = active.groupBy { "${it.category}:${it.value.trim().lowercase()}" }
-        var removed = 0
+        val toDelete = mutableSetOf<Long>()
         val now = System.currentTimeMillis()
-        grouped.values.forEach { group ->
-            if (group.size <= 1) return@forEach
-            val sorted = group.sortedWith(
-                compareByDescending<MemoryItemEntity> { it.confidence }
-                    .thenByDescending { it.updatedAt },
-            )
-            sorted.drop(1).forEach {
-                dao.softDeleteById(it.id, now)
-                removed++
+
+        active.groupBy { it.category }.values.forEach { categoryItems ->
+            val remaining = categoryItems.filter { it.id !in toDelete }
+            for (i in remaining.indices) {
+                val anchor = remaining[i]
+                if (anchor.id in toDelete) continue
+                val cluster = mutableListOf(anchor)
+                for (j in i + 1 until remaining.size) {
+                    val other = remaining[j]
+                    if (other.id in toDelete) continue
+                    if (MemoryDuplicateDetector.areDuplicates(anchor.value, other.value, anchor.category)) {
+                        cluster += other
+                    }
+                }
+                if (cluster.size <= 1) continue
+                val keeper = cluster.maxWithOrNull(
+                    compareBy<MemoryItemEntity> { it.confidence }
+                        .thenBy { it.updatedAt },
+                ) ?: continue
+                cluster.filter { it.id != keeper.id }.forEach { toDelete += it.id }
             }
         }
-        return removed
+
+        toDelete.forEach { dao.softDeleteById(it, now) }
+        return toDelete.size
     }
+
+    private suspend fun findSemanticDuplicate(
+        category: MemoryCategory,
+        value: String,
+    ): MemoryItemEntity? =
+        dao.getByCategory(category, limit = 200)
+            .filter { MemoryDuplicateDetector.areDuplicates(value, it.value, category) }
+            .maxWithOrNull(
+                compareBy<MemoryItemEntity> { it.confidence }
+                    .thenBy { it.updatedAt },
+            )
 
     companion object {
         fun create(context: Context): UserMemoryRepository {
@@ -108,5 +250,8 @@ class UserMemoryRepository(
             ).build()
             return UserMemoryRepository(db.memoryDao())
         }
+
+        /** For unit tests with an in-memory or fake [MemoryDao]. */
+        fun createForTest(dao: MemoryDao): UserMemoryRepository = UserMemoryRepository(dao)
     }
 }

@@ -38,3 +38,28 @@ Target: ~**1.8s** from last committed words to `UtteranceReadyForLlm`, then VM �
 - `data/speech/SpeechToTextDataSource.kt` (contract KDoc)
 
 See also: `docs/Drafts/STT-Analysis.md` (problem analysis + implemented notes).
+
+## Beep suppression (Android STT)
+
+Google `SpeechRecognizer` plays system sounds on start, end-of-speech, and results. Mitigation via [`SttBeepSuppressor`](../app/src/main/java/com/example/mydeskrobot/data/speech/SttBeepSuppressor.kt):
+
+| When | Action |
+|------|--------|
+| Immediately before `SpeechRecognizer.startListening()` | `onListenStarted()` — mute `SYSTEM`, `NOTIFICATION`, `ALARM` |
+| `onResults`, `onError`, cancel, or `release()` | `onListenEnded()` / `forceRestore()` — restore saved volumes |
+
+Mute is **only** for the active listen segment in [`AndroidSpeechToTextDataSource`](../app/src/main/java/com/example/mydeskrobot/data/speech/AndroidSpeechToTextDataSource.kt). **`STREAM_MUSIC` is never touched** so TTS stays at normal volume during assistant turns.
+
+Vosk uses `AudioRecord` directly (no suppressor).
+
+### Manual QA (Android STT)
+
+1. Standby hotword loop — no start/end beeps each cycle
+2. Active session: speak → pause → LLM — no triple beep per phrase
+3. Robot TTS during assistant turn — speech audible
+4. Stop hotword service — system/media volumes restored
+5. Vosk provider — unchanged (silent)
+
+### OEM limits
+
+Some devices (MIUI, OneUI) may still beep on proprietary streams; use **Vosk** in Impostazioni → STT as fallback.

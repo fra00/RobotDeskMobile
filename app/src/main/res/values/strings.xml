@@ -107,11 +107,33 @@
     <string name="memory_enabled_label">Abilita estrazione memoria in standby</string>
     <string name="memory_interval_seconds_label">Intervallo analisi (secondi)</string>
     <string name="memory_preview_title">Anteprima memoria</string>
+    <string name="memory_edit_title">Memorie salvate (modifica manuale)</string>
     <string name="memory_preview_empty">Nessuna informazione memorizzata</string>
+    <string name="memory_item_save">Salva</string>
+    <string name="memory_item_delete">Elimina</string>
+    <string name="memory_item_saved">Memoria aggiornata</string>
+    <string name="memory_item_deleted">Memoria eliminata</string>
     <string name="memory_reset_button">Cancella tutta la memoria</string>
     <string name="memory_reorganize_button">Riorganizza ora</string>
+    <string name="memory_reorganize_done">Memoria riorganizzata: %1$d duplicati rimossi</string>
+    <string name="memory_reorganize_none">Nessun duplicato rilevato</string>
     <string name="memory_settings_saved">Impostazioni memoria salvate</string>
     <string name="memory_reset_done">Memoria cancellata</string>
+
+    <string name="settings_lists">Liste e note</string>
+    <string name="list_settings_title">Liste salvate</string>
+    <string name="list_settings_subtitle">Note, todo e spesa aggiunti dal robot (modifica o elimina)</string>
+    <string name="list_settings_empty">Nessun elemento in lista</string>
+    <string name="list_type_note">Nota</string>
+    <string name="list_type_todo">Da fare</string>
+    <string name="list_type_shopping">Spesa</string>
+    <string name="list_item_save">Salva</string>
+    <string name="list_item_delete">Elimina</string>
+    <string name="list_item_saved">Elemento aggiornato</string>
+    <string name="list_item_deleted">Elemento eliminato</string>
+    <string name="list_item_not_found">Elemento non trovato</string>
+    <string name="list_item_checked">Fatto</string>
+    <string name="list_item_unchecked">Da fare</string>
 
     <string name="error_llm_not_configured_settings">Configura il LLM nelle impostazioni (icona ingranaggio)</string>
 
@@ -135,7 +157,7 @@
     <string name="stt_settings_title">Riconoscimento vocale</string>
     <string name="stt_provider_label">Motore STT</string>
     <string name="stt_provider_android">Android (Google)</string>
-    <string name="stt_provider_android_desc">Qualità alta, richiede connessione, beep di sistema</string>
+    <string name="stt_provider_android_desc">Qualità alta, richiede connessione, beep di sistema soppressi</string>
     <string name="stt_provider_vosk">Vosk (offline)</string>
     <string name="stt_provider_vosk_desc">Offline, nessun beep, qualità inferiore</string>
     <string name="stt_settings_saved">Impostazioni salvate. Riavvia l\'ascolto per applicare.</string>
@@ -163,4 +185,21 @@
     <string name="heartbeat_status_enabled">Attivo</string>
     <string name="heartbeat_status_disabled">Disattivo</string>
     <string name="heartbeat_settings_saved">Impostazioni proattività salvate</string>
+
+    <string name="settings_body">Corpo robot</string>
+    <string name="body_settings_title">Corpo robot (ESP32)</string>
+    <string name="body_settings_subtitle">Collega myDeskBody sulla stessa rete Wi‑Fi. URL es. http://192.168.1.42</string>
+    <string name="body_enabled_label">Abilita corpo fisico</string>
+    <string name="body_base_url_label">URL base</string>
+    <string name="body_base_url_hint">http://192.168.1.42</string>
+    <string name="body_test_connection">Prova connessione</string>
+    <string name="body_test_movement">Test movimento</string>
+    <string name="body_url_required">Inserisci un URL valido</string>
+    <string name="body_settings_saved">Impostazioni corpo salvate</string>
+    <string name="body_test_connection_ok">Connesso. IP: %1$s, RSSI: %2$s, movimento: %3$s</string>
+    <string name="body_test_connection_failed">Connessione fallita: %1$s</string>
+    <string name="body_test_movement_ok">Test movimento avviato</string>
+    <string name="body_test_movement_failed">Test movimento fallito: %1$s</string>
+    <string name="body_status_moving_yes">sì</string>
+    <string name="body_status_moving_no">no</string>
 </resources>

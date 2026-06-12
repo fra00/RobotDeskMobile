@@ -30,6 +30,16 @@ class ScheduledTaskRepository(
     suspend fun listPending(): List<ScheduledTaskEntity> =
         dao.getByStatus(ScheduledTaskStatus.PENDING)
 
+    suspend fun listPendingForDay(
+        startOfDayMillis: Long,
+        endOfDayMillis: Long,
+    ): List<ScheduledTaskEntity> =
+        dao.getPendingBetween(
+            ScheduledTaskStatus.PENDING,
+            startOfDayMillis,
+            endOfDayMillis,
+        )
+
     suspend fun markFired(id: Long) {
         dao.updateStatus(id, ScheduledTaskStatus.FIRED)
     }

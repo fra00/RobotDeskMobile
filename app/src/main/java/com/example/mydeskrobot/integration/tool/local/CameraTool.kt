@@ -21,7 +21,9 @@ class CameraTool(
     override fun getDefinition(): ToolDefinition {
         return ToolDefinition(
             name = name,
-            description = "Capture a photo using the robot's camera. Use this when you need to SEE something.",
+            description = "Capture a JPEG photo for visual analysis. Combinable with body tools in vision chains " +
+                "(reorient, explore angles, persistent search). One image per LLM turn — if chaining multiple photos, leave brief text notes in history. " +
+                "For find/cerca/verify goals or when the user says something exists (e.g. computer behind them) but it is not in frame: one photo does not end the task — reorient and search before denying absence.",
             parameters = emptyList(),
             returns = "JPEG image bytes for analysis",
             example = """{"name": "take_photo", "params": {}, "await_result": true}""",

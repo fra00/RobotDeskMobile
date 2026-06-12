@@ -4,6 +4,10 @@ import com.example.mydeskrobot.domain.model.RobotEmotion
 
 object RobotEmotionEyes {
 
+    fun expressionFor(emotion: RobotEmotion, intensity: Float = 0.5f): EyePairExpressionSpec =
+        EyeExpressionMapper.map(emotion, intensity)
+
+    /** @deprecated Use [expressionFor] — kept for legacy call sites during migration. */
     fun specFor(emotion: RobotEmotion): EyePairSpec = when (emotion) {
         RobotEmotion.NEUTRAL -> EyePairSpec(
             left = EyeGeometry.neutral(),

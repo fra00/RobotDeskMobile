@@ -49,6 +49,7 @@ object LlmClientFactory {
             .connectTimeout(60, TimeUnit.SECONDS)
             .readTimeout(180, TimeUnit.SECONDS)
             .writeTimeout(120, TimeUnit.SECONDS)
+            .addInterceptor(LlmHttpErrorLoggingInterceptor())
             .build()
         val retrofit = Retrofit.Builder()
             .baseUrl(GEMINI_BASE_URL)

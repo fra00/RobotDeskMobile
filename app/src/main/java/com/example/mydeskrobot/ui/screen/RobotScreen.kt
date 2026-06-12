@@ -38,11 +38,13 @@ import com.example.mydeskrobot.presentation.conversation.ConversationPhase
 import com.example.mydeskrobot.presentation.conversation.ConversationUiEvent
 import com.example.mydeskrobot.presentation.conversation.ConversationUiState
 import com.example.mydeskrobot.presentation.settings.SettingsUiState
+import com.example.mydeskrobot.ui.components.BodySettingsDialog
 import com.example.mydeskrobot.ui.components.ConversationHistoryDialog
 import com.example.mydeskrobot.ui.components.HeartbeatSettingsDialog
 import com.example.mydeskrobot.ui.components.LlmSettingsDialog
 import com.example.mydeskrobot.ui.components.MicButton
 import com.example.mydeskrobot.ui.components.MemoryExtractingIndicator
+import com.example.mydeskrobot.ui.components.ListSettingsDialog
 import com.example.mydeskrobot.ui.components.MemorySettingsDialog
 import com.example.mydeskrobot.ui.components.PhraseInfoCorner
 import com.example.mydeskrobot.ui.components.NotificationSettingsDialog
@@ -100,6 +102,7 @@ fun RobotScreen(
         ) {
             RobotEyes(
                 emotion = uiState.emotion,
+                emotionIntensity = uiState.emotionIntensity,
                 modifier = Modifier.fillMaxSize(),
                 minEyeSize = layout.minEyeSize,
                 maxEyeSize = layout.maxEyeSize,
@@ -257,6 +260,8 @@ fun RobotScreen(
             onDismiss = { onEvent(ConversationUiEvent.OnDismissSettings) },
             onOpenLlmSettings = { onEvent(ConversationUiEvent.OnOpenLlmSettings) },
             onOpenMemorySettings = { onEvent(ConversationUiEvent.OnOpenMemorySettings) },
+            onOpenListSettings = { onEvent(ConversationUiEvent.OnOpenListSettings) },
+            onOpenBodySettings = { onEvent(ConversationUiEvent.OnOpenBodySettings) },
             onOpenSttSettings = { onEvent(ConversationUiEvent.OnOpenSttSettings) },
             onOpenVoskModelSettings = { onEvent(ConversationUiEvent.OnOpenVoskModelSettings) },
             onOpenNotificationSettings = { onEvent(ConversationUiEvent.OnOpenNotificationSettings) },
@@ -305,11 +310,47 @@ fun RobotScreen(
         )
     }
 
+    if (settingsUiState.showBodyDialog) {
+        BodySettingsDialog(
+            form = settingsUiState.bodyForm,
+            isTesting = settingsUiState.bodyTesting,
+            feedbackMessage = settingsUiState.feedbackMessage,
+            feedbackIsError = settingsUiState.feedbackIsError,
+            onFormChange = { onEvent(ConversationUiEvent.OnBodyFormChange(it)) },
+            onTestConnection = { onEvent(ConversationUiEvent.OnTestBodyConnection) },
+            onTestMovement = { onEvent(ConversationUiEvent.OnTestBodyMovement) },
+            onSave = { onEvent(ConversationUiEvent.OnSaveBodySettings) },
+            onDismiss = { onEvent(ConversationUiEvent.OnDismissBodySettings) },
+        )
+    }
+
+    if (settingsUiState.showListDialog) {
+        ListSettingsDialog(
+            listItems = settingsUiState.listEditItems,
+            onListItemValueChange = { id, text ->
+                onEvent(ConversationUiEvent.OnListItemValueChange(id, text))
+            },
+            onListItemCheckedChange = { id, checked ->
+                onEvent(ConversationUiEvent.OnListItemCheckedChange(id, checked))
+            },
+            onSaveListItem = { id, text, checked ->
+                onEvent(ConversationUiEvent.OnSaveListItem(id, text, checked))
+            },
+            onDeleteListItem = { id -> onEvent(ConversationUiEvent.OnDeleteListItem(id)) },
+            onDismiss = { onEvent(ConversationUiEvent.OnDismissListSettings) },
+        )
+    }
+
     if (settingsUiState.showMemoryDialog) {
         MemorySettingsDialog(
             form = settingsUiState.memoryForm,
-            previewMemories = settingsUiState.memoryListPreview,
+            memoryItems = settingsUiState.memoryEditItems,
             onFormChange = { onEvent(ConversationUiEvent.OnMemoryFormChange(it)) },
+            onMemoryItemValueChange = { id, value ->
+                onEvent(ConversationUiEvent.OnMemoryItemValueChange(id, value))
+            },
+            onSaveMemoryItem = { id, value -> onEvent(ConversationUiEvent.OnSaveMemoryItem(id, value)) },
+            onDeleteMemoryItem = { id -> onEvent(ConversationUiEvent.OnDeleteMemoryItem(id)) },
             onSave = { onEvent(ConversationUiEvent.OnSaveMemorySettings) },
             onResetMemory = { onEvent(ConversationUiEvent.OnResetMemoryManual) },
             onReorganizeNow = { onEvent(ConversationUiEvent.OnReorganizeMemoryManual) },
