@@ -17,6 +17,13 @@ object MemoryIntentDetector {
             profile in activeProfiles
     }
 
+    private val SPATIAL_KEYWORDS = listOf(
+        "altra stanza", "nuova stanza", "dove siamo", "che stanza", "quale stanza",
+        "memorizza questa stanza", "ricorda questa stanza", "riconosci la stanza",
+        "guarda la stanza", "guarda intorno", "panorama", "in che stanza",
+        "luogo", "posto",
+    )
+
     private val VISION_KEYWORDS = listOf(
         "foto", "fotografia", "scatta", "guarda", "vedi", "riconosci",
         "camera", "intorno", "panorama", "nascondino", "immagine", "occhi",
@@ -50,6 +57,10 @@ object MemoryIntentDetector {
 
         val matched = mutableSetOf<MemoryRetrievalProfile>()
 
+        if (containsAny(normalized, SPATIAL_KEYWORDS)) {
+            matched += MemoryRetrievalProfile.SPATIAL
+            matched += MemoryRetrievalProfile.VISION
+        }
         if (containsAny(normalized, VISION_KEYWORDS)) {
             matched += MemoryRetrievalProfile.VISION
         }
@@ -86,6 +97,9 @@ object MemoryIntentDetector {
             (MemoryRetrievalProfile.VISION !in matched || asksAboutEntity(normalized))
         ) {
             return MemoryRetrievalProfile.QUERY
+        }
+        if (MemoryRetrievalProfile.SPATIAL in matched) {
+            return MemoryRetrievalProfile.SPATIAL
         }
         if (MemoryRetrievalProfile.PLAN in matched) {
             return MemoryRetrievalProfile.PLAN

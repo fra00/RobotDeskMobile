@@ -22,12 +22,12 @@ class ListMemoriesTool(
     override fun getDefinition(): ToolDefinition {
         return ToolDefinition(
             name = name,
-            description = "List stored user memories (optionally filter by category or search text). Use query for topic search (e.g. cane, lavoro). After result, answer using value fields from memories, not count alone.",
+            description = "List stored memories (optionally filter by category or search text). Default lists user-facing memories only; use category OBSERVATION/INTENT/PATTERN for autonomy. Use query for topic search (e.g. cane, INTENT pranzo).",
             parameters = listOf(
                 ToolParameter(
                     name = "category",
                     type = "string",
-                    description = "Optional: IDENTITY | PREFERENCE | ROUTINE | FACT",
+                    description = "Optional: IDENTITY | PREFERENCE | ROUTINE | FACT | OBSERVATION | INTENT | PATTERN",
                     required = false,
                 ),
                 ToolParameter(
@@ -54,9 +54,13 @@ class ListMemoriesTool(
         val query = (invocation.params["query"] as? String)?.trim().orEmpty()
 
         val items = when {
-            query.isNotBlank() -> memoryRepository.searchRelevant(query, limit)
+            query.isNotBlank() -> memoryRepository.searchRelevant(
+                query = query,
+                limit = limit,
+                includeRobotInternal = true,
+            )
             category != null -> memoryRepository.getByCategory(category, limit)
-            else -> memoryRepository.getAllActive().take(limit)
+            else -> memoryRepository.getUserFacingActive().take(limit)
         }
 
         val memories = items.map { MemoryToolSupport.entityToMap(it) }

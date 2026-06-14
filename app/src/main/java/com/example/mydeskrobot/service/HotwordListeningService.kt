@@ -72,6 +72,10 @@ class HotwordListeningService : Service() {
     @Volatile
     private var assistantTurnActive = false
 
+    /** True while a phone call is active — blocks [endAssistantTurn] from reopening STT. */
+    @Volatile
+    private var phoneCallHoldActive = false
+
     private lateinit var stayAwakeManager: DeviceStayAwakeManager
     private lateinit var listeningConfig: ListeningConfig
     private lateinit var voskModelManager: VoskModelManager
@@ -170,12 +174,31 @@ class HotwordListeningService : Service() {
         speechDataSource?.cancelActiveListening()
     }
 
+    fun beginPhoneCallHold() {
+        Log.d(TAG, "beginPhoneCallHold")
+        phoneCallHoldActive = true
+        beginAssistantTurn()
+    }
+
+    fun endPhoneCallHold() {
+        Log.d(TAG, "endPhoneCallHold")
+        phoneCallHoldActive = false
+        if (!assistantTurnActive) {
+            sttPaused = false
+            orchestrator?.resetSessionSilenceClock()
+        }
+    }
+
     fun endAssistantTurn(cooldownMs: Long, echoReferenceForCooldown: String? = null) {
-        Log.d(TAG, "endAssistantTurn cooldownMs=$cooldownMs")
+        Log.d(TAG, "endAssistantTurn cooldownMs=$cooldownMs phoneCallHold=$phoneCallHoldActive")
         resumeJob?.cancel()
         resumeJob = serviceScope.launch {
             bargeInMode = false
             bargeInEchoReference = echoReferenceForCooldown
+            if (phoneCallHoldActive) {
+                assistantTurnActive = false
+                return@launch
+            }
             sttPaused = false
             orchestrator?.resetSessionSilenceClock()
             if (cooldownMs > 0) delay(cooldownMs)
@@ -268,6 +291,7 @@ class HotwordListeningService : Service() {
         orchestrator = null
         sttPaused = false
         assistantTurnActive = false
+        phoneCallHoldActive = false
         bargeInMode = false
         bargeInEchoReference = null
         speechDataSource?.release()

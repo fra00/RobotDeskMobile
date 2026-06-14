@@ -27,7 +27,8 @@ Target: ~**1.8s** from last committed words to `UtteranceReadyForLlm`, then VM â
 2. **Transcript/final** append to buffer and set `lastContentAt`.
 3. While buffer is non-empty and pause not elapsed â†’ **poll** (`PAUSE_POLL_MS`), no second `listenWithChunks`.
 4. Providers close segments at `segmentSilenceMs`; orchestrator finalizes at `endOfUtteranceMs` after last content.
-5. **Session silence timeout** does not run during the assistant turn (LLM + TTS + barge-in), via `isAssistantTurnActive` in `HotwordListeningService`.
+5. **Session silence timeout** does not run during the assistant turn (LLM + TTS), via `isAssistantTurnActive` in `HotwordListeningService`.
+6. **STT is paused** for the whole assistant turn (Thinking, tool execution, TTS). Barge-in during TTS is disabled to avoid TTS echo in the mic; listening resumes after `endAssistantTurn` + post-TTS cooldown.
 
 ## Files
 

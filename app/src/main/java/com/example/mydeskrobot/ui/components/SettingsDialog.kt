@@ -32,6 +32,8 @@ fun SettingsDialog(
     onDismiss: () -> Unit,
     onOpenLlmSettings: () -> Unit,
     onOpenMemorySettings: () -> Unit,
+    onOpenSpatialSettings: () -> Unit,
+    onOpenLogDaySettings: () -> Unit,
     onOpenListSettings: () -> Unit,
     onOpenBodySettings: () -> Unit,
     onOpenSttSettings: () -> Unit,
@@ -71,6 +73,22 @@ fun SettingsDialog(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable(onClick = onOpenMemorySettings)
+                        .padding(vertical = 12.dp),
+                )
+                Text(
+                    text = stringResource(R.string.settings_spatial),
+                    style = MaterialTheme.typography.bodyLarge,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(onClick = onOpenSpatialSettings)
+                        .padding(vertical = 12.dp),
+                )
+                Text(
+                    text = stringResource(R.string.settings_log_day),
+                    style = MaterialTheme.typography.bodyLarge,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(onClick = onOpenLogDaySettings)
                         .padding(vertical = 12.dp),
                 )
                 Text(

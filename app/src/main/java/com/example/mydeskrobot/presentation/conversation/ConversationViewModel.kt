@@ -12,6 +12,7 @@ import com.example.mydeskrobot.domain.hotword.HotwordEventDispatcher
 import com.example.mydeskrobot.domain.hotword.SessionEndReason
 import com.example.mydeskrobot.domain.input.SystemInputDispatcher
 import com.example.mydeskrobot.domain.input.SystemInputEvent
+import com.example.mydeskrobot.domain.memory.ConversationTopicExtractor
 import com.example.mydeskrobot.domain.model.BoredIdleConfig
 import com.example.mydeskrobot.domain.model.LlmAssistantReply
 import com.example.mydeskrobot.domain.model.RobotEmotion
@@ -26,6 +27,8 @@ import com.example.mydeskrobot.domain.vision.VisionImageCapture
 import com.example.mydeskrobot.data.speech.TtsInterruptedException
 import com.example.mydeskrobot.domain.speech.EchoSpeechFilter
 import com.example.mydeskrobot.domain.speech.MarkdownStripper
+import com.example.mydeskrobot.domain.speech.VoiceConfirmationDecision
+import com.example.mydeskrobot.domain.speech.VoiceConfirmationMatcher
 import com.example.mydeskrobot.domain.llm.LlmEmotionMapper
 import com.example.mydeskrobot.domain.llm.LlmSettings
 import com.example.mydeskrobot.domain.llm.LlmSettingsRepository
@@ -35,6 +38,12 @@ import com.example.mydeskrobot.integration.llm.LlmHttpErrors
 import com.example.mydeskrobot.memory.ForgetByTopicResult
 import com.example.mydeskrobot.memory.MemorySettingsRepository
 import com.example.mydeskrobot.memory.UserMemoryRepository
+import com.example.mydeskrobot.activity.extract.ActivityExtractionService
+import com.example.mydeskrobot.activity.extract.ActivityLogExtractionScheduler
+import com.example.mydeskrobot.activity.summary.ActivityHabitSummarizer
+import com.example.mydeskrobot.data.activitylog.ActivityLogRepository
+import com.example.mydeskrobot.data.activitylog.ActivityLogSettingsRepository
+import com.example.mydeskrobot.domain.activitylog.ActivitySource
 import com.example.mydeskrobot.memory.extract.MemoryExtractionScheduler
 import com.example.mydeskrobot.memory.extract.MemoryExtractionService
 import com.example.mydeskrobot.presentation.settings.BodySettingsFormState
@@ -42,9 +51,14 @@ import com.example.mydeskrobot.presentation.settings.HeartbeatSettingsFormState
 import com.example.mydeskrobot.presentation.settings.LlmSettingsFormState
 import com.example.mydeskrobot.presentation.settings.ListItemUi
 import com.example.mydeskrobot.presentation.settings.MemoryItemUi
+import com.example.mydeskrobot.presentation.settings.ActivityLogItemUi
+import com.example.mydeskrobot.presentation.settings.DayActivityGroupUi
+import com.example.mydeskrobot.presentation.settings.LogDaySettingsFormState
 import com.example.mydeskrobot.presentation.settings.MemorySettingsFormState
+import com.example.mydeskrobot.presentation.settings.toLogDayFormState
 import com.example.mydeskrobot.presentation.settings.toListItemUi
 import com.example.mydeskrobot.presentation.settings.toUi
+import com.example.mydeskrobot.presentation.settings.SpatialPlaceUi
 import com.example.mydeskrobot.presentation.settings.SettingsUiState
 import com.example.mydeskrobot.presentation.settings.toDomain
 import com.example.mydeskrobot.presentation.settings.toFormState
@@ -53,9 +67,14 @@ import com.example.mydeskrobot.reasoning.model.ConversationMessage
 import com.example.mydeskrobot.reasoning.model.IntermediateResponse
 import com.example.mydeskrobot.reasoning.model.ReasoningResult
 import com.example.mydeskrobot.reasoning.model.RobotInput
+import com.example.mydeskrobot.reasoning.model.RobotProfile
 import com.example.mydeskrobot.reasoning.model.SystemInputEnvelope
 import com.example.mydeskrobot.integration.input.DeferredInputQueue
 import com.example.mydeskrobot.integration.input.InputPolicyEngine
+import com.example.mydeskrobot.data.check.FireAndCheckRepository
+import com.example.mydeskrobot.data.scheduled.ScheduledTaskAlarmScheduler
+import com.example.mydeskrobot.data.scheduled.ScheduledTaskRepository
+import com.example.mydeskrobot.domain.pending.PendingInboxKind
 import com.example.mydeskrobot.data.context.RobotContextRepository
 import com.example.mydeskrobot.data.body.BodySettings
 import com.example.mydeskrobot.data.body.BodySettingsRepository
@@ -80,6 +99,8 @@ import com.example.mydeskrobot.domain.mood.RobotMood
 import com.example.mydeskrobot.domain.mood.UserInteractionTone
 import com.example.mydeskrobot.domain.mood.UserInteractionToneDetector
 import com.example.mydeskrobot.integration.mood.DelegatingMoodContextProvider
+import com.example.mydeskrobot.integration.spatial.SpatialRuntimeBindings
+import com.example.mydeskrobot.domain.spatial.SpatialIntentDetector
 import com.example.mydeskrobot.domain.reflection.WeeklyStats
 import com.example.mydeskrobot.integration.input.heartbeat.HeartbeatScheduler
 import com.example.mydeskrobot.R
@@ -93,6 +114,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -111,6 +133,8 @@ class ConversationViewModel(
     private var reasoningEngine: ReasoningEngine,
     private val llmSettingsRepository: LlmSettingsRepository,
     private val moodContextProvider: DelegatingMoodContextProvider,
+    private val spatialBindings: SpatialRuntimeBindings,
+    private val reasoningLogBuffer: ReasoningLogBuffer,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(
@@ -148,11 +172,15 @@ class ConversationViewModel(
     private val memoryRepository = UserMemoryRepository.create(appContext)
     private val listItemRepository = com.example.mydeskrobot.data.lists.ListItemRepository.create(appContext)
     private val memorySettingsRepository = MemorySettingsRepository(appContext)
+    private val activityLogRepository = ActivityLogRepository.create(appContext)
+    private val activityLogSettingsRepository = ActivityLogSettingsRepository(appContext)
     private val voskModelManager = VoskModelManager(appContext)
     private val sttSettingsRepository = SttSettingsRepository(appContext)
     private val deferredInputQueue = DeferredInputQueue()
     private val inputSettingsRepository = InputSettingsRepository(appContext)
     private val robotContextRepository = RobotContextRepository(appContext)
+    private val fireAndCheckRepository = FireAndCheckRepository.create(appContext)
+    private val scheduledTaskRepository = ScheduledTaskRepository.create(appContext)
     private val heartbeatSettingsRepository = HeartbeatSettingsRepository(appContext)
     private val bodySettingsRepository = BodySettingsRepository(appContext)
     /** Tracks body settings baked into [reasoningEngine]; refreshed before each LLM turn. */
@@ -161,6 +189,7 @@ class ConversationViewModel(
     private var currentInputIsHeartbeat = false
     private val moodRepository = MoodRepository(appContext)
     private val moodManager = MoodManager(moodRepository, scope = viewModelScope)
+    private val spatialContextManager by lazy { spatialBindings.bindManager(viewModelScope) }
     private val bodyExpressionController = BodyExpressionController(
         scope = viewModelScope,
         settingsProvider = { bodySettingsRepository.load() },
@@ -171,8 +200,14 @@ class ConversationViewModel(
     private val userAwarenessRepository = UserAwarenessRepository(appContext)
     /** Timestamp of last proactive speak, for tracking response. */
     private var lastProactiveSpeakTime: Long? = null
+    /** Last user phrase for working-memory topic extraction after a completed turn. */
+    private var lastUserPhraseForTopic: String? = null
     /** Topic of last proactive speak, for attribution. */
     private var lastProactiveTopic: String? = null
+
+    /** True while waiting for sì/no after [ReasoningResult.NeedsConfirmation]. */
+    private var confirmationPending = false
+    private var scheduledTaskIdForFireAndCheckCompletion: Long? = null
     private val memoryExtractionScheduler by lazy {
         val prompt = LlmPromptLoader.loadMemoryExtractorPrompt(appContext)
         val extractionClient = LlmClientFactory.create(runBlockingLoadSettings())
@@ -197,6 +232,44 @@ class ConversationViewModel(
         )
     }
 
+    private val activityLogExtractionScheduler by lazy {
+        val extractorPrompt = LlmPromptLoader.loadActivityExtractorPrompt(appContext)
+        val summaryPrompt = LlmPromptLoader.loadActivityHabitSummaryPrompt(appContext)
+        val extractionClient = LlmClientFactory.create(runBlockingLoadSettings())
+        val extractor = ActivityExtractionService(
+            llmClient = extractionClient,
+            activityLogRepository = activityLogRepository,
+            extractorPrompt = extractorPrompt,
+        )
+        val summarizer = ActivityHabitSummarizer(
+            llmClient = extractionClient,
+            activityLogRepository = activityLogRepository,
+            settingsRepository = activityLogSettingsRepository,
+            summaryPrompt = summaryPrompt,
+        )
+        ActivityLogExtractionScheduler(
+            scope = viewModelScope,
+            settingsRepository = activityLogSettingsRepository,
+            extractionService = extractor,
+            habitSummarizer = summarizer,
+            getConversationLog = { _uiState.value.conversationLog },
+            isStandby = {
+                val state = _uiState.value
+                state.isHotwordListeningActive && state.phase is ConversationPhase.WaitingForHotword
+            },
+            isLlmConfigured = { reasoningEngine.isConfigured() },
+        )
+    }
+
+    private val habitSummarizer by lazy {
+        ActivityHabitSummarizer(
+            llmClient = LlmClientFactory.create(runBlockingLoadSettings()),
+            activityLogRepository = activityLogRepository,
+            settingsRepository = activityLogSettingsRepository,
+            summaryPrompt = LlmPromptLoader.loadActivityHabitSummaryPrompt(appContext),
+        )
+    }
+
     companion object {
         private const val TAG = "ConversationVM"
         private const val SURPRISED_FLASH_MS = 450L
@@ -211,6 +284,9 @@ class ConversationViewModel(
 
     init {
         moodContextProvider.snapshotProvider = { moodManager.currentMood.value }
+        viewModelScope.launch {
+            spatialContextManager.initialize()
+        }
         viewModelScope.launch {
             HotwordEventDispatcher.events.collect { event ->
                 when (event) {
@@ -231,8 +307,47 @@ class ConversationViewModel(
             }
         }
         memoryExtractionScheduler.start()
+        activityLogExtractionScheduler.start()
         viewModelScope.launch {
+            activityLogRepository.pruneExpired()
             engineBodySettingsKey = bodySettingsKey(bodySettingsRepository.load())
+        }
+        viewModelScope.launch {
+            robotContextRepository.observeEffectiveState().collect { state ->
+                val profile = if (state.isNormal) RobotProfile.NORMAL else state.profile
+                _uiState.update { it.copy(robotContextProfile = profile) }
+            }
+        }
+        viewModelScope.launch {
+            fireAndCheckRepository.observeActive().collect { entries ->
+                _uiState.update { it.copy(pendingFireAndChecks = entries) }
+            }
+        }
+        viewModelScope.launch {
+            combine(
+                scheduledTaskRepository.observePending(),
+                deferredInputQueue.items,
+            ) { reminders, deferred ->
+                val merged = PendingInboxMapper.fromReminders(reminders) +
+                    PendingInboxMapper.fromDeferredItems(deferred)
+                merged.sortedBy { it.timeMillis }
+            }.collect { merged ->
+                val uiItems = merged.map { item ->
+                    val kindLabel = when (item.kind) {
+                        PendingInboxKind.REMINDER ->
+                            appContext.getString(R.string.pending_inbox_kind_reminder)
+                        PendingInboxKind.NOTIFICATION ->
+                            appContext.getString(R.string.pending_inbox_kind_notification)
+                    }
+                    PendingInboxMapper.toUi(item, kindLabel)
+                }
+                _uiState.update { it.copy(pendingInboxItems = uiItems) }
+            }
+        }
+        viewModelScope.launch {
+            reasoningLogBuffer.displayText.collect { text ->
+                _uiState.update { it.copy(reasoningLogText = text) }
+            }
         }
     }
 
@@ -241,6 +356,7 @@ class ConversationViewModel(
             ConversationUiEvent.OnToggleHotwordListening -> toggleHotwordListening()
             ConversationUiEvent.OnBackgroundTapActivateListening -> onBackgroundTapActivateListening()
             is ConversationUiEvent.OnEyePoked -> onEyePoked(event.side)
+            is ConversationUiEvent.OnCancelPendingInboxItem -> cancelPendingInboxItem(event.id)
             ConversationUiEvent.OnOpenSettings -> openSettings()
             ConversationUiEvent.OnDismissSettings -> dismissSettings()
             ConversationUiEvent.OnOpenLlmSettings -> openLlmSettings()
@@ -258,6 +374,19 @@ class ConversationViewModel(
             is ConversationUiEvent.OnMemoryItemValueChange -> updateMemoryItemDraft(event.id, event.value)
             is ConversationUiEvent.OnSaveMemoryItem -> saveMemoryItem(event.id, event.value)
             is ConversationUiEvent.OnDeleteMemoryItem -> deleteMemoryItem(event.id)
+            ConversationUiEvent.OnOpenSpatialSettings -> openSpatialSettings()
+            ConversationUiEvent.OnDismissSpatialSettings -> dismissSpatialSettings()
+            is ConversationUiEvent.OnSpatialPlaceLabelChange -> updateSpatialPlaceLabelDraft(event.id, event.label)
+            is ConversationUiEvent.OnSpatialPlaceLandmarksChange -> updateSpatialPlaceLandmarksDraft(event.id, event.landmarks)
+            is ConversationUiEvent.OnSaveSpatialPlace -> saveSpatialPlace(event.id, event.label, event.landmarks)
+            is ConversationUiEvent.OnDeleteSpatialPlace -> deleteSpatialPlace(event.id)
+            ConversationUiEvent.OnOpenLogDaySettings -> openLogDaySettings()
+            ConversationUiEvent.OnDismissLogDaySettings -> dismissLogDaySettings()
+            is ConversationUiEvent.OnLogDayFormChange -> updateLogDayForm(event.form)
+            ConversationUiEvent.OnSaveLogDaySettings -> saveLogDaySettings()
+            ConversationUiEvent.OnRefreshHabitSummary -> refreshHabitSummary()
+            ConversationUiEvent.OnClearActivityLog -> clearActivityLog()
+            ConversationUiEvent.OnClearReasoningLog -> reasoningLogBuffer.clear()
             ConversationUiEvent.OnOpenListSettings -> openListSettings()
             ConversationUiEvent.OnDismissListSettings -> dismissListSettings()
             is ConversationUiEvent.OnListItemValueChange -> updateListItemDraft(event.id, event.text)
@@ -287,6 +416,40 @@ class ConversationViewModel(
             ConversationUiEvent.OnSaveBodySettings -> saveBodySettings()
             ConversationUiEvent.OnTestBodyConnection -> testBodyConnection()
             ConversationUiEvent.OnTestBodyMovement -> testBodyMovement()
+        }
+    }
+
+    private suspend fun refreshPendingInbox() {
+        val reminders = scheduledTaskRepository.listPending()
+        val deferred = deferredInputQueue.snapshot()
+        val merged = PendingInboxMapper.fromReminders(reminders) +
+            PendingInboxMapper.fromDeferredItems(deferred)
+        val uiItems = merged.sortedBy { it.timeMillis }.map { item ->
+            val kindLabel = when (item.kind) {
+                PendingInboxKind.REMINDER ->
+                    appContext.getString(R.string.pending_inbox_kind_reminder)
+                PendingInboxKind.NOTIFICATION ->
+                    appContext.getString(R.string.pending_inbox_kind_notification)
+            }
+            PendingInboxMapper.toUi(item, kindLabel)
+        }
+        _uiState.update { it.copy(pendingInboxItems = uiItems) }
+    }
+
+    private fun cancelPendingInboxItem(id: String) {
+        viewModelScope.launch {
+            val reminderId = PendingInboxMapper.parseReminderId(id)
+            if (reminderId != null) {
+                if (scheduledTaskRepository.cancel(reminderId)) {
+                    ScheduledTaskAlarmScheduler.cancel(appContext, reminderId)
+                    fireAndCheckRepository.cancelByReminderId(reminderId)
+                }
+                return@launch
+            }
+            val dedupKey = PendingInboxMapper.parseDeferredDedupKey(id)
+            if (dedupKey != null) {
+                deferredInputQueue.removeByDedupKey(dedupKey)
+            }
         }
     }
 
@@ -348,7 +511,7 @@ class ConversationViewModel(
     }
 
     private suspend fun loadMemoryEditItems(): List<MemoryItemUi> =
-        memoryRepository.getAllActive().map { it.toUi() }
+        memoryRepository.getUserFacingActive().map { it.toUi() }
 
     private fun dismissMemorySettings() {
         _settingsUiState.update { it.copy(showMemoryDialog = false, feedbackMessage = null) }
@@ -375,7 +538,7 @@ class ConversationViewModel(
 
     private fun resetMemoryManual() {
         viewModelScope.launch {
-            memoryRepository.resetMemory()
+            memoryRepository.resetUserFacingMemory()
             memorySettingsRepository.setLastProcessedEntryCount(0L)
             _settingsUiState.update {
                 it.copy(
@@ -402,6 +565,218 @@ class ConversationViewModel(
                 )
             }
         }
+    }
+
+    private fun openSpatialSettings() {
+        viewModelScope.launch {
+            _settingsUiState.update {
+                it.copy(
+                    showMainDialog = false,
+                    showSpatialDialog = true,
+                    spatialEditItems = loadSpatialEditItems(),
+                    feedbackMessage = null,
+                )
+            }
+        }
+    }
+
+    private suspend fun loadSpatialEditItems(): List<SpatialPlaceUi> =
+        spatialBindings.placeRepository.listActive().map { place ->
+            SpatialPlaceUi(
+                id = place.id,
+                label = place.label,
+                roomType = place.roomType.name.lowercase(),
+                landmarks = place.landmarks.joinToString(", "),
+                description = place.description,
+                lastSeenAt = place.lastSeenAt,
+            )
+        }
+
+    private fun dismissSpatialSettings() {
+        _settingsUiState.update { it.copy(showSpatialDialog = false, feedbackMessage = null) }
+    }
+
+    private fun updateSpatialPlaceLabelDraft(id: Long, label: String) {
+        _settingsUiState.update { state ->
+            state.copy(
+                spatialEditItems = state.spatialEditItems.map { item ->
+                    if (item.id == id) item.copy(label = label) else item
+                },
+            )
+        }
+    }
+
+    private fun updateSpatialPlaceLandmarksDraft(id: Long, landmarks: String) {
+        _settingsUiState.update { state ->
+            state.copy(
+                spatialEditItems = state.spatialEditItems.map { item ->
+                    if (item.id == id) item.copy(landmarks = landmarks) else item
+                },
+            )
+        }
+    }
+
+    private fun saveSpatialPlace(id: Long, label: String, landmarks: String) {
+        viewModelScope.launch {
+            val parsed = landmarks.split(",", ";")
+                .map { it.trim() }
+                .filter { it.isNotBlank() }
+            val ok = spatialBindings.placeRepository.updateLabelAndLandmarks(
+                id = id,
+                label = label,
+                landmarks = parsed,
+                description = null,
+            )
+            _settingsUiState.update {
+                it.copy(
+                    spatialEditItems = if (ok) loadSpatialEditItems() else it.spatialEditItems,
+                    feedbackMessage = if (ok) {
+                        appContext.getString(R.string.spatial_place_saved)
+                    } else {
+                        appContext.getString(R.string.spatial_place_save_failed)
+                    },
+                    feedbackIsError = !ok,
+                )
+            }
+        }
+    }
+
+    private fun deleteSpatialPlace(id: Long) {
+        viewModelScope.launch {
+            spatialBindings.placeRepository.softDelete(id)
+            val snapshot = spatialContextManager.snapshot.value
+            if (snapshot.currentPlaceId == id) {
+                spatialContextManager.invalidateCurrentPlace()
+            }
+            _settingsUiState.update {
+                it.copy(
+                    spatialEditItems = loadSpatialEditItems(),
+                    feedbackMessage = appContext.getString(R.string.spatial_place_deleted),
+                    feedbackIsError = false,
+                )
+            }
+        }
+    }
+
+    private fun handleSpatialIntentBeforeLlm(phrase: String) {
+        val detection = SpatialIntentDetector.detect(phrase)
+        if (detection.shouldInvalidateCurrentPlace) {
+            Log.i(TAG, "Spatial scene changed — invalidating current place")
+            spatialContextManager.invalidateCurrentPlace()
+        }
+    }
+
+    private fun openLogDaySettings() {
+        viewModelScope.launch {
+            val settings = activityLogSettingsRepository.load()
+            val profile = activityLogRepository.getHabitSummary()
+            _settingsUiState.update {
+                it.copy(
+                    showMainDialog = false,
+                    showLogDayDialog = true,
+                    logDayForm = settings.toLogDayFormState(
+                        habitSummary = profile?.summaryText,
+                        habitSummaryUpdatedAt = profile?.updatedAtMs,
+                    ),
+                    logDayGroups = loadLogDayGroups(),
+                    feedbackMessage = null,
+                )
+            }
+        }
+    }
+
+    private fun dismissLogDaySettings() {
+        _settingsUiState.update { it.copy(showLogDayDialog = false, feedbackMessage = null) }
+    }
+
+    private fun updateLogDayForm(form: LogDaySettingsFormState) {
+        _settingsUiState.update { it.copy(logDayForm = form, feedbackMessage = null) }
+    }
+
+    private fun saveLogDaySettings() {
+        val form = _settingsUiState.value.logDayForm
+        viewModelScope.launch {
+            activityLogSettingsRepository.setEnabled(form.enabled)
+            activityLogSettingsRepository.setIntervalMinutes(form.intervalMinutes)
+            _settingsUiState.update {
+                it.copy(
+                    showLogDayDialog = false,
+                    feedbackMessage = appContext.getString(R.string.log_day_settings_saved),
+                    feedbackIsError = false,
+                )
+            }
+        }
+    }
+
+    private fun refreshHabitSummary() {
+        viewModelScope.launch {
+            _settingsUiState.update {
+                it.copy(logDayForm = it.logDayForm.copy(isRefreshingSummary = true), feedbackMessage = null)
+            }
+            val ok = habitSummarizer.refreshSummary()
+            val profile = activityLogRepository.getHabitSummary()
+            _settingsUiState.update {
+                it.copy(
+                    logDayForm = it.logDayForm.copy(
+                        isRefreshingSummary = false,
+                        habitSummary = profile?.summaryText,
+                        habitSummaryUpdatedAt = profile?.updatedAtMs,
+                    ),
+                    feedbackMessage = if (ok) {
+                        appContext.getString(R.string.log_day_summary_updated)
+                    } else {
+                        appContext.getString(R.string.log_day_summary_failed)
+                    },
+                    feedbackIsError = !ok,
+                )
+            }
+        }
+    }
+
+    private fun clearActivityLog() {
+        viewModelScope.launch {
+            activityLogRepository.clearAll()
+            activityLogSettingsRepository.setLastProcessedEntryCount(0L)
+            activityLogSettingsRepository.setLastSummaryAt(0L)
+            activityLogSettingsRepository.setLastSummaryEventCount(0)
+            _settingsUiState.update {
+                it.copy(
+                    logDayForm = it.logDayForm.copy(habitSummary = null, habitSummaryUpdatedAt = null),
+                    logDayGroups = emptyList(),
+                    feedbackMessage = appContext.getString(R.string.log_day_clear_done),
+                    feedbackIsError = false,
+                )
+            }
+        }
+    }
+
+    private suspend fun loadLogDayGroups(): List<DayActivityGroupUi> {
+        val timeFormat = java.text.SimpleDateFormat("HH:mm", java.util.Locale.ITALY)
+        val dayFormat = java.text.SimpleDateFormat("EEEE d MMM", java.util.Locale.ITALY)
+        return activityLogRepository.getEventsGroupedByDay().map { group ->
+            val dayLabel = runCatching {
+                val parsed = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.ITALY)
+                    .parse(group.dayKey)
+                if (parsed != null) dayFormat.format(parsed) else group.dayKey
+            }.getOrDefault(group.dayKey)
+            DayActivityGroupUi(
+                dayLabel = dayLabel,
+                events = group.events.map { event ->
+                    ActivityLogItemUi(
+                        id = event.id,
+                        timeLabel = timeFormat.format(event.timestampMs),
+                        label = event.label,
+                        sourceLabel = activitySourceLabel(event.source),
+                    )
+                },
+            )
+        }
+    }
+
+    private fun activitySourceLabel(source: ActivitySource): String = when (source) {
+        ActivitySource.EXTRACTOR -> appContext.getString(R.string.log_day_source_extractor)
+        ActivitySource.TOOL -> appContext.getString(R.string.log_day_source_tool)
+        ActivitySource.VOICE -> appContext.getString(R.string.log_day_source_voice)
     }
 
     private fun updateMemoryItemDraft(id: Long, value: String) {
@@ -963,12 +1338,15 @@ class ConversationViewModel(
         if (isAssistantTurnInProgress()) {
             return false
         }
+        confirmationPending = false
         reasoningEngine.reset()
         reasoningEngine = ReasoningModule.createReasoningEngine(
             context = appContext,
             visionImageCapture = visionImageCapture,
             llmSettings = settings,
             moodContextProvider = moodContextProvider,
+            spatialBindings = spatialBindings,
+            reasoningLogObserver = reasoningLogBuffer,
         )
         engineBodySettingsKey = bodySettingsKey(runBlocking { bodySettingsRepository.load() })
         return true
@@ -1071,6 +1449,7 @@ class ConversationViewModel(
         startNightModeMonitor()
         startMoodMonitor()
         memoryExtractionScheduler.start()
+        activityLogExtractionScheduler.start()
         startHeartbeatIfEnabled()
     }
 
@@ -1108,6 +1487,7 @@ class ConversationViewModel(
             )
         }
         memoryExtractionScheduler.stop()
+        activityLogExtractionScheduler.stop()
     }
 
     private fun showError(message: String) {
@@ -1250,7 +1630,7 @@ class ConversationViewModel(
         viewModelScope.launch {
             when (command) {
                 "show" -> {
-                    val facts = memoryRepository.getAllActive().take(8)
+                    val facts = memoryRepository.getUserFacingActive().take(8)
                     val reply = if (facts.isEmpty()) {
                         "Per ora non ho memorie personali salvate."
                     } else {
@@ -1262,9 +1642,9 @@ class ConversationViewModel(
                     speakMemoryCommandReply(phrase, reply)
                 }
                 "reset" -> {
-                    memoryRepository.resetMemory()
+                    memoryRepository.resetUserFacingMemory()
                     memorySettingsRepository.setLastProcessedEntryCount(0L)
-                    speakMemoryCommandReply(phrase, "Ho cancellato tutta la memoria personale.")
+                    speakMemoryCommandReply(phrase, "Ho cancellato la memoria personale. Gli obiettivi interni del robot restano attivi.")
                 }
                 "forget" -> {
                     val text = phrase.substringAfter("dimentica", "").trim()
@@ -1290,6 +1670,7 @@ class ConversationViewModel(
 
     private suspend fun speakMemoryCommandReply(userPhrase: String, robotReply: String) {
         if (!_uiState.value.isHotwordListeningActive) return
+        HotwordController.beginAssistantTurn()
         val currentLog = _uiState.value.conversationLog
         _uiState.update {
             it.copy(
@@ -1318,10 +1699,40 @@ class ConversationViewModel(
     }
 
     private fun sendPhraseToLlm(phrase: String) {
+        if (confirmationPending) {
+            when (VoiceConfirmationMatcher.parse(phrase)) {
+                VoiceConfirmationDecision.YES -> {
+                    processConfirmationResponse(confirmed = true, phrase = phrase)
+                    return
+                }
+                VoiceConfirmationDecision.NO -> {
+                    processConfirmationResponse(confirmed = false, phrase = phrase)
+                    return
+                }
+                VoiceConfirmationDecision.UNCLEAR -> {
+                    viewModelScope.launch {
+                        deliverAssistantReply(
+                            LlmAssistantReply(
+                                text = "Non ho capito. Dimmi sì per procedere o no per annullare.",
+                                emotion = RobotEmotion.CONFUSED,
+                                imageRequired = false,
+                            ),
+                        )
+                    }
+                    return
+                }
+                VoiceConfirmationDecision.NOT_CONFIRMATION -> {
+                    confirmationPending = false
+                    reasoningEngine.cancelPendingConfirmation()
+                }
+            }
+        }
+
         val turnId = ++llmTurnGeneration
         llmJob?.cancel()
         emotionTransitionJob?.cancel()
         HotwordController.beginAssistantTurn()
+        lastUserPhraseForTopic = phrase
 
         viewModelScope.launch { heartbeatSettingsRepository.recordInteraction() }
         viewModelScope.launch { workingMemoryRepository.recordInteraction() }
@@ -1335,6 +1746,7 @@ class ConversationViewModel(
             }
         }
         applyMoodTriggerForUserPhrase(phrase)
+        handleSpatialIntentBeforeLlm(phrase)
 
         val state = _uiState.value
         conversationLogBeforeCurrentTurn = state.conversationLog
@@ -1424,7 +1836,6 @@ class ConversationViewModel(
         }
 
         val textForTts = MarkdownStripper.strip(text)
-        HotwordController.beginBargeIn(text)
         try {
             ttsRepository.speak(textForTts).onFailure { error ->
                 if (error !is TtsInterruptedException) {
@@ -1432,8 +1843,7 @@ class ConversationViewModel(
                 }
             }
         } finally {
-            // Re-pause STT for the upcoming tool execution / next LLM turn.
-            // The terminal end will be done by speakResponse or finalizeTurnWithoutSpeech.
+            // Keep STT paused for upcoming tool execution / next LLM turn.
             HotwordController.beginAssistantTurn()
         }
 
@@ -1458,6 +1868,7 @@ class ConversationViewModel(
         return when (toolName) {
             "take_photo", "detect_presence" -> messages.capturingImageStatus()
             "open_browser" -> messages.openingBrowserStatus()
+            "dial_phone" -> messages.openingDialerStatus()
             "play_spotify" -> messages.openingSpotifyStatus()
             "set_robot_context" -> messages.settingRobotContextStatus()
             "web_search" -> messages.webSearchStatus()
@@ -1480,6 +1891,25 @@ class ConversationViewModel(
                 }
                 val wasHeartbeat = currentInputIsHeartbeat
                 currentInputIsHeartbeat = false
+
+                if (!wasHeartbeat) {
+                    moodManager.recordTaskCompletedUseful()
+                    recordTopicFromUserTurn()
+                    lastUserPhraseForTopic?.let { phrase ->
+                        viewModelScope.launch {
+                            fireAndCheckRepository.enrichLatestTriggerReason(phrase)
+                        }
+                    }
+                }
+
+                scheduledTaskIdForFireAndCheckCompletion?.let { taskId ->
+                    viewModelScope.launch {
+                        fireAndCheckRepository.completeAfterVerificationHandled(taskId)
+                    }
+                    scheduledTaskIdForFireAndCheckCompletion = null
+                }
+
+                refreshPendingInbox()
 
                 if (result.finalText.isBlank()) {
                     finalizeTurnWithoutSpeech(LlmEmotionMapper.fromLlmValue(result.emotion))
@@ -1514,12 +1944,64 @@ class ConversationViewModel(
 
             is ReasoningResult.NeedsConfirmation -> {
                 currentInputIsHeartbeat = false
+                confirmationPending = true
                 val reply = LlmAssistantReply(
                     text = result.prompt,
                     emotion = null,
                     imageRequired = false,
                 )
                 deliverAssistantReply(reply)
+            }
+        }
+    }
+
+    private fun processConfirmationResponse(confirmed: Boolean, phrase: String) {
+        confirmationPending = false
+        val turnId = ++llmTurnGeneration
+        llmJob?.cancel()
+        emotionTransitionJob?.cancel()
+        HotwordController.beginAssistantTurn()
+        lastUserPhraseForTopic = phrase
+
+        val state = _uiState.value
+        conversationLogBeforeCurrentTurn = state.conversationLog
+        _uiState.update {
+            it.copy(
+                phase = ConversationPhase.Thinking,
+                emotion = RobotEmotion.THINKING,
+                statusMessage = messages.thinkingStatus(),
+                currentUtterance = "",
+                conversationLog = appendUserLine(state.conversationLog, phrase),
+            )
+        }
+
+        llmJob = viewModelScope.launch {
+            try {
+                if (turnId != llmTurnGeneration) return@launch
+                refreshReasoningEngineIfBodySettingsChanged()
+
+                val result = reasoningEngine.continueAfterConfirmation(
+                    confirmed = confirmed,
+                    onIntermediateResponse = { intermediate ->
+                        if (turnId != llmTurnGeneration) return@continueAfterConfirmation
+                        if (!_uiState.value.isHotwordListeningActive) return@continueAfterConfirmation
+                        handleIntermediateResponse(intermediate)
+                    },
+                )
+
+                if (turnId != llmTurnGeneration) return@launch
+                if (!_uiState.value.isHotwordListeningActive) return@launch
+
+                handleReasoningResult(result)
+            } catch (e: CancellationException) {
+                if (turnId == llmTurnGeneration) {
+                    recoverFromCancelledLlmTurn()
+                }
+                throw e
+            } catch (e: Exception) {
+                if (turnId == llmTurnGeneration) {
+                    handleLlmFailure(LlmHttpErrors.formatForLog(e))
+                }
             }
         }
     }
@@ -1547,7 +2029,7 @@ class ConversationViewModel(
 
         conversationLogBeforeCurrentTurn = null
         lastLlmEmotion = emotion ?: lastLlmEmotion
-        lastLlmEmotion?.let { moodManager.applyAssistantDeclaredEmotion(it) }
+        moodManager.setEphemeralExpression(lastLlmEmotion)
         resumeListeningAfterAssistantTurn()
     }
 
@@ -1582,7 +2064,6 @@ class ConversationViewModel(
                     mood = moodManager.currentMood.value,
                     phase = listeningPhase,
                     isNightMode = it.isNightMode,
-                    speakingOverride = lastLlmEmotion,
                 ),
             )
         }
@@ -1608,7 +2089,7 @@ class ConversationViewModel(
 
         lastAssistantResponse = spokenText
         lastLlmEmotion = reply.emotion ?: fallbackEmotion
-        lastLlmEmotion?.let { moodManager.applyAssistantDeclaredEmotion(it) }
+        moodManager.setEphemeralExpression(lastLlmEmotion)
         conversationLogBeforeCurrentTurn = null
 
         viewModelScope.launch {
@@ -1622,7 +2103,7 @@ class ConversationViewModel(
                 conversationLog = appendRobotLine(it.conversationLog, spokenText),
             )
         }
-        refreshUiEmotionFromMood(speakingOverride = lastLlmEmotion)
+        refreshUiEmotionFromMood()
 
         speakResponse(text = spokenText, llmEmotion = lastLlmEmotion)
     }
@@ -1648,18 +2129,18 @@ class ConversationViewModel(
             mood = moodManager.currentMood.value,
             phase = ConversationPhase.Speaking,
             isNightMode = state.isNightMode,
-            speakingOverride = llmEmotion,
         )
+        val speakingIntensity = deriveDisplayIntensity(ConversationPhase.Speaking)
         _uiState.update {
             it.copy(
                 phase = ConversationPhase.Speaking,
                 emotion = speakingEmotion,
+                emotionIntensity = speakingIntensity,
                 statusMessage = messages.speakingStatus(exitPhrase),
             )
         }
 
         val textForTts = MarkdownStripper.strip(text)
-        HotwordController.beginBargeIn(text)
 
         ttsRepository.speak(textForTts).fold(
             onSuccess = {
@@ -1721,7 +2202,7 @@ class ConversationViewModel(
             standbyStatusFor(_uiState.value.isNightMode)
         }
 
-        val intensity = moodManager.currentMood.value.intensity
+        val intensity = deriveDisplayIntensity(listeningPhase)
         _uiState.update {
             it.copy(
                 phase = listeningPhase,
@@ -1820,6 +2301,7 @@ class ConversationViewModel(
             )
         }
         memoryExtractionScheduler.requestRunOnce()
+        activityLogExtractionScheduler.requestRunOnce()
     }
 
     private fun isAssistantTurnInProgress(): Boolean {
@@ -1835,6 +2317,7 @@ class ConversationViewModel(
         when (UserInteractionToneDetector.detect(phrase)) {
             UserInteractionTone.APOLOGY -> moodManager.recordApology()
             UserInteractionTone.POSITIVE -> moodManager.recordPositiveInteraction()
+            UserInteractionTone.NEGATIVE -> moodManager.recordNegativeInteraction()
             UserInteractionTone.NEUTRAL -> moodManager.touchLastInteraction()
         }
     }
@@ -1843,49 +2326,61 @@ class ConversationViewModel(
         mood: RobotMood,
         phase: ConversationPhase,
         isNightMode: Boolean,
-        speakingOverride: RobotEmotion? = null,
-    ): RobotEmotion = when (phase) {
-        is ConversationPhase.Thinking,
-        is ConversationPhase.CapturingImage,
-        -> RobotEmotion.THINKING
-        is ConversationPhase.Speaking -> speakingOverride ?: mood.baseEmotion
-        is ConversationPhase.WaitingForHotword -> resolveStandbyEmotion(mood, isNightMode)
-        is ConversationPhase.ActiveListening -> mood.baseEmotion
-        is ConversationPhase.Idle -> RobotEmotion.NEUTRAL
-        is ConversationPhase.Error -> mood.baseEmotion
-    }
+    ): RobotEmotion = DisplayEmotionResolver.resolve(
+        wellbeing = mood,
+        ephemeral = moodManager.ephemeralExpression.value,
+        phase = phase,
+        isNightMode = isNightMode,
+    )
 
-    private fun resolveStandbyEmotion(mood: RobotMood, isNightMode: Boolean): RobotEmotion {
-        if (isNightMode) {
-            if (mood.baseEmotion == RobotEmotion.SLEEPING || mood.baseEmotion == RobotEmotion.DROWSY) {
-                return mood.baseEmotion
-            }
-            return RobotEmotion.SLEEPING
-        }
-        return mood.baseEmotion
-    }
+    private fun deriveDisplayIntensity(phase: ConversationPhase): Float =
+        DisplayEmotionResolver.resolveIntensity(
+            wellbeing = moodManager.currentMood.value,
+            ephemeral = moodManager.ephemeralExpression.value,
+            phase = phase,
+        )
 
-    private fun refreshUiEmotionFromMood(speakingOverride: RobotEmotion? = null) {
+    private fun refreshUiEmotionFromMood() {
         val state = _uiState.value
         if (!state.isHotwordListeningActive) return
         val phase = state.phase
         if (phase is ConversationPhase.Thinking || phase is ConversationPhase.CapturingImage) return
-        if (phase is ConversationPhase.Speaking && speakingOverride == null) return
 
+        val mood = moodManager.currentMood.value
         val emotion = deriveDisplayEmotion(
-            mood = moodManager.currentMood.value,
+            mood = mood,
             phase = phase,
             isNightMode = state.isNightMode,
-            speakingOverride = speakingOverride,
         )
-        val intensity = moodManager.currentMood.value.intensity
-        if (state.emotion != emotion || state.emotionIntensity != intensity) {
-            _uiState.update { it.copy(emotion = emotion, emotionIntensity = intensity) }
+        val intensity = deriveDisplayIntensity(phase)
+        val moodUi = MoodUiStateMapper.from(
+            mood = mood,
+            ephemeral = moodManager.ephemeralExpression.value,
+            displayEmotion = emotion,
+            displayIntensity = intensity,
+            idleMinutes = moodManager.getIdleMinutes(),
+        )
+        if (
+            state.emotion != emotion ||
+            state.emotionIntensity != intensity ||
+            state.moodUiState != moodUi
+        ) {
+            _uiState.update {
+                it.copy(
+                    emotion = emotion,
+                    emotionIntensity = intensity,
+                    moodUiState = moodUi,
+                )
+            }
         }
     }
 
     private fun standbyEmotionFor(night: Boolean): RobotEmotion =
-        resolveStandbyEmotion(moodManager.currentMood.value, night)
+        deriveDisplayEmotion(
+            mood = moodManager.currentMood.value,
+            phase = ConversationPhase.WaitingForHotword,
+            isNightMode = night,
+        )
 
     private fun standbyStatusFor(night: Boolean): String =
         if (night) messages.waitingForHotwordNight(wakePhrase) else messages.waitingForHotword(wakePhrase)
@@ -1910,7 +2405,10 @@ class ConversationViewModel(
         viewModelScope.launch { moodManager.initialize() }
         moodMonitorJob = viewModelScope.launch {
             var previousMood = moodManager.currentMood.value
-            moodManager.currentMood.collect { current ->
+            combine(
+                moodManager.currentMood,
+                moodManager.ephemeralExpression,
+            ) { mood, ephemeral -> mood to ephemeral }.collect { (current, _) ->
                 if (current != previousMood) {
                     bodyExpressionController.onMoodTransition(
                         previous = previousMood,
@@ -1927,6 +2425,7 @@ class ConversationViewModel(
                 delay(MOOD_RECHECK_MS)
                 moodManager.checkIdleTransition()
                 moodManager.checkDecay()
+                refreshUiEmotionFromMood()
                 workingMemoryRepository.checkAndResetIfNewDay()
                 userAwarenessRepository.checkAndResetIfNewDay()
                 checkProactiveSpeakTimeout()
@@ -1987,6 +2486,19 @@ class ConversationViewModel(
     private fun markProactiveSpeakForTracking(topic: String?) {
         lastProactiveSpeakTime = System.currentTimeMillis()
         lastProactiveTopic = topic
+    }
+
+    private fun recordTopicFromUserTurn() {
+        val phrase = lastUserPhraseForTopic?.trim().orEmpty()
+        lastUserPhraseForTopic = null
+        if (phrase.isBlank()) return
+        val topic = ConversationTopicExtractor.extract(phrase) ?: return
+        viewModelScope.launch {
+            val current = workingMemoryRepository.load()
+            if (!current.hasDiscussedTopic(topic)) {
+                workingMemoryRepository.recordTopic(topic)
+            }
+        }
     }
 
     /**
@@ -2141,6 +2653,16 @@ class ConversationViewModel(
         conversationLogBeforeCurrentTurn = state.conversationLog
 
         currentInputIsHeartbeat = envelope.input is RobotInput.Heartbeat
+        val scheduledTaskId = (envelope.input as? RobotInput.ScheduledTaskFired)?.taskId
+        scheduledTaskIdForFireAndCheckCompletion = if (scheduledTaskId != null &&
+            kotlinx.coroutines.runBlocking {
+                fireAndCheckRepository.shouldCompleteOnReminderHandled(scheduledTaskId)
+            }
+        ) {
+            scheduledTaskId
+        } else {
+            null
+        }
 
         val sourceLabel = when (val input = envelope.input) {
             is RobotInput.Notification -> input.appLabel
@@ -2217,6 +2739,7 @@ class ConversationViewModel(
             HotwordServiceStarter.stop(appContext)
         }
         memoryExtractionScheduler.stop()
+        activityLogExtractionScheduler.stop()
         super.onCleared()
     }
 
@@ -2249,6 +2772,7 @@ data class ConversationMessages(
     val capturingImageStatus: () -> String,
     val openingBrowserStatus: () -> String,
     val openingSpotifyStatus: () -> String,
+    val openingDialerStatus: () -> String,
     val settingRobotContextStatus: () -> String,
     val webSearchStatus: () -> String,
     val fetchUrlStatus: () -> String,

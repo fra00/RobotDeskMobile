@@ -12,26 +12,48 @@ interface MemoryDao {
         """
         SELECT * FROM memory_items
         WHERE isDeleted = 0
+        AND (expiresAt IS NULL OR expiresAt > :now)
         ORDER BY updatedAt DESC
         """
     )
-    suspend fun getAllActive(): List<MemoryItemEntity>
+    suspend fun getAllActive(now: Long = System.currentTimeMillis()): List<MemoryItemEntity>
+
+    @Query(
+        """
+        SELECT * FROM memory_items
+        WHERE isDeleted = 0
+        AND category IN (:categories)
+        AND (expiresAt IS NULL OR expiresAt > :now)
+        ORDER BY updatedAt DESC
+        """
+    )
+    suspend fun getUserFacingActive(
+        categories: List<MemoryCategory>,
+        now: Long = System.currentTimeMillis(),
+    ): List<MemoryItemEntity>
 
     @Query(
         """
         SELECT * FROM memory_items
         WHERE isDeleted = 0
         AND category = :category
+        AND (expiresAt IS NULL OR expiresAt > :now)
         ORDER BY updatedAt DESC
         LIMIT :limit
         """
     )
-    suspend fun getByCategory(category: MemoryCategory, limit: Int): List<MemoryItemEntity>
+    suspend fun getByCategory(
+        category: MemoryCategory,
+        limit: Int,
+        now: Long = System.currentTimeMillis(),
+    ): List<MemoryItemEntity>
 
     @Query(
         """
         SELECT * FROM memory_items
         WHERE isDeleted = 0
+        AND category = :category
+        AND (expiresAt IS NULL OR expiresAt > :now)
         AND (
             value LIKE '%' || :query || '%'
         )
@@ -39,7 +61,26 @@ interface MemoryDao {
         LIMIT :limit
         """
     )
-    suspend fun searchByQuery(query: String, limit: Int): List<MemoryItemEntity>
+    suspend fun searchByQuery(
+        category: MemoryCategory,
+        query: String,
+        limit: Int,
+        now: Long = System.currentTimeMillis(),
+    ): List<MemoryItemEntity>
+
+    @Query(
+        """
+        SELECT * FROM memory_items
+        WHERE isDeleted = 0
+        AND (expiresAt IS NULL OR expiresAt > :now)
+        AND (
+            value LIKE '%' || :query || '%'
+        )
+        ORDER BY confidence DESC, updatedAt DESC
+        LIMIT :limit
+        """
+    )
+    suspend fun searchByQuery(query: String, limit: Int, now: Long = System.currentTimeMillis()): List<MemoryItemEntity>
 
     @Query(
         """
@@ -96,6 +137,14 @@ interface MemoryDao {
 
     @Query(
         """
+        DELETE FROM memory_items
+        WHERE category IN (:categories)
+        """
+    )
+    suspend fun clearByCategories(categories: List<MemoryCategory>)
+
+    @Query(
+        """
         UPDATE memory_items
         SET lastUsedAt = :usedAt
         WHERE id IN (:ids)
@@ -103,16 +152,52 @@ interface MemoryDao {
     )
     suspend fun markUsed(ids: List<Long>, usedAt: Long)
 
-    @Query("SELECT COUNT(*) FROM memory_items WHERE isDeleted = 0")
-    suspend fun countActive(): Int
+    @Query(
+        """
+        SELECT COUNT(*) FROM memory_items
+        WHERE isDeleted = 0
+        AND (expiresAt IS NULL OR expiresAt > :now)
+        """
+    )
+    suspend fun countActive(now: Long = System.currentTimeMillis()): Int
+
+    @Query(
+        """
+        SELECT COUNT(*) FROM memory_items
+        WHERE isDeleted = 0
+        AND category = :category
+        AND (expiresAt IS NULL OR expiresAt > :now)
+        """
+    )
+    suspend fun countActiveByCategory(
+        category: MemoryCategory,
+        now: Long = System.currentTimeMillis(),
+    ): Int
 
     @Query(
         """
         SELECT * FROM memory_items
         WHERE isDeleted = 0
+        AND category NOT IN (:excludeCategories)
+        AND (expiresAt IS NULL OR expiresAt > :now)
         ORDER BY confidence ASC, lastUsedAt ASC, updatedAt ASC
         LIMIT :limit
         """
     )
-    suspend fun lowPriorityForPruning(limit: Int): List<MemoryItemEntity>
+    suspend fun lowPriorityForPruning(
+        excludeCategories: List<MemoryCategory>,
+        limit: Int,
+        now: Long = System.currentTimeMillis(),
+    ): List<MemoryItemEntity>
+
+    @Query(
+        """
+        UPDATE memory_items
+        SET isDeleted = 1, updatedAt = :now
+        WHERE isDeleted = 0
+        AND expiresAt IS NOT NULL
+        AND expiresAt <= :now
+        """
+    )
+    suspend fun softDeleteExpired(now: Long): Int
 }

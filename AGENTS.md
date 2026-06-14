@@ -66,6 +66,7 @@ Le linee guida dettagliate sono in **`.cursor/rules/*.mdc`**:
 5. Per pipeline STT (orchestrator + provider) → `docs/STT_ARCHITECTURE.md`.
 6. Per task schedulati / promemoria vocali → `docs/SCHEDULED_TASKS.md`.
 7. Per memoria utente (estrazione + tool + profili QUERY/VISION/PLAN/LEISURE, DayContext) → `docs/MEMORY.md`.
+7b. Per log attività giornaliere (Log Day, TTL 7 giorni, riepilogo abitudini) → `docs/ACTIVITY_LOG.md`.
 8. Per contesto robot / silenzio notifiche → `docs/ROBOT_CONTEXT.md`.
 9. Per corpo fisico ESP32 (myDeskBody) → `docs/BODY_INTEGRATION.md` + prompt dinamico `body_capabilities_prompt.txt` via `BodyPromptProviderImpl`.
 10. **Per filosofia prompt (capability + vincoli, esempi illustrativi)** → `docs/PROMPT_PHILOSOPHY.md`.
@@ -73,9 +74,10 @@ Le linee guida dettagliate sono in **`.cursor/rules/*.mdc`**:
 12. Per espressioni occhi (campo `emotion` LLM) → `docs/ROBOT_EXPRESSIONS.md`.
 13. **Per visione agente autonomo (heartbeat, OODA, emozioni)** → `docs/Drafts/AUTONOMOUS_AGENT_VISION.md`.
 14. **Per persona cognitiva e policy autonome (spec concettuale + mapping JSON)** → `docs/nextPromptv1.md` (runtime: `llm_system_prompt.txt` + `body_capabilities_prompt.txt`).
-15. **Umore centralizzato (SSOT)** → `MoodManager` + `STATO ROBOT` iniettato in ogni turno LLM; poke occhi e scuse cambiano `RobotMood` (non solo la UI).
-16. Scope minimo: una capability per volta.
-17. Non committare segreti; usare `local.properties.example`.
+15. **Umore a due livelli (SSOT)** → `MoodManager`: **valenza persistente** (±1, solo eventi codificati) in `STATO ROBOT`; **emotion** LLM = espressione effimera (occhi/TTS, TTL ~30s, non modifica valenza).
+16. **Per memoria spaziale / auto-localizzazione stanza** → `docs/SPATIAL_MEMORY.md`.
+17. Scope minimo: una capability per volta.
+18. Non committare segreti; usare `local.properties.example`.
 
 ## Tool disponibili
 
@@ -83,16 +85,26 @@ Le linee guida dettagliate sono in **`.cursor/rules/*.mdc`**:
 |------|----------|-------------|
 | `take_photo` | LOCAL | Scatta foto con la camera |
 | `detect_presence` | LOCAL | Verifica silenziosa presenza alla scrivania (heartbeat) |
+| `analyze_room_scene` | LOCAL | Estrae landmark stanza da una foto (vision) |
+| `match_place` | LOCAL | Confronta landmark con stanze memorizzate |
+| `save_place` | LOCAL | Crea/aggiorna stanza memorizzata |
+| `list_places` | LOCAL | Elenca luoghi attivi |
+| `set_current_place` | LOCAL | Conferma SSOT stanza corrente (dopo match o conferma utente) |
 | `get_weather` | REMOTE | Meteo da OpenWeatherMap |
 | `web_search` | REMOTE | Ricerca web via SearXNG JSON (config: `SEARX_BASE_URL`) |
 | `fetch_url` | REMOTE | Legge pagina web come testo (OkHttp + Jsoup) |
 | `open_browser` | LOCAL | Apre URL nel browser |
+| `resolve_phone_contact` | LOCAL | Cerca numero in rubrica/memorie (alias mamma/madre); prima di `dial_phone` |
+| `dial_phone` | LOCAL | Apre dialer con numero precompilato (utente tap Chiama); pausa STT in chiamata se permesso telefono |
+| `resolve_whatsapp_target` | LOCAL | Cerca chat WhatsApp (contatto/gruppo) in rubrica/memorie |
+| `send_whatsapp` | LOCAL | Apre WhatsApp con messaggio precompilato (utente tap Invia) |
 | `play_spotify` | LOCAL | Apre Spotify con ricerca (artista, genere, musica) |
 | `set_robot_context` | LOCAL | Contesto robot (lavoro/call/riunione) e silenzio notifiche robot-only |
 | `set_reminder` | LOCAL | Schedula task (annuncio vocale + notifica a scadenza) |
 | `get_reminders` | LOCAL | Elenca promemoria attivi |
 | `delete_reminder` | LOCAL | Cancella promemoria per id |
-| `save_memory` | LOCAL | Salva fatto utente in Room |
+| `save_memory` | LOCAL | Salva fatto utente (IDENTITY/PREFERENCE/ROUTINE/FACT) o memoria autonoma heartbeat (OBSERVATION/INTENT/PATTERN + `ttl_days`) |
+| `log_daily_activity` | LOCAL | Registra attività effimera (pasto, passeggiata, pausa) nel log 7 giorni |
 | `list_memories` | LOCAL | Elenca memorie attive |
 | `delete_memory` | LOCAL | Dimentica per id o argomento (match fuzzy, più memorie correlate) |
 | `add_list_item` | LOCAL | Aggiunge nota/todo/spesa |
@@ -100,6 +112,7 @@ Le linee guida dettagliate sono in **`.cursor/rules/*.mdc`**:
 | `update_list_item` | LOCAL | Aggiorna testo o checked |
 | `delete_list_item` | LOCAL | Rimuove elemento per id o testo |
 | `set_volume` | LOCAL | Controlla volume media |
+| `make_light` | LOCAL | Modalità lampada: schermo bianco luminoso o ripristino tema scuro |
 | `show_notification` | LOCAL | Mostra notifica di sistema |
 | `move_body_joint` | HARDWARE | Muove un joint del corpo ESP32 (myDeskBody) |
 | `move_body_joints` | HARDWARE | Muove più joint del corpo in un comando |

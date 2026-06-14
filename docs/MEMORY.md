@@ -40,8 +40,8 @@ In multi-step tool chains, when `take_photo` returns an image the system prompt 
 
 | Tool | Role |
 |------|------|
-| `save_memory` | Upsert fact (`value`, optional `category`, `confidence`) |
-| `list_memories` | List/filter/search active memories (fuzzy `query`); answer must use `value` fields |
+| `save_memory` | Upsert fact (`value`, optional `category`, `confidence`, optional `ttl_days` for autonomy) |
+| `list_memories` | List/filter/search active memories (default: user-facing only; use `category` for OBSERVATION/INTENT/PATTERN) |
 | `delete_memory` | By `memory_id` or by **topic** `query` (fuzzy match; removes all related memories) |
 
 ### Forgetting by topic
@@ -62,7 +62,23 @@ Impostazioni → Memoria: enable extraction, interval, **editable list** of all 
 
 ## Categories
 
-`IDENTITY`, `PREFERENCE`, `ROUTINE`, `FACT`
+**User-facing** (visible in settings, "cosa sai di me", prompt injection): `IDENTITY`, `PREFERENCE`, `ROUTINE`, `FACT`
+
+**Robot-internal** (heartbeat autonomy only; hidden from user UI and voice shortcuts):
+
+| Category | Default TTL | Purpose |
+|----------|-------------|---------|
+| `OBSERVATION` | 7 days | Dated contextual notes across heartbeats |
+| `INTENT` | 1 day | Active autonomous monitoring goal (max 3) |
+| `PATTERN` | 30 days | Emerging pattern not yet ROUTINE |
+
+Rows with `expiresAt` are pruned automatically before each heartbeat tick. `reset memoria` / settings reset clears **user-facing** rows only; robot-internal INTENT/OBSERVATION remain until TTL or explicit `delete_memory`.
+
+### Heartbeat injection
+
+`HeartbeatContextBuilder` injects active INTENT, recent OBSERVATION, and active PATTERN into `[SYSTEM_INPUT: heartbeat]` as `OBIETTIVI ATTIVI`, `OSSERVAZIONI RECENTI`, and `PATTERN EMERGENTI` — the LLM should read these blocks without calling `list_memories` every tick.
+
+`weekly_reflection` should save proactivity tuning as `PATTERN` (robot-internal), not `PREFERENCE`. Reserve `PREFERENCE` for genuine lasting user tastes.
 
 ## Storage channel semantics (when the user says "ricorda")
 
@@ -86,7 +102,7 @@ Constraints (not a flowchart): one-off *"domani devo fare X"* → **not** `save_
 
 ### Relative dates at save time
 
-When list items or memories are persisted, [`RelativeDateNormalizer`](../app/src/main/java/com/example/mydeskrobot/domain/time/RelativeDateNormalizer.kt) resolves `oggi`, `domani`, `dopodomani`, and bare weekday names to an absolute Italian date (e.g. `il 3 giugno 2026`). Recurring routines keep `ogni martedì` unchanged. Background extraction also skips one-off `devo …` facts that belong in TODO lists.
+When list items or memories are persisted, [`RelativeDateNormalizer`](../app/src/main/java/com/example/mydeskrobot/domain/time/RelativeDateNormalizer.kt) resolves `oggi`, `domani`, `dopodomani`, and **bare** weekday names to an absolute Italian date (e.g. `il 3 giugno 2026`). Recurring routines keep weekday as subject: `ogni martedì`, **`il venerdì`**, **`di venerdì`** (every that day), `venerdì di solito`, **weekday ranges** (`dal lunedì al sabato`, `da martedì a venerdì`, `tra/fra … e …`, `fino al …` when another weekday precedes). Example: "il venerdì esco" and "dal lunedì al sabato lavora" stay as-is; bare "venerdì fai questo" becomes `il 12 giugno 2026 fai questo` if today is that Friday.
 
 Prompt details: `llm_system_prompt.txt` section **STORAGE CHANNEL SEMANTICS**.
 

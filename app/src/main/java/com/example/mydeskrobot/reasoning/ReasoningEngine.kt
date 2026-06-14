@@ -50,6 +50,11 @@ interface ReasoningEngine {
     ): ReasoningResult
 
     /**
+     * Clears a pending confirmation without executing the tool (e.g. user changed topic).
+     */
+    fun cancelPendingConfirmation()
+
+    /**
      * Process a system input (notification, hardware button, sensor).
      * Unlike user input, this comes from the system rather than voice.
      * 

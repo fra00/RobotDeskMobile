@@ -18,6 +18,10 @@ import com.example.mydeskrobot.domain.speech.WakePhraseMatcher
 import com.example.mydeskrobot.domain.vision.VisionImageCapture
 import com.example.mydeskrobot.integration.ReasoningModule
 import com.example.mydeskrobot.integration.mood.DelegatingMoodContextProvider
+import com.example.mydeskrobot.data.spatial.SpatialContextRepository
+import com.example.mydeskrobot.data.spatial.SpatialPlaceRepository
+import com.example.mydeskrobot.integration.spatial.DelegatingSpatialContextProvider
+import com.example.mydeskrobot.integration.spatial.SpatialRuntimeBindings
 import kotlinx.coroutines.runBlocking
 
 class ConversationViewModelFactory(
@@ -111,6 +115,9 @@ class ConversationViewModelFactory(
             openingSpotifyStatus = {
                 context.getString(R.string.status_opening_spotify)
             },
+            openingDialerStatus = {
+                context.getString(R.string.status_opening_dialer)
+            },
             settingRobotContextStatus = {
                 context.getString(R.string.status_setting_robot_context)
             },
@@ -178,11 +185,19 @@ class ConversationViewModelFactory(
         val llmSettingsRepository = LlmSettingsRepositoryImpl.create(appContext)
         val initialLlmSettings = runBlocking { llmSettingsRepository.load() }
         val moodContextProvider = DelegatingMoodContextProvider()
+        val spatialBindings = SpatialRuntimeBindings(
+            placeRepository = SpatialPlaceRepository.create(appContext),
+            contextRepository = SpatialContextRepository(appContext),
+            contextProvider = DelegatingSpatialContextProvider(),
+        )
+        val reasoningLogBuffer = ReasoningLogBuffer()
         val reasoningEngine = ReasoningModule.createReasoningEngine(
             context = appContext,
             visionImageCapture = visionImageCapture,
             llmSettings = initialLlmSettings,
             moodContextProvider = moodContextProvider,
+            spatialBindings = spatialBindings,
+            reasoningLogObserver = reasoningLogBuffer,
         )
 
         return ConversationViewModel(
@@ -200,6 +215,8 @@ class ConversationViewModelFactory(
             reasoningEngine = reasoningEngine,
             llmSettingsRepository = llmSettingsRepository,
             moodContextProvider = moodContextProvider,
+            spatialBindings = spatialBindings,
+            reasoningLogBuffer = reasoningLogBuffer,
         ) as T
     }
 

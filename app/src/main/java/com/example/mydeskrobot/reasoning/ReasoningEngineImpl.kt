@@ -27,7 +27,10 @@ class ReasoningEngineImpl(
     private val bodyCapabilitiesProvider: BodyCapabilitiesProvider? = null,
     private val robotContextProvider: RobotContextProvider? = null,
     private val moodContextProvider: MoodContextProvider? = null,
+    private val spatialContextProvider: SpatialContextProvider? = null,
+    private val activityContextProvider: ActivityContextProvider? = null,
     maxChainSteps: Int = 10,
+    private val reasoningLogObserver: ReasoningLogObserver = NoOpReasoningLogObserver,
 ) : ReasoningEngine {
 
     companion object {
@@ -50,6 +53,7 @@ class ReasoningEngineImpl(
                     refreshSystemPromptForVision(orchestrator.getOriginalUserText())
                 }
             },
+            reasoningLogObserver = reasoningLogObserver,
         )
     }
     
@@ -81,6 +85,10 @@ class ReasoningEngineImpl(
         onIntermediateResponse: suspend (IntermediateResponse) -> Unit,
     ): ReasoningResult {
         return orchestrator.continueAfterConfirmation(confirmed, onIntermediateResponse)
+    }
+
+    override fun cancelPendingConfirmation() {
+        orchestrator.cancelPendingConfirmation()
     }
 
     override suspend fun processSystemInput(
@@ -149,7 +157,9 @@ class ReasoningEngineImpl(
             .orEmpty()
         val dayContext = dayContextProvider?.buildContextSection(userText).orEmpty()
         val robotContext = robotContextProvider?.buildContextSection().orEmpty()
+        val spatialContext = spatialContextProvider?.buildContextSection().orEmpty()
         val moodContext = moodContextProvider?.buildContextSection().orEmpty()
+        val activityContext = activityContextProvider?.buildPromptSection().orEmpty()
 
         return buildString {
             append(toolPrompt)
@@ -165,9 +175,17 @@ class ReasoningEngineImpl(
                 append("\n\n")
                 append(dayContext)
             }
+            if (activityContext.isNotBlank()) {
+                append("\n\n")
+                append(activityContext)
+            }
             if (robotContext.isNotBlank()) {
                 append("\n\n")
                 append(robotContext)
+            }
+            if (spatialContext.isNotBlank()) {
+                append("\n\n")
+                append(spatialContext)
             }
             if (moodContext.isNotBlank()) {
                 append("\n\n")

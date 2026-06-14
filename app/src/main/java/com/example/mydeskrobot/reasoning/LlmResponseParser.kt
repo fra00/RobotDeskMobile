@@ -19,6 +19,8 @@ data class ParsedLlmResponse(
     val emotion: String? = null,
     val action: LlmAction = LlmAction.None,
     val speakConfidence: Double? = null,
+    /** Internal chain-of-thought; never spoken — preserved in raw history for multi-turn reasoning. */
+    val think: String? = null,
 )
 
 /**
@@ -26,6 +28,7 @@ data class ParsedLlmResponse(
  */
 internal data class LlmResponseJson(
     val reply: String? = null,
+    val think: String? = null,
     val text: String? = null,
     val emotion: String? = null,
     @Json(name = "imageRequired")
@@ -80,6 +83,7 @@ class LlmResponseParser(
                     emotion = json.emotion?.trim()?.lowercase(),
                     action = parseAction(json),
                     speakConfidence = json.speakConfidence?.coerceIn(0.0, 1.0),
+                    think = json.think?.trim()?.takeIf { it.isNotBlank() },
                 )
             }
             // JSON extraction found something but Moshi parsing failed

@@ -47,6 +47,10 @@ Timed contexts use `AlarmManager` → `RobotContextExpiryReceiver`.
 
 `RobotContextProvider` appends an **ACTIVE ROBOT CONTEXT** block to the system prompt (with memory and date/time).
 
+## UI indicator
+
+When profile is not `NORMAL`, a small icon appears **below** the STT standby icon (top-left): briefcase (work), phone (call), groups (meeting), focus. Hidden in normal mode.
+
 ## Files
 
 - `reasoning/model/RobotContextState.kt`

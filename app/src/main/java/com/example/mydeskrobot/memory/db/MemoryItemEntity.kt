@@ -12,6 +12,7 @@ import androidx.room.PrimaryKey
         Index(value = ["isDeleted"]),
         Index(value = ["updatedAt"]),
         Index(value = ["lastUsedAt"]),
+        Index(value = ["expiresAt"]),
     ],
 )
 data class MemoryItemEntity(
@@ -25,4 +26,6 @@ data class MemoryItemEntity(
     val lastUsedAt: Long = 0L,
     val sourceMessageId: Long,
     val isDeleted: Boolean = false,
+    /** Epoch millis when this row expires; null = permanent user memory. */
+    val expiresAt: Long? = null,
 )

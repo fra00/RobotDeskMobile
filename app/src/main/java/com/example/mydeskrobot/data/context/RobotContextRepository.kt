@@ -17,8 +17,16 @@ import com.example.mydeskrobot.integration.context.RobotContextExpiryReceiver
 import com.example.mydeskrobot.reasoning.model.NotificationMode
 import com.example.mydeskrobot.reasoning.model.RobotContextState
 import com.example.mydeskrobot.reasoning.model.RobotProfile
+import androidx.datastore.preferences.core.Preferences
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.flow.merge
 import java.util.Calendar
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -33,6 +41,7 @@ class RobotContextRepository(
 
     companion object {
         private const val TAG = "RobotContextRepo"
+        private const val EFFECTIVE_STATE_TICK_MS = 15_000L
 
         private val KEY_PROFILE = stringPreferencesKey("profile")
         private val KEY_NOTIFICATION_MODE = stringPreferencesKey("notification_mode")
@@ -43,32 +52,37 @@ class RobotContextRepository(
         private val KEY_ALARM_REQUEST_CODE = intPreferencesKey("alarm_request_code")
     }
 
-    suspend fun getState(): RobotContextState {
-        val stored = dataStore.data.map { prefs ->
-            RobotContextState(
-                profile = parseProfile(prefs[KEY_PROFILE]),
-                notificationMode = parseNotificationMode(prefs[KEY_NOTIFICATION_MODE]),
-                sessionOnly = prefs[KEY_SESSION_ONLY] ?: false,
-                validUntilEpochMs = prefs[KEY_VALID_UNTIL],
-                windowStartMinutes = prefs[KEY_WINDOW_START],
-                windowEndMinutes = prefs[KEY_WINDOW_END],
-            )
-        }.first()
-        return RobotContextPolicy.resolveEffectiveState(stored)
+    suspend fun getState(): RobotContextState =
+        RobotContextPolicy.resolveEffectiveState(getStoredState())
+
+    suspend fun getStoredState(): RobotContextState =
+        dataStore.data.map { prefs -> readStoredState(prefs) }.first()
+
+    /**
+     * Emits effective robot context when storage changes and periodically (time windows / expiry).
+     */
+    fun observeEffectiveState(): Flow<RobotContextState> {
+        val fromStore = dataStore.data.map { prefs -> readStoredState(prefs) }
+        val ticker = flow {
+            while (currentCoroutineContext().isActive) {
+                delay(EFFECTIVE_STATE_TICK_MS)
+                emit(dataStore.data.first().let { readStoredState(it) })
+            }
+        }
+        return merge(fromStore, ticker)
+            .map { stored -> RobotContextPolicy.resolveEffectiveState(stored) }
+            .distinctUntilChanged()
     }
 
-    suspend fun getStoredState(): RobotContextState {
-        return dataStore.data.map { prefs ->
-            RobotContextState(
-                profile = parseProfile(prefs[KEY_PROFILE]),
-                notificationMode = parseNotificationMode(prefs[KEY_NOTIFICATION_MODE]),
-                sessionOnly = prefs[KEY_SESSION_ONLY] ?: false,
-                validUntilEpochMs = prefs[KEY_VALID_UNTIL],
-                windowStartMinutes = prefs[KEY_WINDOW_START],
-                windowEndMinutes = prefs[KEY_WINDOW_END],
-            )
-        }.first()
-    }
+    private fun readStoredState(prefs: Preferences): RobotContextState =
+        RobotContextState(
+            profile = parseProfile(prefs[KEY_PROFILE]),
+            notificationMode = parseNotificationMode(prefs[KEY_NOTIFICATION_MODE]),
+            sessionOnly = prefs[KEY_SESSION_ONLY] ?: false,
+            validUntilEpochMs = prefs[KEY_VALID_UNTIL],
+            windowStartMinutes = prefs[KEY_WINDOW_START],
+            windowEndMinutes = prefs[KEY_WINDOW_END],
+        )
 
     suspend fun setState(state: RobotContextState) {
         cancelScheduledExpiry()

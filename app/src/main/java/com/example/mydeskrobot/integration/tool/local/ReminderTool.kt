@@ -2,6 +2,7 @@ package com.example.mydeskrobot.integration.tool.local
 
 import android.content.Context
 import android.util.Log
+import com.example.mydeskrobot.data.check.FireAndCheckRepository
 import com.example.mydeskrobot.data.scheduled.ScheduledTaskAlarmScheduler
 import com.example.mydeskrobot.data.scheduled.ScheduledTaskRepository
 import com.example.mydeskrobot.integration.tool.Tool
@@ -18,6 +19,7 @@ import java.util.Calendar
 class ReminderTool(
     private val context: Context,
     private val repository: ScheduledTaskRepository = ScheduledTaskRepository.create(context),
+    private val fireAndCheckRepository: FireAndCheckRepository = FireAndCheckRepository.create(context),
 ) : Tool {
 
     override val name: String = "set_reminder"
@@ -53,6 +55,24 @@ class ReminderTool(
                     description = "Minute 0-59 with hour",
                     required = false,
                 ),
+                ToolParameter(
+                    name = "fire_and_check",
+                    type = "boolean",
+                    description = "True for fire-and-check loops (wake-up, state verification)",
+                    required = false,
+                ),
+                ToolParameter(
+                    name = "check_goal",
+                    type = "string",
+                    description = "What to verify later (e.g. user is awake, still at desk)",
+                    required = false,
+                ),
+                ToolParameter(
+                    name = "trigger_reason",
+                    type = "string",
+                    description = "User phrase or reason that started this fire-and-check",
+                    required = false,
+                ),
             ),
             returns = "success, reminder_id, scheduled_time",
             example = """{"name": "set_reminder", "params": {"message": "Prendi le medicine", "delay_minutes": 10}, "await_result": true}""",
@@ -80,6 +100,13 @@ class ReminderTool(
             val scheduledTime = repository.formatScheduledTime(triggerMillis)
             Log.i(TAG, "Scheduled task id=$taskId at $scheduledTime: $message")
 
+            trackFireAndCheck(
+                reminderId = taskId,
+                message = message,
+                triggerMillis = triggerMillis,
+                params = invocation.params,
+            )
+
             ToolResult.Success(
                 data = mapOf(
                     "success" to true,
@@ -102,6 +129,38 @@ class ReminderTool(
             )
         }
     }
+
+    private suspend fun trackFireAndCheck(
+        reminderId: Long,
+        message: String,
+        triggerMillis: Long,
+        params: Map<String, Any?>,
+    ) {
+        if (FireAndCheckRepository.isVerificationMessage(message)) {
+            fireAndCheckRepository.onVerificationReminderScheduled(
+                verificationReminderId = reminderId,
+                verificationMessage = message,
+                verificationDueAtMillis = triggerMillis,
+            )
+            return
+        }
+
+        fireAndCheckRepository.onPrimaryReminderScheduled(
+            reminderId = reminderId,
+            primaryMessage = message,
+            primaryDueAtMillis = triggerMillis,
+            checkGoal = params["check_goal"]?.toString(),
+            triggerReason = params["trigger_reason"]?.toString(),
+            fireAndCheck = parseBoolean(params["fire_and_check"]),
+        )
+    }
+
+    private fun parseBoolean(raw: Any?): Boolean =
+        when (raw) {
+            is Boolean -> raw
+            is String -> raw.equals("true", ignoreCase = true)
+            else -> false
+        }
 
     private fun computeTriggerMillis(params: Map<String, Any?>): Long? {
         val delayMinutes = (params["delay_minutes"] as? Number)?.toInt()

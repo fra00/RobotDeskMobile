@@ -49,6 +49,9 @@ class MemoryPromptContextProviderImpl(
             MemoryRetrievalProfile.VISION -> {
                 addAll(memoryRepository.getVisionCatalog(limit = 18))
             }
+            MemoryRetrievalProfile.SPATIAL -> {
+                addAll(memoryRepository.getVisionCatalog(limit = 12))
+            }
             MemoryRetrievalProfile.LEISURE -> {
                 addAll(memoryRepository.getByCategories(listOf(MemoryCategory.PREFERENCE), limitPerCategory = 8))
                 addAll(memoryRepository.searchRelevant(userText, limit = 4))

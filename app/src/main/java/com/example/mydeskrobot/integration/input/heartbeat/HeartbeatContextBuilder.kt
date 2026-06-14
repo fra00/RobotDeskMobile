@@ -1,5 +1,6 @@
 package com.example.mydeskrobot.integration.input.heartbeat
 
+import com.example.mydeskrobot.data.activitylog.ActivityLogRepository
 import com.example.mydeskrobot.data.scheduled.ScheduledTaskRepository
 import com.example.mydeskrobot.domain.awareness.UserAwarenessState
 import com.example.mydeskrobot.domain.memory.WorkingMemory
@@ -28,6 +29,9 @@ class HeartbeatContextBuilder(
     private val currentMoodProvider: (suspend () -> RobotMood?)? = null,
     private val workingMemoryProvider: (suspend () -> WorkingMemory?)? = null,
     private val userAwarenessProvider: (suspend () -> UserAwarenessState?)? = null,
+    private val activityLogRepository: ActivityLogRepository? = null,
+    private val spatialSnapshotProvider: (suspend () -> com.example.mydeskrobot.domain.spatial.SpatialContextSnapshot)? = null,
+    private val knownPlacesProvider: (suspend () -> List<String>)? = null,
 ) {
     suspend fun build(): RobotInput.Heartbeat {
         val now = System.currentTimeMillis()
@@ -43,18 +47,34 @@ class HeartbeatContextBuilder(
         val pendingReminders = scheduledTaskRepository.listPending()
         val routines = memoryRepository.getByCategory(MemoryCategory.ROUTINE, MAX_ROUTINES)
         val routineStrings = routines.map { it.value }
+        val activeIntents = memoryRepository.getActiveIntents(MAX_INTENTS).map { it.value }
+        val recentObservations = memoryRepository.getRecentObservations(MAX_OBSERVATIONS).map { it.value }
+        val activePatterns = memoryRepository.getActivePatterns(MAX_PATTERNS).map { it.value }
 
         val dayOfWeek = formatDayOfWeek(calendar)
 
         val mood = currentMoodProvider?.invoke()
         val moodLabel = mood?.baseEmotion?.name?.lowercase()
         val moodIntensity = mood?.intensity
+        val moodValence = mood?.valence
 
         val workingMemory = workingMemoryProvider?.invoke()
 
         val userAwareness = userAwarenessProvider?.invoke()
         val userMood = userAwareness?.inferredMood?.name?.lowercase()
         val userKnows = userAwareness?.userProbablyKnows?.toList()?.take(MAX_USER_KNOWS)
+
+        val habitSummary = activityLogRepository?.getHabitSummary()?.summaryText
+        val recentActivities = activityLogRepository
+            ?.getRecentForContext(maxEvents = MAX_RECENT_ACTIVITIES, daysBack = 1)
+            ?.map { event ->
+                val time = activityTimeFormat.format(event.timestampMs)
+                "$time ${event.label}"
+            }
+            .orEmpty()
+
+        val spatialSnapshot = spatialSnapshotProvider?.invoke()
+        val knownPlaces = knownPlacesProvider?.invoke().orEmpty()
 
         return RobotInput.Heartbeat(
             minutesSinceLastInteraction = minutesSinceLastInteraction,
@@ -65,12 +85,21 @@ class HeartbeatContextBuilder(
             relevantRoutines = routineStrings,
             moodLabel = moodLabel,
             moodIntensity = moodIntensity,
+            moodValence = moodValence,
             todayInteractions = workingMemory?.todayInteractions ?: 0,
             proactiveSpeaksToday = workingMemory?.proactiveSpeaksToday ?: 0,
             topicsDiscussedToday = workingMemory?.topicsDiscussedToday ?: emptyList(),
             minutesSinceLastProactiveSpeak = workingMemory?.minutesSinceLastProactiveSpeak(now),
             userMood = userMood,
             userProbablyKnows = userKnows ?: emptyList(),
+            activeIntents = activeIntents,
+            recentObservations = recentObservations,
+            activePatterns = activePatterns,
+            habitProfileSummary = habitSummary,
+            recentDailyActivities = recentActivities,
+            currentPlaceLabel = spatialSnapshot?.currentPlaceLabel,
+            placeConfidence = spatialSnapshot?.confidence?.takeIf { it > 0f },
+            knownPlaces = knownPlaces,
             timestamp = now,
         )
     }
@@ -83,5 +112,10 @@ class HeartbeatContextBuilder(
     companion object {
         private const val MAX_ROUTINES = 5
         private const val MAX_USER_KNOWS = 10
+        private const val MAX_INTENTS = 3
+        private const val MAX_OBSERVATIONS = 8
+        private const val MAX_PATTERNS = 3
+        private const val MAX_RECENT_ACTIVITIES = 4
+        private val activityTimeFormat = SimpleDateFormat("HH:mm", Locale.ITALY)
     }
 }

@@ -1,6 +1,8 @@
 package com.example.mydeskrobot.presentation.conversation
 
+import com.example.mydeskrobot.domain.check.FireAndCheckEntry
 import com.example.mydeskrobot.domain.model.RobotEmotion
+import com.example.mydeskrobot.reasoning.model.RobotProfile
 
 data class ConversationUiState(
     val phase: ConversationPhase = ConversationPhase.Idle,
@@ -10,11 +12,21 @@ data class ConversationUiState(
     val statusMessage: String = "",
     /** Dialogo: righe Tu / Robot. */
     val conversationLog: String = "",
+    /** Debug trace: LLM think, tools, fire-and-check vs fire-and-forget. */
+    val reasoningLogText: String = "",
+    /** Persistent wellbeing + ephemeral expression snapshot for debug dialog. */
+    val moodUiState: MoodUiState = MoodUiState(),
     /** Frase in costruzione (prima dei 5s di pausa). */
     val currentUtterance: String = "",
     val wakePhraseHint: String = "",
     val exitPhraseHint: String = "",
     val isHotwordListeningActive: Boolean = false,
+    /** Active robot context profile (WORK, CALL, …); NORMAL when no special context. */
+    val robotContextProfile: RobotProfile = RobotProfile.NORMAL,
+    /** Pending fire-and-check verification loops. */
+    val pendingFireAndChecks: List<FireAndCheckEntry> = emptyList(),
+    /** Pending reminders and deferred notifications. */
+    val pendingInboxItems: List<PendingInboxItemUi> = emptyList(),
     /** True tra mezzanotte e l'ora di fine notte configurata (standby dormiente). */
     val isNightMode: Boolean = false,
     /** True while background LLM scans conversation log for durable user memories. */

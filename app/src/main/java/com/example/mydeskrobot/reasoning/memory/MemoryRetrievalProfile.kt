@@ -8,6 +8,8 @@ enum class MemoryRetrievalProfile {
     QUERY,
     /** Photo / vision / look-around intent. */
     VISION,
+    /** Room localization, spatial memory, where am I. */
+    SPATIAL,
     /** Agenda, todos, reminders for today. */
     PLAN,
     /** Suggestions, hobbies, what to watch/do for fun. */

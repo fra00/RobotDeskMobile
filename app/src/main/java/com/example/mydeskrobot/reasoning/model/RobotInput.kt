@@ -77,6 +77,8 @@ sealed class RobotInput {
         val dayOfWeek: String,
         val pendingRemindersCount: Int,
         val relevantRoutines: List<String>,
+        /** Current autonomous mood valence (-1…+1 wellbeing). */
+        val moodValence: Float? = null,
         /** Current autonomous mood of the robot (e.g. "bored", "happy"). */
         val moodLabel: String? = null,
         /** Current mood intensity (0.0–1.0). */
@@ -93,6 +95,22 @@ sealed class RobotInput {
         val userMood: String? = null,
         /** Topics the user probably already knows about. */
         val userProbablyKnows: List<String> = emptyList(),
+        /** Active autonomous goals (INTENT category), injected by the app. */
+        val activeIntents: List<String> = emptyList(),
+        /** Recent contextual observations (OBSERVATION category), injected by the app. */
+        val recentObservations: List<String> = emptyList(),
+        /** Emerging behavior patterns (PATTERN category), injected by the app. */
+        val activePatterns: List<String> = emptyList(),
+        /** Short habit profile from daily activity log (last 7 days). */
+        val habitProfileSummary: String? = null,
+        /** Recent ephemeral activities (today / yesterday). */
+        val recentDailyActivities: List<String> = emptyList(),
+        /** Current room label at desk (spatial memory). */
+        val currentPlaceLabel: String? = null,
+        /** Confidence for current room (0.0–1.0). */
+        val placeConfidence: Float? = null,
+        /** Known memorized places (short list). */
+        val knownPlaces: List<String> = emptyList(),
         override val timestamp: Long = System.currentTimeMillis(),
     ) : RobotInput() {
         override val sourceId: String = "heartbeat"

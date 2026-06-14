@@ -6,7 +6,10 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -14,7 +17,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.History
+import androidx.compose.material.icons.outlined.SentimentSatisfied
 import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.Terminal
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -35,24 +40,35 @@ import com.example.mydeskrobot.R
 import com.example.mydeskrobot.domain.interaction.EyePokeSide
 import com.example.mydeskrobot.domain.model.RobotEmotion
 import com.example.mydeskrobot.presentation.conversation.ConversationPhase
+import com.example.mydeskrobot.reasoning.model.RobotProfile
 import com.example.mydeskrobot.presentation.conversation.ConversationUiEvent
 import com.example.mydeskrobot.presentation.conversation.ConversationUiState
 import com.example.mydeskrobot.presentation.settings.SettingsUiState
 import com.example.mydeskrobot.ui.components.BodySettingsDialog
 import com.example.mydeskrobot.ui.components.ConversationHistoryDialog
+import com.example.mydeskrobot.ui.components.ReasoningLogDialog
 import com.example.mydeskrobot.ui.components.HeartbeatSettingsDialog
 import com.example.mydeskrobot.ui.components.LlmSettingsDialog
 import com.example.mydeskrobot.ui.components.MicButton
 import com.example.mydeskrobot.ui.components.MemoryExtractingIndicator
+import com.example.mydeskrobot.ui.components.MoodStatusDialog
 import com.example.mydeskrobot.ui.components.ListSettingsDialog
+import com.example.mydeskrobot.ui.components.LogDaySettingsDialog
 import com.example.mydeskrobot.ui.components.MemorySettingsDialog
+import com.example.mydeskrobot.ui.components.SpatialSettingsDialog
 import com.example.mydeskrobot.ui.components.PhraseInfoCorner
 import com.example.mydeskrobot.ui.components.NotificationSettingsDialog
+import com.example.mydeskrobot.ui.components.PendingInboxDialog
+import com.example.mydeskrobot.ui.components.PendingInboxIndicator
 import com.example.mydeskrobot.ui.components.SettingsDialog
 import com.example.mydeskrobot.ui.components.SttSettingsDialog
 import com.example.mydeskrobot.ui.components.VoskModelDownloadDialog
 import com.example.mydeskrobot.domain.speech.SttProvider
 import com.example.mydeskrobot.ui.components.RobotEyes
+import com.example.mydeskrobot.domain.check.FireAndCheckEntry
+import com.example.mydeskrobot.ui.components.FireAndCheckDetailDialog
+import com.example.mydeskrobot.ui.components.FireAndCheckIndicator
+import com.example.mydeskrobot.ui.components.RobotContextProfileIndicator
 import com.example.mydeskrobot.ui.components.StandbyStatusIndicator
 import com.example.mydeskrobot.ui.components.DrowsyMoodIndicator
 import com.example.mydeskrobot.ui.components.HappyMoodIndicator
@@ -68,8 +84,23 @@ fun RobotScreen(
     modifier: Modifier = Modifier,
 ) {
     var showHistory by remember { mutableStateOf(false) }
+    var showReasoningLog by remember { mutableStateOf(false) }
+    var showMoodStatus by remember { mutableStateOf(false) }
+    var selectedFireAndCheck by remember { mutableStateOf<FireAndCheckEntry?>(null) }
+    var showPendingInbox by remember { mutableStateOf(false) }
     val showHistoryButton = uiState.isHotwordListeningActive || uiState.displayText.isNotBlank()
+    val showReasoningLogButton =
+        uiState.isHotwordListeningActive || uiState.reasoningLogText.isNotBlank()
+    val showMoodButton = uiState.isHotwordListeningActive
     val layout = rememberScreenLayout()
+    val topDebugIconStackOffset = layout.cornerIconButtonSize + 4.dp
+    val topDebugButtonCount = listOf(
+        showHistoryButton,
+        showReasoningLogButton,
+        showMoodButton,
+    ).count { it }
+    val reasoningLogStackIndex = if (showHistoryButton) 1 else 0
+    val moodStackIndex = (if (showHistoryButton) 1 else 0) + (if (showReasoningLogButton) 1 else 0)
     val backgroundTapInteraction = remember { MutableInteractionSource() }
     val canTapBackgroundToWake =
         uiState.isHotwordListeningActive &&
@@ -166,22 +197,44 @@ fun RobotScreen(
             }
         }
 
-        StandbyStatusIndicator(
-            phase = uiState.phase,
-            isHotwordListeningActive = uiState.isHotwordListeningActive,
-            emotion = uiState.emotion,
+        Column(
             modifier = Modifier
                 .align(Alignment.TopStart)
                 .padding(layout.cornerPadding),
-        )
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            StandbyStatusIndicator(
+                phase = uiState.phase,
+                isHotwordListeningActive = uiState.isHotwordListeningActive,
+                emotion = uiState.emotion,
+            )
+            if (uiState.robotContextProfile != RobotProfile.NORMAL) {
+                Spacer(modifier = Modifier.height(4.dp))
+                RobotContextProfileIndicator(profile = uiState.robotContextProfile)
+            }
+            uiState.pendingFireAndChecks.forEach { entry ->
+                Spacer(modifier = Modifier.height(4.dp))
+                FireAndCheckIndicator(
+                    entry = entry,
+                    onClick = { selectedFireAndCheck = entry },
+                )
+            }
+            if (uiState.pendingInboxItems.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(4.dp))
+                PendingInboxIndicator(
+                    count = uiState.pendingInboxItems.size,
+                    onClick = { showPendingInbox = true },
+                )
+            }
+        }
 
         if (uiState.isMemoryExtracting) {
             MemoryExtractingIndicator(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
                     .padding(
-                        top = layout.cornerPadding + if (showHistoryButton) {
-                            layout.cornerIconButtonSize + 4.dp
+                        top = layout.cornerPadding + if (topDebugButtonCount > 0) {
+                            topDebugIconStackOffset * topDebugButtonCount
                         } else {
                             0.dp
                         },
@@ -203,6 +256,44 @@ fun RobotScreen(
                 Icon(
                     imageVector = Icons.Outlined.History,
                     contentDescription = stringResource(R.string.cd_show_conversation_history),
+                    tint = MaterialTheme.colorScheme.primary,
+                )
+            }
+        }
+
+        if (showReasoningLogButton) {
+            IconButton(
+                onClick = { showReasoningLog = true },
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(
+                        top = layout.cornerPadding + topDebugIconStackOffset * reasoningLogStackIndex,
+                        end = layout.cornerPadding,
+                    )
+                    .size(layout.cornerIconButtonSize),
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Terminal,
+                    contentDescription = stringResource(R.string.cd_show_reasoning_log),
+                    tint = MaterialTheme.colorScheme.primary,
+                )
+            }
+        }
+
+        if (showMoodButton) {
+            IconButton(
+                onClick = { showMoodStatus = true },
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(
+                        top = layout.cornerPadding + topDebugIconStackOffset * moodStackIndex,
+                        end = layout.cornerPadding,
+                    )
+                    .size(layout.cornerIconButtonSize),
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.SentimentSatisfied,
+                    contentDescription = stringResource(R.string.cd_show_mood_status),
                     tint = MaterialTheme.colorScheme.primary,
                 )
             }
@@ -251,6 +342,38 @@ fun RobotScreen(
         )
     }
 
+    if (showReasoningLog) {
+        ReasoningLogDialog(
+            logText = uiState.reasoningLogText,
+            onDismiss = { showReasoningLog = false },
+            onClear = { onEvent(ConversationUiEvent.OnClearReasoningLog) },
+        )
+    }
+
+    if (showMoodStatus) {
+        MoodStatusDialog(
+            moodState = uiState.moodUiState,
+            onDismiss = { showMoodStatus = false },
+        )
+    }
+
+    selectedFireAndCheck?.let { entry ->
+        FireAndCheckDetailDialog(
+            entry = entry,
+            onDismiss = { selectedFireAndCheck = null },
+        )
+    }
+
+    if (showPendingInbox) {
+        PendingInboxDialog(
+            items = uiState.pendingInboxItems,
+            onDismiss = { showPendingInbox = false },
+            onCancelItem = { id ->
+                onEvent(ConversationUiEvent.OnCancelPendingInboxItem(id))
+            },
+        )
+    }
+
     if (settingsUiState.showMainDialog) {
         val sttProviderName = when (settingsUiState.sttProvider) {
             SttProvider.ANDROID -> stringResource(R.string.stt_provider_android)
@@ -260,6 +383,8 @@ fun RobotScreen(
             onDismiss = { onEvent(ConversationUiEvent.OnDismissSettings) },
             onOpenLlmSettings = { onEvent(ConversationUiEvent.OnOpenLlmSettings) },
             onOpenMemorySettings = { onEvent(ConversationUiEvent.OnOpenMemorySettings) },
+            onOpenSpatialSettings = { onEvent(ConversationUiEvent.OnOpenSpatialSettings) },
+            onOpenLogDaySettings = { onEvent(ConversationUiEvent.OnOpenLogDaySettings) },
             onOpenListSettings = { onEvent(ConversationUiEvent.OnOpenListSettings) },
             onOpenBodySettings = { onEvent(ConversationUiEvent.OnOpenBodySettings) },
             onOpenSttSettings = { onEvent(ConversationUiEvent.OnOpenSttSettings) },
@@ -341,6 +466,18 @@ fun RobotScreen(
         )
     }
 
+    if (settingsUiState.showLogDayDialog) {
+        LogDaySettingsDialog(
+            form = settingsUiState.logDayForm,
+            dayGroups = settingsUiState.logDayGroups,
+            onFormChange = { onEvent(ConversationUiEvent.OnLogDayFormChange(it)) },
+            onRefreshSummary = { onEvent(ConversationUiEvent.OnRefreshHabitSummary) },
+            onClearLog = { onEvent(ConversationUiEvent.OnClearActivityLog) },
+            onSave = { onEvent(ConversationUiEvent.OnSaveLogDaySettings) },
+            onDismiss = { onEvent(ConversationUiEvent.OnDismissLogDaySettings) },
+        )
+    }
+
     if (settingsUiState.showMemoryDialog) {
         MemorySettingsDialog(
             form = settingsUiState.memoryForm,
@@ -355,6 +492,21 @@ fun RobotScreen(
             onResetMemory = { onEvent(ConversationUiEvent.OnResetMemoryManual) },
             onReorganizeNow = { onEvent(ConversationUiEvent.OnReorganizeMemoryManual) },
             onDismiss = { onEvent(ConversationUiEvent.OnDismissMemorySettings) },
+        )
+    }
+
+    if (settingsUiState.showSpatialDialog) {
+        SpatialSettingsDialog(
+            places = settingsUiState.spatialEditItems,
+            onLabelChange = { id, label -> onEvent(ConversationUiEvent.OnSpatialPlaceLabelChange(id, label)) },
+            onLandmarksChange = { id, landmarks ->
+                onEvent(ConversationUiEvent.OnSpatialPlaceLandmarksChange(id, landmarks))
+            },
+            onSavePlace = { id, label, landmarks ->
+                onEvent(ConversationUiEvent.OnSaveSpatialPlace(id, label, landmarks))
+            },
+            onDeletePlace = { id -> onEvent(ConversationUiEvent.OnDeleteSpatialPlace(id)) },
+            onDismiss = { onEvent(ConversationUiEvent.OnDismissSpatialSettings) },
         )
     }
 

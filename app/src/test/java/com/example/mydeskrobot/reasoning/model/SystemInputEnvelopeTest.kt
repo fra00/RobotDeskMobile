@@ -196,6 +196,45 @@ class SystemInputEnvelopeTest {
     }
 
     @Test
+    fun `fromHeartbeat includes autonomy context when present`() {
+        val heartbeat = RobotInput.Heartbeat(
+            minutesSinceLastInteraction = 10,
+            currentHour = 13,
+            currentMinute = 0,
+            dayOfWeek = "giovedì",
+            pendingRemindersCount = 0,
+            relevantRoutines = emptyList(),
+            activeIntents = listOf("INTENT: monitorare pranzo — 12 giugno 2026"),
+            recentObservations = listOf("12 giugno 2026: utente ancora al desk"),
+        )
+
+        val envelope = SystemInputEnvelope.fromHeartbeat(heartbeat)
+
+        assertTrue(envelope.formattedForLlm.contains("OBIETTIVI ATTIVI (INTENT):"))
+        assertTrue(envelope.formattedForLlm.contains("OSSERVAZIONI RECENTI (OBSERVATION):"))
+        assertTrue(envelope.formattedForLlm.contains("monitorare pranzo"))
+        assertTrue(envelope.formattedForLlm.contains("ancora al desk"))
+    }
+
+    @Test
+    fun `fromHeartbeat includes pattern block when present`() {
+        val heartbeat = RobotInput.Heartbeat(
+            minutesSinceLastInteraction = 10,
+            currentHour = 12,
+            currentMinute = 0,
+            dayOfWeek = "venerdì",
+            pendingRemindersCount = 0,
+            relevantRoutines = emptyList(),
+            activePatterns = listOf("PATTERN: utente salta il pranzo frequentemente"),
+        )
+
+        val envelope = SystemInputEnvelope.fromHeartbeat(heartbeat)
+
+        assertTrue(envelope.formattedForLlm.contains("PATTERN EMERGENTI (PATTERN):"))
+        assertTrue(envelope.formattedForLlm.contains("salta il pranzo"))
+    }
+
+    @Test
     fun `fromWeeklyReflection formats statistics correctly`() {
         val reflection = RobotInput.WeeklyReflection(
             totalInteractions = 42,

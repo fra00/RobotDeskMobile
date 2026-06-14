@@ -22,6 +22,14 @@ class UserInteractionToneDetectorTest {
     }
 
     @Test
+    fun `detects negative insult`() {
+        assertEquals(
+            UserInteractionTone.NEGATIVE,
+            UserInteractionToneDetector.detect("Sei proprio inutile"),
+        )
+    }
+
+    @Test
     fun `neutral question`() {
         assertEquals(
             UserInteractionTone.NEUTRAL,

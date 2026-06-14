@@ -13,6 +13,7 @@ import com.example.mydeskrobot.reasoning.tool.ToolExecutor
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import java.util.Locale
 
 /**
  * Orchestrates multi-turn tool chains with the LLM.
@@ -33,6 +34,7 @@ class ToolChainOrchestrator(
     private val maxChainSteps: Int = 10,
     private val timeoutMs: Long = 60_000,
     private val onBeforeLlmTurn: (suspend (hasPendingImage: Boolean, stepIndex: Int) -> Unit)? = null,
+    private val reasoningLogObserver: ReasoningLogObserver = NoOpReasoningLogObserver,
 ) {
     fun updateSystemPrompt(value: String) {
         systemPrompt = value
@@ -50,6 +52,7 @@ class ToolChainOrchestrator(
     ): ReasoningResult {
         originalUserText = userText
         conversationHistory.addUserMessage(userText)
+        reasoningLogObserver.onUserInput(userText)
         return executeChain(onIntermediateResponse)
     }
     
@@ -72,6 +75,7 @@ class ToolChainOrchestrator(
         onIntermediateResponse: suspend (IntermediateResponse) -> Unit,
     ): ReasoningResult {
         conversationHistory.addSystemInput(envelope.formattedForLlm)
+        reasoningLogObserver.onSystemInput(envelope.formattedForLlm)
         return executeChain(onIntermediateResponse)
     }
     
@@ -111,6 +115,10 @@ class ToolChainOrchestrator(
         return executeChain(onIntermediateResponse)
     }
     
+    fun cancelPendingConfirmation() {
+        pendingConfirmation = null
+    }
+
     fun reset() {
         conversationHistory.clear()
         pendingConfirmation = null
@@ -149,20 +157,25 @@ class ToolChainOrchestrator(
             if (llmResult.isFailure) {
                 val error = llmResult.exceptionOrNull()?.let { LlmHttpErrors.formatForLog(it) }
                     ?: "LLM communication error"
+                reasoningLogObserver.onOutcome("Error: $error")
                 return ReasoningResult.Error(error)
             }
             
             val parsed = try {
                 responseParser.parse(llmResult.getOrThrow().content)
             } catch (e: Exception) {
-                return ReasoningResult.Error("Failed to parse LLM response: ${e.message}")
+                val message = "Failed to parse LLM response: ${e.message}"
+                reasoningLogObserver.onOutcome("Error: $message")
+                return ReasoningResult.Error(message)
             }
             
             lastResponse = parsed
             conversationHistory.addAssistantRawMessage(llmResult.getOrThrow().content)
-            
+            logLlmStep(step, parsed)
+
             when (val action = parsed.action) {
                 is LlmAction.None -> {
+                    reasoningLogObserver.onOutcome("Success (no tool): ${parsed.text.take(200)}")
                     return ReasoningResult.Success(
                         finalText = parsed.text,
                         emotion = parsed.emotion,
@@ -202,6 +215,13 @@ class ToolChainOrchestrator(
                             else -> parsed.text
                         }
                         val emotion = if (toolFailureText != null) "confused" else parsed.emotion
+                        reasoningLogObserver.onOutcome(
+                            if (chainTerminated && action.chainStatus == ChainStatus.COMPLETE) {
+                                "Chain complete${if (finalText.isNotBlank()) ": ${finalText.take(200)}" else ""}"
+                            } else {
+                                "Chain terminated (fire-and-forget or complete)"
+                            },
+                        )
                         return ReasoningResult.Success(
                             finalText = finalText,
                             emotion = emotion,
@@ -216,6 +236,7 @@ class ToolChainOrchestrator(
                         lastText = parsed.text,
                         lastEmotion = parsed.emotion,
                     )
+                    reasoningLogObserver.onOutcome("Needs confirmation: ${action.confirmPrompt}")
                     return ReasoningResult.NeedsConfirmation(
                         prompt = action.confirmPrompt,
                         pendingAction = { confirmed ->
@@ -226,6 +247,7 @@ class ToolChainOrchestrator(
             }
         }
         
+        reasoningLogObserver.onOutcome("Max steps reached ($step)")
         return ReasoningResult.MaxStepsReached(
             lastText = lastResponse?.text ?: "",
             stepsExecuted = step,
@@ -255,7 +277,8 @@ class ToolChainOrchestrator(
         }
         
         conversationHistory.addAssistantRawMessage(llmResult.getOrThrow().content)
-        
+        logLlmStep(1, parsed)
+
         return when (val action = parsed.action) {
             is LlmAction.None -> {
                 ReasoningResult.Success(
@@ -341,6 +364,10 @@ class ToolChainOrchestrator(
             executeParallel(action.tools)
         } else {
             executeSequential(action.tools)
+        }.also { results ->
+            results.forEach { (tool, result) ->
+                reasoningLogObserver.onToolResult(tool, result)
+            }
         }
     }
     
@@ -392,11 +419,28 @@ class ToolChainOrchestrator(
                 "move_body_joint", "move_body_joints" -> "Non sono riuscito a muovere il corpo. $message"
                 "body_home" -> "Non sono riuscito a tornare in posizione neutra. $message"
                 "body_status" -> "Non sono riuscito a leggere lo stato del corpo. $message"
+                "send_whatsapp" -> "Non sono riuscito ad aprire WhatsApp. $message"
+                "resolve_whatsapp_target" -> "Non sono riuscito a trovare la chat WhatsApp. $message"
                 else -> "Operazione $toolName non riuscita. $message"
             }
         }
     }
     
+    private fun logLlmStep(step: Int, parsed: ParsedLlmResponse) {
+        val chainLabel = when (val action = parsed.action) {
+            is LlmAction.ToolCall -> action.chainStatus.name.lowercase(Locale.ROOT)
+            else -> null
+        }
+        reasoningLogObserver.onLlmStep(
+            step = step,
+            think = parsed.think,
+            reply = parsed.text.takeIf { it.isNotBlank() },
+            emotion = parsed.emotion,
+            action = parsed.action,
+            chainStatusLabel = chainLabel,
+        )
+    }
+
     private data class PendingConfirmation(
         val tool: ToolInvocation,
         val lastText: String,

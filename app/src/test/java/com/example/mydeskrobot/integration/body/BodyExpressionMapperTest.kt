@@ -14,11 +14,12 @@ class BodyExpressionMapperTest {
 
     @Test
     fun eyePoke_angry_turnsDisplayAway() {
-        val current = RobotMood(
-            baseEmotion = RobotEmotion.ANGRY,
-            intensity = 0.65f,
+        val current = RobotMood.fromValence(
+            valence = -0.2f,
             since = now,
             reason = MoodReason.EYE_POKE,
+            forceEmotion = RobotEmotion.ANGRY,
+            forceIntensity = 0.65f,
         )
         val moves = BodyExpressionMapper.resolve(neutral, current)
         assertEquals(1, moves.size)
@@ -29,11 +30,12 @@ class BodyExpressionMapperTest {
 
     @Test
     fun eyePoke_confused_headRoll() {
-        val current = RobotMood(
-            baseEmotion = RobotEmotion.CONFUSED,
-            intensity = 0.4f,
+        val current = RobotMood.fromValence(
+            valence = -0.05f,
             since = now,
             reason = MoodReason.EYE_POKE,
+            forceEmotion = RobotEmotion.CONFUSED,
+            forceIntensity = 0.4f,
         )
         val moves = BodyExpressionMapper.resolve(neutral, current)
         assertEquals(1, moves.size)
@@ -43,15 +45,15 @@ class BodyExpressionMapperTest {
 
     @Test
     fun apology_neutral_goesHome() {
-        val previous = RobotMood(
-            baseEmotion = RobotEmotion.ANGRY,
-            intensity = 0.7f,
+        val previous = RobotMood.fromValence(
+            valence = -0.2f,
             since = 0L,
             reason = MoodReason.EYE_POKE,
+            forceEmotion = RobotEmotion.ANGRY,
+            forceIntensity = 0.7f,
         )
-        val current = RobotMood(
-            baseEmotion = RobotEmotion.NEUTRAL,
-            intensity = 0.5f,
+        val current = RobotMood.fromValence(
+            valence = 0.05f,
             since = now,
             reason = MoodReason.USER_APOLOGY,
         )
@@ -61,11 +63,12 @@ class BodyExpressionMapperTest {
 
     @Test
     fun idleLong_bored_microFidget() {
-        val current = RobotMood(
-            baseEmotion = RobotEmotion.BORED,
-            intensity = 0.3f,
+        val current = RobotMood.fromValence(
+            valence = -0.18f,
             since = now,
             reason = MoodReason.IDLE_LONG,
+            forceEmotion = RobotEmotion.BORED,
+            forceIntensity = 0.3f,
         )
         val moves = BodyExpressionMapper.resolve(neutral, current)
         assertEquals(1, moves.size)
@@ -75,11 +78,12 @@ class BodyExpressionMapperTest {
 
     @Test
     fun enteringSleeping_returnsSleepPose() {
-        val current = RobotMood(
-            baseEmotion = RobotEmotion.SLEEPING,
-            intensity = 1.0f,
+        val current = RobotMood.fromValence(
+            valence = 0.1f,
             since = now,
             reason = MoodReason.NIGHT_TIME,
+            forceEmotion = RobotEmotion.SLEEPING,
+            forceIntensity = 1.0f,
         )
         val moves = BodyExpressionMapper.resolve(neutral, current)
         assertEquals(BodyMove.SleepPose, moves.single())
@@ -87,15 +91,15 @@ class BodyExpressionMapperTest {
 
     @Test
     fun decay_fromEyePokeAnnoyance_goesHome() {
-        val previous = RobotMood(
-            baseEmotion = RobotEmotion.ANGRY,
-            intensity = 0.7f,
+        val previous = RobotMood.fromValence(
+            valence = -0.2f,
             since = 0L,
             reason = MoodReason.EYE_POKE,
+            forceEmotion = RobotEmotion.ANGRY,
+            forceIntensity = 0.7f,
         )
-        val current = RobotMood(
-            baseEmotion = RobotEmotion.NEUTRAL,
-            intensity = 0.5f,
+        val current = RobotMood.fromValence(
+            valence = 0.1f,
             since = now,
             reason = null,
         )

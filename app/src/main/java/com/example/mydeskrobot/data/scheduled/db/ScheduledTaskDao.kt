@@ -5,6 +5,7 @@ import androidx.room.Insert
 import androidx.room.Query
 import androidx.room.Update
 import com.example.mydeskrobot.data.scheduled.ScheduledTaskStatus
+import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface ScheduledTaskDao {
@@ -23,6 +24,15 @@ interface ScheduledTaskDao {
         """,
     )
     suspend fun getByStatus(status: ScheduledTaskStatus): List<ScheduledTaskEntity>
+
+    @Query(
+        """
+        SELECT * FROM scheduled_tasks
+        WHERE status = :status
+        ORDER BY triggerAtMillis ASC
+        """,
+    )
+    fun observeByStatus(status: ScheduledTaskStatus): Flow<List<ScheduledTaskEntity>>
 
     @Query(
         """

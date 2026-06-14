@@ -88,12 +88,17 @@ Stato emotivo autonomo che evolve indipendentemente dal dialogo.
 
 ```kotlin
 data class RobotMood(
-    val baseEmotion: RobotEmotion,
+    val valence: Float,             // -0.4…+0.85 persistent wellbeing
+    val baseline: Float,            // personal drift target (~+0.1)
+    val baseEmotion: RobotEmotion,  // derived standby eyes/body
     val intensity: Float,           // 0.0–1.0
     val since: Long,
-    val reason: String?,
+    val reason: MoodReason?,
+    val recentDeltas: List<MoodDelta>,
 )
 ```
+
+**Due livelli:** valenza (solo eventi codificati: poke, elogio, insulto, task, idle) vs `emotion` LLM (effimera, TTL).
 
 **Regole di transizione:**
 

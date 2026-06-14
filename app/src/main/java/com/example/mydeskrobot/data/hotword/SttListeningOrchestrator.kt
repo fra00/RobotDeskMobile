@@ -37,6 +37,17 @@ class SttListeningOrchestrator(
         private const val MIN_BARGE_IN_CHARS = 4
     }
 
+    /** STT off during assistant turn (LLM/TTS/tools); barge-in is opt-in and disabled by default. */
+    private fun canListenStt(
+        isSttEnabled: () -> Boolean,
+        isAssistantTurnActive: () -> Boolean,
+        isBargeInMode: () -> Boolean,
+    ): Boolean {
+        if (!isSttEnabled()) return false
+        if (isAssistantTurnActive() && !isBargeInMode()) return false
+        return true
+    }
+
     @Volatile
     private var sessionSilenceClockMs: Long = 0L
 
@@ -102,7 +113,7 @@ class SttListeningOrchestrator(
                 return
             }
 
-            if (!isSttEnabled()) {
+            if (!canListenStt(isSttEnabled, isAssistantTurnActive, isBargeInMode)) {
                 delay(PAUSE_POLL_MS)
                 continue
             }
@@ -110,7 +121,7 @@ class SttListeningOrchestrator(
             val standbyResult = dataSource.listenWithChunks(listener = null)
             val transcript = standbyResult.getOrNull()
             if (transcript != null) {
-                if (!isSttEnabled()) continue
+                if (!canListenStt(isSttEnabled, isAssistantTurnActive, isBargeInMode)) continue
 
                 when (val wake = wakePhraseMatcher.parse(transcript)) {
                     is WakePhraseParseResult.Accepted -> {
@@ -217,7 +228,7 @@ class SttListeningOrchestrator(
         }
 
         while (coroutineContext.isActive && isServiceActive()) {
-            if (!isSttEnabled()) {
+            if (!canListenStt(isSttEnabled, isAssistantTurnActive, isBargeInMode)) {
                 delay(PAUSE_POLL_MS)
                 continue
             }
@@ -235,7 +246,7 @@ class SttListeningOrchestrator(
                 val activeResult = dataSource.listenWithChunks(listener = chunkListener)
                 val transcript = activeResult.getOrNull()
                 if (transcript != null) {
-                    if (!isSttEnabled()) continue
+                    if (!canListenStt(isSttEnabled, isAssistantTurnActive, isBargeInMode)) continue
 
                     if (isBargeInMode()) {
                         if (handleBargeInTranscript(

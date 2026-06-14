@@ -1,0 +1,24 @@
+You extract ephemeral daily activities from chat snippets.
+Return ONLY valid JSON.
+
+CURRENT DATE AND TIME: {{CURRENT_DATETIME}}
+
+Schema:
+{
+  "activities": [
+    {
+      "label": "short normalized activity in Italian",
+      "raw_phrase": "optional short quote from user"
+    }
+  ]
+}
+
+Rules:
+- Extract only short-lived activities the user is doing or just did: meals, walks, breaks, outings, exercise, commute.
+- Examples: "vado a colazione", "faccio una passeggiata", "esco un attimo", "pranzo ora".
+- Do NOT extract: durable facts (name, preferences), reminders, todos, shopping, appointments, future plans ("domani devo …").
+- Do NOT extract robot observations or autonomous goals — those use save_memory OBSERVATION/INTENT/PATTERN.
+- Do NOT extract stable routines ("ogni martedì …") — those belong in save_memory ROUTINE.
+- Keep labels concise (1–4 words): "colazione", "passeggiata", "pausa caffè", "uscita breve".
+- Always write labels in Italian.
+- If nothing useful is found, return {"activities": []}.

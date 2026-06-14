@@ -26,10 +26,13 @@
 | Concetto v1.6 | Implementazione |
 |---------------|-----------------|
 | `speak` | `reply` (sempre italiano) |
-| `task_status` / goal attivo | `action.chain_status: "in_progress"` + history (`SEARCH_*`, `TOOL_RESULT`) |
+| `task_status` / goal attivo | `action.chain_status: "in_progress"` + `think` + history (`[TOOL_RESULT]`) |
+| Obiettivi autonomi tra heartbeat | `save_memory` category `INTENT` (max 3, TTL 1d) + injection `OBIETTIVI ATTIVI` |
+| Memoria contestuale intra-giorno | `save_memory` category `OBSERVATION` (TTL 7d) + injection `OSSERVAZIONI RECENTI` |
 | `execute_physical_behavior` | `move_body_joint`, `move_body_joints`, `body_home`, `take_photo` |
 | `eye_expression` | campo `emotion` → `RobotEyes` |
-| emotional value -1…+1 | `STATO ROBOT` iniettato (`MoodPromptFormatter`) |
+| emotional value -1…+1 | `STATO ROBOT` iniettato (`MoodPromptFormatter`, valenza persistente) |
+| `emotion` JSON (turno) | Espressione **effimera** (~30s TTL): occhi/TTS durante `Speaking`; **non** modifica valenza |
 | Blocchi 16–21 | datetime, STATO ROBOT, heartbeat, memorie, `[SYSTEM_INPUT:…]`, AVAILABLE TOOLS |
 
 ### QA manuale post-integrazione
@@ -40,7 +43,10 @@
 | Heartbeat silenzioso | `reply: ""`, `speak_confidence: 0.0` |
 | "Svegliami alle 21" | Fire-and-Check: reminder + verifica successiva |
 | "Ricordami che oggi è giovedì" | Fire-and-Forget: risposta breve, `complete` |
-| Poke occhi | `angry`/`confused`, tono irritato, body se ESP32 |
+| Poke occhi | Valenza ↓, `angry`/`confused` persistente; body se ESP32 |
+| Elogio utente | Valenza ↑; tono più caldo in `STATO ROBOT` |
+| Insulto utente | Valenza ↓; tono più freddo |
+| LLM `emotion: angry` con valenza positiva | Occhi angry teatrali ~30s; benessere resta positivo |
 | Dopo mezzanotte | `drowsy`/`sleeping`, risposta breve |
 | "Sono al lavoro" + notifica WhatsApp | Silenzio o filtro, no lettura casuale |
 | Nascondino / cerca oggetto | `in_progress`, no resa dopo 1 foto |

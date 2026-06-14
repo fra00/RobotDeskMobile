@@ -37,8 +37,8 @@ object HotwordController {
     }
 
     /**
-     * Durante il TTS riapre il microfono solo per interrompere (barge-in).
-     * [lastAssistantResponse] serve al filtro anti-eco.
+     * Optional barge-in: reopens STT during TTS for voice interrupt (disabled in ConversationViewModel).
+     * [lastAssistantResponse] feeds the echo filter when enabled.
      */
     fun beginBargeIn(lastAssistantResponse: String) {
         serviceRef?.get()?.beginBargeIn(lastAssistantResponse)
@@ -48,5 +48,14 @@ object HotwordController {
 
     fun activateVoiceSession() {
         serviceRef?.get()?.activateVoiceSession()
+    }
+
+    /** Pause STT while user is on a phone call (released on [endPhoneCallHold]). */
+    fun beginPhoneCallHold() {
+        serviceRef?.get()?.beginPhoneCallHold()
+    }
+
+    fun endPhoneCallHold() {
+        serviceRef?.get()?.endPhoneCallHold()
     }
 }

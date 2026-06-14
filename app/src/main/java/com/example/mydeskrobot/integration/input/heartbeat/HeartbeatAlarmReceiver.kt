@@ -4,11 +4,14 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.util.Log
+import com.example.mydeskrobot.data.activitylog.ActivityLogRepository
 import com.example.mydeskrobot.data.awareness.UserAwarenessRepository
 import com.example.mydeskrobot.data.heartbeat.HeartbeatSettings
 import com.example.mydeskrobot.data.heartbeat.HeartbeatSettingsRepository
 import com.example.mydeskrobot.data.mood.MoodRepository
 import com.example.mydeskrobot.data.scheduled.ScheduledTaskRepository
+import com.example.mydeskrobot.data.spatial.SpatialContextRepository
+import com.example.mydeskrobot.data.spatial.SpatialPlaceRepository
 import com.example.mydeskrobot.data.workingmemory.WorkingMemoryRepository
 import com.example.mydeskrobot.domain.input.SystemInputDispatcher
 import com.example.mydeskrobot.domain.input.SystemInputEvent
@@ -46,6 +49,14 @@ class HeartbeatAlarmReceiver : BroadcastReceiver() {
         val moodRepo = MoodRepository(context)
         val workingMemoryRepo = WorkingMemoryRepository(context)
         val userAwarenessRepo = UserAwarenessRepository(context)
+        val activityLogRepo = ActivityLogRepository.create(context)
+        val spatialContextRepo = SpatialContextRepository(context)
+        val spatialPlaceRepo = SpatialPlaceRepository.create(context)
+
+        runBlocking {
+            memoryRepo.pruneExpired()
+            activityLogRepo.pruneExpired()
+        }
 
         val contextBuilder = HeartbeatContextBuilder(
             scheduledTaskRepository = scheduledTaskRepo,
@@ -54,6 +65,9 @@ class HeartbeatAlarmReceiver : BroadcastReceiver() {
             currentMoodProvider = { moodRepo.load() },
             workingMemoryProvider = { workingMemoryRepo.load() },
             userAwarenessProvider = { userAwarenessRepo.load() },
+            activityLogRepository = activityLogRepo,
+            spatialSnapshotProvider = { spatialContextRepo.load() },
+            knownPlacesProvider = { spatialPlaceRepo.labelSummaries() },
         )
 
         val heartbeat = runBlocking { contextBuilder.build() }

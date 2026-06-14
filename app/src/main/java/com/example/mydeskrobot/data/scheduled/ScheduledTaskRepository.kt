@@ -4,6 +4,13 @@ import android.content.Context
 import androidx.room.Room
 import com.example.mydeskrobot.data.scheduled.db.ScheduledTaskDatabase
 import com.example.mydeskrobot.data.scheduled.db.ScheduledTaskEntity
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.merge
+import kotlinx.coroutines.isActive
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -29,6 +36,18 @@ class ScheduledTaskRepository(
 
     suspend fun listPending(): List<ScheduledTaskEntity> =
         dao.getByStatus(ScheduledTaskStatus.PENDING)
+
+    fun observePending(): Flow<List<ScheduledTaskEntity>> {
+        val fromStore = dao.observeByStatus(ScheduledTaskStatus.PENDING)
+        val ticker = flow {
+            emit(dao.getByStatus(ScheduledTaskStatus.PENDING))
+            while (currentCoroutineContext().isActive) {
+                delay(PENDING_TICK_MS)
+                emit(dao.getByStatus(ScheduledTaskStatus.PENDING))
+            }
+        }
+        return merge(fromStore, ticker).distinctUntilChanged()
+    }
 
     suspend fun listPendingForDay(
         startOfDayMillis: Long,
@@ -62,13 +81,24 @@ class ScheduledTaskRepository(
     fun formatScheduledTime(triggerAtMillis: Long): String = timeFormat.format(Date(triggerAtMillis))
 
     companion object {
+        private const val PENDING_TICK_MS = 5_000L
+
+        @Volatile
+        private var databaseInstance: ScheduledTaskDatabase? = null
+
         fun create(context: Context): ScheduledTaskRepository {
-            val db = Room.databaseBuilder(
-                context.applicationContext,
-                ScheduledTaskDatabase::class.java,
-                "scheduled_tasks.db",
-            ).build()
-            return ScheduledTaskRepository(db)
+            return ScheduledTaskRepository(database(context))
+        }
+
+        private fun database(context: Context): ScheduledTaskDatabase {
+            val appContext = context.applicationContext
+            return databaseInstance ?: synchronized(ScheduledTaskRepository::class.java) {
+                databaseInstance ?: Room.databaseBuilder(
+                    appContext,
+                    ScheduledTaskDatabase::class.java,
+                    "scheduled_tasks.db",
+                ).build().also { databaseInstance = it }
+            }
         }
 
         fun createInMemory(context: Context): ScheduledTaskRepository {

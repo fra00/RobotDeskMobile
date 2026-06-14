@@ -5,6 +5,7 @@ import com.example.mydeskrobot.domain.llm.LlmProvider
 import com.example.mydeskrobot.presentation.settings.BodySettingsFormState
 import com.example.mydeskrobot.presentation.settings.HeartbeatSettingsFormState
 import com.example.mydeskrobot.presentation.settings.LlmSettingsFormState
+import com.example.mydeskrobot.presentation.settings.LogDaySettingsFormState
 import com.example.mydeskrobot.presentation.settings.MemorySettingsFormState
 
 sealed interface ConversationUiEvent {
@@ -15,6 +16,8 @@ sealed interface ConversationUiEvent {
     data object OnBackgroundTapActivateListening : ConversationUiEvent
 
     data class OnEyePoked(val side: EyePokeSide) : ConversationUiEvent
+
+    data class OnCancelPendingInboxItem(val id: String) : ConversationUiEvent
 
     data object OnOpenSettings : ConversationUiEvent
 
@@ -27,6 +30,30 @@ sealed interface ConversationUiEvent {
     data object OnOpenMemorySettings : ConversationUiEvent
 
     data object OnDismissMemorySettings : ConversationUiEvent
+
+    data object OnOpenSpatialSettings : ConversationUiEvent
+
+    data object OnDismissSpatialSettings : ConversationUiEvent
+
+    data class OnSpatialPlaceLabelChange(val id: Long, val label: String) : ConversationUiEvent
+
+    data class OnSpatialPlaceLandmarksChange(val id: Long, val landmarks: String) : ConversationUiEvent
+
+    data class OnSaveSpatialPlace(val id: Long, val label: String, val landmarks: String) : ConversationUiEvent
+
+    data class OnDeleteSpatialPlace(val id: Long) : ConversationUiEvent
+
+    data object OnOpenLogDaySettings : ConversationUiEvent
+
+    data object OnDismissLogDaySettings : ConversationUiEvent
+
+    data class OnLogDayFormChange(val form: LogDaySettingsFormState) : ConversationUiEvent
+
+    data object OnSaveLogDaySettings : ConversationUiEvent
+
+    data object OnRefreshHabitSummary : ConversationUiEvent
+
+    data object OnClearActivityLog : ConversationUiEvent
 
     data class OnLlmProviderChange(val provider: LlmProvider) : ConversationUiEvent
 
@@ -107,4 +134,6 @@ sealed interface ConversationUiEvent {
     data class OnHeartbeatFormChange(val form: HeartbeatSettingsFormState) : ConversationUiEvent
 
     data object OnSaveHeartbeatSettings : ConversationUiEvent
+
+    data object OnClearReasoningLog : ConversationUiEvent
 }

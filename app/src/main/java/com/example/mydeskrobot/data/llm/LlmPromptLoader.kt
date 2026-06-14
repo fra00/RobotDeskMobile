@@ -13,7 +13,10 @@ object LlmPromptLoader {
     const val SYSTEM_PROMPT_ASSET_PATH = "prompts/llm_system_prompt.txt"
     const val MEMORY_EXTRACTOR_PROMPT_ASSET_PATH = "prompts/memory_extractor_prompt.txt"
     const val PRESENCE_DETECTION_PROMPT_ASSET_PATH = "prompts/presence_detection_prompt.txt"
+    const val ROOM_LANDMARKS_PROMPT_ASSET_PATH = "prompts/room_landmarks_prompt.txt"
     const val BODY_CAPABILITIES_PROMPT_ASSET_PATH = "prompts/body_capabilities_prompt.txt"
+    const val ACTIVITY_EXTRACTOR_PROMPT_ASSET_PATH = "prompts/activity_extractor_prompt.txt"
+    const val ACTIVITY_HABIT_SUMMARY_PROMPT_ASSET_PATH = "prompts/activity_habit_summary_prompt.txt"
 
     private const val DATETIME_PLACEHOLDER = "{{CURRENT_DATETIME}}"
 
@@ -48,10 +51,34 @@ object LlmPromptLoader {
         return text
     }
 
+    fun loadActivityExtractorPrompt(context: Context): String {
+        val text = loadTextAsset(context, ACTIVITY_EXTRACTOR_PROMPT_ASSET_PATH)
+        require(text.isNotBlank()) {
+            "Activity extractor prompt asset is empty: $ACTIVITY_EXTRACTOR_PROMPT_ASSET_PATH"
+        }
+        return text.replace(DATETIME_PLACEHOLDER, getCurrentDateTimeString())
+    }
+
+    fun loadActivityHabitSummaryPrompt(context: Context): String {
+        val text = loadTextAsset(context, ACTIVITY_HABIT_SUMMARY_PROMPT_ASSET_PATH)
+        require(text.isNotBlank()) {
+            "Activity habit summary prompt asset is empty: $ACTIVITY_HABIT_SUMMARY_PROMPT_ASSET_PATH"
+        }
+        return text.replace(DATETIME_PLACEHOLDER, getCurrentDateTimeString())
+    }
+
     fun loadPresenceDetectionPrompt(context: Context): String {
         val text = loadTextAsset(context, PRESENCE_DETECTION_PROMPT_ASSET_PATH)
         require(text.isNotBlank()) {
             "Presence detection prompt asset is empty: $PRESENCE_DETECTION_PROMPT_ASSET_PATH"
+        }
+        return text
+    }
+
+    fun loadRoomLandmarksPrompt(context: Context): String {
+        val text = loadTextAsset(context, ROOM_LANDMARKS_PROMPT_ASSET_PATH)
+        require(text.isNotBlank()) {
+            "Room landmarks prompt asset is empty: $ROOM_LANDMARKS_PROMPT_ASSET_PATH"
         }
         return text
     }

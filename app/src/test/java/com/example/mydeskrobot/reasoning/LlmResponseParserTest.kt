@@ -278,6 +278,40 @@ class LlmResponseParserTest {
     }
 
     @Test
+    fun `parse think field on in_progress chain without affecting spoken text`() {
+        val json = """
+            {
+                "reply": "",
+                "think": "Last photo empty — rotating base_pan +20 and retaking.",
+                "emotion": "thinking",
+                "speak_confidence": 0.0,
+                "action": {
+                    "type": "tool_call",
+                    "tools": [{"name": "take_photo", "params": {}}],
+                    "chain_status": "in_progress"
+                }
+            }
+        """.trimIndent()
+
+        val result = parser.parse(json)
+
+        assertEquals("", result.text)
+        assertEquals("Last photo empty — rotating base_pan +20 and retaking.", result.think)
+        val action = result.action as LlmAction.ToolCall
+        assertEquals(ChainStatus.IN_PROGRESS, action.chainStatus)
+    }
+
+    @Test
+    fun `parse blank think as null`() {
+        val json = """{"reply": "Ciao", "think": "", "emotion": "happy"}"""
+
+        val result = parser.parse(json)
+
+        assertNull(result.think)
+        assertEquals("Ciao", result.text)
+    }
+
+    @Test
     fun `parse heartbeat response with empty reply and zero confidence`() {
         val json = """
             {

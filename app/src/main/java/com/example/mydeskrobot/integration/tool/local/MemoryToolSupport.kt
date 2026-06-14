@@ -33,11 +33,24 @@ internal object MemoryToolSupport {
         return value.coerceIn(1, max)
     }
 
-    fun entityToMap(entity: MemoryItemEntity): Map<String, Any?> = mapOf(
-        "id" to entity.id,
-        "category" to entity.category.name,
-        "value" to entity.value,
-        "confidence" to entity.confidence,
-        "updated_at" to entity.updatedAt,
-    )
+    fun parseTtlDays(raw: Any?): Int? {
+        val value = when (raw) {
+            is Number -> raw.toInt()
+            is String -> raw.toIntOrNull()
+            else -> null
+        } ?: return null
+        return value.coerceAtLeast(1)
+    }
+
+    fun entityToMap(entity: MemoryItemEntity): Map<String, Any?> {
+        val base = mutableMapOf<String, Any?>(
+            "id" to entity.id,
+            "category" to entity.category.name,
+            "value" to entity.value,
+            "confidence" to entity.confidence,
+            "updated_at" to entity.updatedAt,
+        )
+        entity.expiresAt?.let { base["expires_at"] = it }
+        return base
+    }
 }

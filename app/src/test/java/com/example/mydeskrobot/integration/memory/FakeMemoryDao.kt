@@ -11,14 +11,37 @@ class FakeMemoryDao(
     private val items = initial.map { it.copy() }.toMutableList()
     private var nextId = (initial.maxOfOrNull { it.id } ?: 0L) + 1L
 
-    override suspend fun getAllActive(): List<MemoryItemEntity> =
-        items.filter { !it.isDeleted }.sortedByDescending { it.updatedAt }
+    private fun isActive(item: MemoryItemEntity, now: Long): Boolean =
+        !item.isDeleted && (item.expiresAt == null || item.expiresAt > now)
 
-    override suspend fun getByCategory(category: MemoryCategory, limit: Int): List<MemoryItemEntity> =
-        getAllActive().filter { it.category == category }.take(limit)
+    override suspend fun getAllActive(now: Long): List<MemoryItemEntity> =
+        items.filter { isActive(it, now) }.sortedByDescending { it.updatedAt }
 
-    override suspend fun searchByQuery(query: String, limit: Int): List<MemoryItemEntity> =
-        getAllActive()
+    override suspend fun getUserFacingActive(
+        categories: List<MemoryCategory>,
+        now: Long,
+    ): List<MemoryItemEntity> =
+        getAllActive(now).filter { it.category in categories }
+
+    override suspend fun getByCategory(
+        category: MemoryCategory,
+        limit: Int,
+        now: Long,
+    ): List<MemoryItemEntity> =
+        getAllActive(now).filter { it.category == category }.take(limit)
+
+    override suspend fun searchByQuery(
+        category: MemoryCategory,
+        query: String,
+        limit: Int,
+        now: Long,
+    ): List<MemoryItemEntity> =
+        getAllActive(now)
+            .filter { it.category == category && it.value.contains(query, ignoreCase = true) }
+            .take(limit)
+
+    override suspend fun searchByQuery(query: String, limit: Int, now: Long): List<MemoryItemEntity> =
+        getAllActive(now)
             .filter { it.value.contains(query, ignoreCase = true) }
             .take(limit)
 
@@ -67,6 +90,10 @@ class FakeMemoryDao(
         items.clear()
     }
 
+    override suspend fun clearByCategories(categories: List<MemoryCategory>) {
+        items.removeAll { it.category in categories }
+    }
+
     override suspend fun markUsed(ids: List<Long>, usedAt: Long) {
         items.forEachIndexed { index, item ->
             if (item.id in ids) {
@@ -75,8 +102,28 @@ class FakeMemoryDao(
         }
     }
 
-    override suspend fun countActive(): Int = getAllActive().size
+    override suspend fun countActive(now: Long): Int = getAllActive(now).size
 
-    override suspend fun lowPriorityForPruning(limit: Int): List<MemoryItemEntity> =
-        getAllActive().take(limit)
+    override suspend fun countActiveByCategory(category: MemoryCategory, now: Long): Int =
+        getAllActive(now).count { it.category == category }
+
+    override suspend fun lowPriorityForPruning(
+        excludeCategories: List<MemoryCategory>,
+        limit: Int,
+        now: Long,
+    ): List<MemoryItemEntity> =
+        getAllActive(now)
+            .filter { it.category !in excludeCategories }
+            .take(limit)
+
+    override suspend fun softDeleteExpired(now: Long): Int {
+        var count = 0
+        items.forEachIndexed { index, item ->
+            if (!item.isDeleted && item.expiresAt != null && item.expiresAt <= now) {
+                items[index] = item.copy(isDeleted = true, updatedAt = now)
+                count++
+            }
+        }
+        return count
+    }
 }

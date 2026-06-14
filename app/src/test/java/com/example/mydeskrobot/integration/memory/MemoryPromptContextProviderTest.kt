@@ -75,4 +75,22 @@ class MemoryPromptContextProviderTest {
         assertTrue(context.contains("USER PREFERENCES"))
         assertTrue(context.contains("MotoGP"))
     }
+
+    @Test
+    fun defaultProfile_excludesRobotInternalMemories() = runTest {
+        val dao = FakeMemoryDao(
+            listOf(
+                entity(1L, MemoryCategory.FACT, "L'utente ha un cane di nome Brina"),
+                entity(2L, MemoryCategory.INTENT, "INTENT: monitorare pranzo"),
+                entity(3L, MemoryCategory.OBSERVATION, "12 giugno 2026: ancora al desk"),
+            ),
+        )
+        val provider = MemoryPromptContextProviderImpl(UserMemoryRepository.createForTest(dao))
+
+        val context = provider.buildContextFor("Parlami del mio cane")
+
+        assertTrue(context.contains("Brina"))
+        assertTrue(!context.contains("monitorare pranzo"))
+        assertTrue(!context.contains("ancora al desk"))
+    }
 }

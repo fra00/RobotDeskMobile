@@ -11,10 +11,16 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.core.view.WindowCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.mydeskrobot.data.light.DeskLightController
+import com.example.mydeskrobot.data.light.ScreenBrightnessHelper
 import com.example.mydeskrobot.data.power.BatteryOptimizationHelper
 import com.example.mydeskrobot.data.vision.CameraXVisionImageCapture
 import com.example.mydeskrobot.data.vision.VisionCaptureActivityProvider
@@ -25,6 +31,8 @@ import com.example.mydeskrobot.ui.screen.RobotScreen
 import com.example.mydeskrobot.ui.theme.MyDeskRobotTheme
 
 class MainActivity : ComponentActivity() {
+
+    private val screenBrightnessHelper by lazy { ScreenBrightnessHelper(applicationContext) }
 
     private val viewModel: ConversationViewModel by viewModels {
         ConversationViewModelFactory(
@@ -47,9 +55,16 @@ class MainActivity : ComponentActivity() {
         }
 
         if (pendingEnableHotword && micGranted && cameraGranted && notificationsGranted) {
+            requestOptionalPermissionsIfNeeded()
             enableHotwordWithBatteryCheck()
         }
         pendingEnableHotword = false
+    }
+
+    private val requestOptionalPermissions = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) { _ ->
+        // Optional: denial does not block the app; resolve_phone_contact falls back to memories.
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -59,9 +74,24 @@ class MainActivity : ComponentActivity() {
         setContent {
             val uiState by viewModel.uiState.collectAsStateWithLifecycle()
             val settingsUiState by viewModel.settingsUiState.collectAsStateWithLifecycle()
+            val deskLampMode by DeskLightController.isBrightMode.collectAsStateWithLifecycle()
 
-            MyDeskRobotTheme {
-                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
+            DisposableEffect(deskLampMode) {
+                val insetsController = WindowCompat.getInsetsController(window, window.decorView)
+                insetsController.isAppearanceLightStatusBars = deskLampMode
+                insetsController.isAppearanceLightNavigationBars = deskLampMode
+                onDispose { }
+            }
+
+            MyDeskRobotTheme(
+                darkTheme = true,
+                deskLampMode = deskLampMode,
+                dynamicColor = !deskLampMode,
+            ) {
+                Scaffold(
+                    modifier = Modifier.fillMaxSize(),
+                    containerColor = if (deskLampMode) Color.White else MaterialTheme.colorScheme.background,
+                ) { innerPadding ->
                     RobotScreen(
                         uiState = uiState,
                         settingsUiState = settingsUiState,
@@ -77,6 +107,7 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+        requestOptionalPermissionsIfNeeded()
     }
 
     override fun onStart() {
@@ -88,9 +119,19 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         VisionCaptureActivityProvider.setResumedActivity(this)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        DeskLightController.attach(window, screenBrightnessHelper)
+    }
+
+    override fun onPause() {
+        DeskLightController.detach()
+        super.onPause()
     }
 
     override fun onDestroy() {
+        if (DeskLightController.isBrightMode.value) {
+            DeskLightController.attach(window, screenBrightnessHelper)
+            DeskLightController.setBrightMode(false)
+        }
         VisionCaptureActivityProvider.clearActivity(this)
         super.onDestroy()
     }
@@ -111,6 +152,7 @@ class MainActivity : ComponentActivity() {
         }
 
         if (hasRequiredPermissions()) {
+            requestOptionalPermissionsIfNeeded()
             enableHotwordWithBatteryCheck()
         } else {
             pendingEnableHotword = true
@@ -155,4 +197,18 @@ class MainActivity : ComponentActivity() {
                 Manifest.permission.CAMERA,
             )
         }
+
+    private fun optionalPermissions(): Array<String> = arrayOf(
+        Manifest.permission.READ_PHONE_STATE,
+        Manifest.permission.READ_CONTACTS,
+    )
+
+    private fun requestOptionalPermissionsIfNeeded() {
+        val missing = optionalPermissions().filter { permission ->
+            checkSelfPermission(permission) != android.content.pm.PackageManager.PERMISSION_GRANTED
+        }
+        if (missing.isNotEmpty()) {
+            requestOptionalPermissions.launch(missing.toTypedArray())
+        }
+    }
 }

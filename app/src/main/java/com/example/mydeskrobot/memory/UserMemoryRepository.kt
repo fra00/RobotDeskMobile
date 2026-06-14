@@ -6,6 +6,7 @@ import com.example.mydeskrobot.memory.db.MemoryCategory
 import com.example.mydeskrobot.memory.db.MemoryDao
 import com.example.mydeskrobot.memory.db.MemoryDatabase
 import com.example.mydeskrobot.memory.db.MemoryItemEntity
+import java.util.concurrent.TimeUnit
 
 class UserMemoryRepository(
     private val dao: MemoryDao,
@@ -15,7 +16,11 @@ class UserMemoryRepository(
         value: String,
         confidence: Float,
         sourceMessageId: Long,
+        expiresAt: Long? = null,
     ): Long {
+        require(MemoryCategory.isUserFacing(category)) {
+            "Use upsertAutonomy for robot-internal categories"
+        }
         val normalized = value.trim()
         if (normalized.isBlank()) return -1L
         val now = System.currentTimeMillis()
@@ -27,6 +32,7 @@ class UserMemoryRepository(
                 updatedAt = now,
                 sourceMessageId = sourceMessageId,
                 isDeleted = false,
+                expiresAt = null,
             )
         } else {
             MemoryItemEntity(
@@ -36,10 +42,92 @@ class UserMemoryRepository(
                 createdAt = now,
                 updatedAt = now,
                 sourceMessageId = sourceMessageId,
+                expiresAt = expiresAt,
             )
         }
         return dao.upsert(item)
     }
+
+    suspend fun upsertAutonomy(
+        category: MemoryCategory,
+        value: String,
+        confidence: Float = 0.85f,
+        sourceMessageId: Long = SOURCE_MESSAGE_LLM_TOOL,
+        ttlDays: Int? = null,
+    ): AutonomyUpsertResult {
+        require(MemoryCategory.isRobotInternal(category)) {
+            "upsertAutonomy is only for OBSERVATION, INTENT, PATTERN"
+        }
+        val normalized = value.trim()
+        if (normalized.isBlank()) return AutonomyUpsertResult.InvalidValue
+
+        if (category == MemoryCategory.INTENT &&
+            dao.countActiveByCategory(MemoryCategory.INTENT) >= MAX_ACTIVE_INTENTS
+        ) {
+            val existing = dao.findExact(MemoryCategory.INTENT, normalized)
+            if (existing == null) {
+                return AutonomyUpsertResult.IntentCapReached
+            }
+        }
+
+        val now = System.currentTimeMillis()
+        val effectiveTtlDays = ttlDays ?: defaultTtlDays(category)
+        val expiresAt = now + TimeUnit.DAYS.toMillis(effectiveTtlDays.toLong())
+
+        val existing = when (category) {
+            MemoryCategory.INTENT -> dao.findExact(MemoryCategory.INTENT, normalized)
+            MemoryCategory.OBSERVATION -> findObservationDuplicate(normalized)
+            else -> dao.findExact(category, normalized)
+        }
+
+        val item = if (existing != null) {
+            existing.copy(
+                value = normalized,
+                confidence = maxOf(existing.confidence, confidence.coerceIn(0f, 1f)),
+                updatedAt = now,
+                sourceMessageId = sourceMessageId,
+                isDeleted = false,
+                expiresAt = expiresAt,
+            )
+        } else {
+            MemoryItemEntity(
+                category = category,
+                value = normalized,
+                confidence = confidence.coerceIn(0f, 1f),
+                createdAt = now,
+                updatedAt = now,
+                sourceMessageId = sourceMessageId,
+                expiresAt = expiresAt,
+            )
+        }
+        return AutonomyUpsertResult.Success(dao.upsert(item))
+    }
+
+    suspend fun pruneExpired(): Int {
+        val now = System.currentTimeMillis()
+        return dao.softDeleteExpired(now)
+    }
+
+    suspend fun countActiveIntents(): Int =
+        dao.countActiveByCategory(MemoryCategory.INTENT)
+
+    suspend fun getActiveIntents(limit: Int = MAX_ACTIVE_INTENTS): List<MemoryItemEntity> =
+        dao.getByCategory(MemoryCategory.INTENT, limit.coerceAtMost(MAX_ACTIVE_INTENTS))
+
+    suspend fun getRecentObservations(
+        limit: Int = DEFAULT_OBSERVATION_LIMIT,
+        maxAgeDays: Int = DEFAULT_OBSERVATION_TTL_DAYS,
+    ): List<MemoryItemEntity> {
+        val items = dao.getByCategory(MemoryCategory.OBSERVATION, limit.coerceAtLeast(1))
+        val cutoff = System.currentTimeMillis() - TimeUnit.DAYS.toMillis(maxAgeDays.toLong())
+        return items.filter { it.updatedAt >= cutoff }
+    }
+
+    suspend fun getActivePatterns(limit: Int = DEFAULT_PATTERN_LIMIT): List<MemoryItemEntity> =
+        dao.getByCategory(MemoryCategory.PATTERN, limit.coerceAtLeast(1))
+
+    suspend fun getUserFacingActive(): List<MemoryItemEntity> =
+        dao.getUserFacingActive(MemoryCategory.USER_FACING.toList())
 
     suspend fun getCoreIdentity(limit: Int = 2): List<MemoryItemEntity> =
         getByCategory(MemoryCategory.IDENTITY, limit)
@@ -47,15 +135,36 @@ class UserMemoryRepository(
     suspend fun getByCategory(category: MemoryCategory, limit: Int): List<MemoryItemEntity> =
         dao.getByCategory(category, limit)
 
-    suspend fun searchRelevant(query: String, limit: Int): List<MemoryItemEntity> {
+    suspend fun searchRelevant(
+        query: String,
+        limit: Int,
+        includeRobotInternal: Boolean = false,
+    ): List<MemoryItemEntity> {
         val q = query.trim()
         if (q.isBlank()) return emptyList()
-        val active = dao.getAllActive()
+        val active = if (includeRobotInternal) {
+            dao.getAllActive()
+        } else {
+            dao.getUserFacingActive(MemoryCategory.USER_FACING.toList())
+        }
         val ranked = MemoryTopicMatcher.rank(q, active, limit)
         if (ranked.isNotEmpty()) return ranked.map { it.item }
         val fallback = MemoryTopicMatcher.fallbackMatches(q, active).take(limit)
         if (fallback.isNotEmpty()) return fallback.map { it.item }
-        return dao.searchByQuery(q, limit)
+        return if (includeRobotInternal) {
+            dao.searchByQuery(q, limit)
+        } else {
+            searchUserFacingByQuery(q, limit)
+        }
+    }
+
+    private suspend fun searchUserFacingByQuery(query: String, limit: Int): List<MemoryItemEntity> {
+        val merged = linkedMapOf<Long, MemoryItemEntity>()
+        for (category in MemoryCategory.USER_FACING) {
+            dao.searchByQuery(category, query, limit).forEach { merged.putIfAbsent(it.id, it) }
+            if (merged.size >= limit) break
+        }
+        return merged.values.take(limit).toList()
     }
 
     /**
@@ -65,7 +174,9 @@ class UserMemoryRepository(
         val expanded = expandQueryForSearch(query)
         val merged = linkedMapOf<Long, MemoryItemEntity>()
         for (q in expanded) {
-            searchRelevant(q, limit).forEach { item -> merged.putIfAbsent(item.id, item) }
+            searchRelevant(q, limit, includeRobotInternal = false).forEach { item ->
+                merged.putIfAbsent(item.id, item)
+            }
             if (merged.size >= limit) break
         }
         return merged.values.take(limit).toList()
@@ -189,18 +300,27 @@ class UserMemoryRepository(
         dao.clearAll()
     }
 
+    /** Clears only durable user-facing memories; keeps robot-internal autonomy rows. */
+    suspend fun resetUserFacingMemory() {
+        dao.clearByCategories(MemoryCategory.USER_FACING.toList())
+    }
+
     suspend fun pruneIfNeeded(maxItems: Int): Int {
+        pruneExpired()
         val active = dao.countActive()
         if (active <= maxItems) return 0
         val toDelete = active - maxItems
-        val lowPriority = dao.lowPriorityForPruning(toDelete)
+        val lowPriority = dao.lowPriorityForPruning(
+            excludeCategories = MemoryCategory.ROBOT_INTERNAL.toList(),
+            limit = toDelete,
+        )
         val now = System.currentTimeMillis()
         lowPriority.forEach { dao.softDeleteById(it.id, now) }
         return lowPriority.size
     }
 
     suspend fun reorganize(): Int {
-        val active = dao.getAllActive()
+        val active = dao.getUserFacingActive(MemoryCategory.USER_FACING.toList())
         val toDelete = mutableSetOf<Long>()
         val now = System.currentTimeMillis()
 
@@ -241,13 +361,45 @@ class UserMemoryRepository(
                     .thenBy { it.updatedAt },
             )
 
+    private suspend fun findObservationDuplicate(value: String): MemoryItemEntity? {
+        val dateKey = extractDateKey(value) ?: return null
+        val observations = dao.getByCategory(MemoryCategory.OBSERVATION, limit = 50)
+        return observations.firstOrNull { extractDateKey(it.value) == dateKey }
+    }
+
+    private fun extractDateKey(value: String): String? {
+        val match = DATE_KEY_REGEX.find(value.lowercase()) ?: return null
+        return match.value
+    }
+
+    private fun defaultTtlDays(category: MemoryCategory): Int = when (category) {
+        MemoryCategory.OBSERVATION -> DEFAULT_OBSERVATION_TTL_DAYS
+        MemoryCategory.INTENT -> DEFAULT_INTENT_TTL_DAYS
+        MemoryCategory.PATTERN -> DEFAULT_PATTERN_TTL_DAYS
+        else -> DEFAULT_OBSERVATION_TTL_DAYS
+    }
+
     companion object {
+        /** Marks facts saved explicitly via LLM tool (not conversation log extraction). */
+        const val SOURCE_MESSAGE_LLM_TOOL: Long = -1L
+
+        const val MAX_ACTIVE_INTENTS = 3
+        const val DEFAULT_OBSERVATION_TTL_DAYS = 7
+        const val DEFAULT_INTENT_TTL_DAYS = 1
+        const val DEFAULT_PATTERN_TTL_DAYS = 30
+        const val DEFAULT_OBSERVATION_LIMIT = 8
+        const val DEFAULT_PATTERN_LIMIT = 3
+
+        private val DATE_KEY_REGEX = Regex("""\d{1,2}\s+\w+\s+\d{4}""")
+
         fun create(context: Context): UserMemoryRepository {
             val db = Room.databaseBuilder(
                 context.applicationContext,
                 MemoryDatabase::class.java,
                 "user_memory.db",
-            ).build()
+            )
+                .addMigrations(MemoryDatabase.MIGRATION_1_2)
+                .build()
             return UserMemoryRepository(db.memoryDao())
         }
 

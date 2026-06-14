@@ -1,6 +1,9 @@
 package com.example.mydeskrobot.integration.input
 
 import com.example.mydeskrobot.reasoning.model.SystemInputEnvelope
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentLinkedDeque
 
@@ -14,6 +17,8 @@ class DeferredInputQueue(
 ) {
     private val queue = ConcurrentLinkedDeque<QueuedInput>()
     private val seenKeys = ConcurrentHashMap<String, Long>()
+    private val _items = MutableStateFlow<List<DeferredQueueItem>>(emptyList())
+    val items: StateFlow<List<DeferredQueueItem>> = _items.asStateFlow()
 
     /**
      * Add an input to the queue if not a duplicate.
@@ -35,6 +40,7 @@ class DeferredInputQueue(
 
         seenKeys[key] = now
         queue.addLast(QueuedInput(envelope, now))
+        publishSnapshot()
         return true
     }
 
@@ -53,6 +59,7 @@ class DeferredInputQueue(
             }
         }
 
+        publishSnapshot()
         return result
     }
 
@@ -79,7 +86,22 @@ class DeferredInputQueue(
     fun clear() {
         queue.clear()
         seenKeys.clear()
+        publishSnapshot()
     }
+
+    /**
+     * Removes a queued input without processing it (user dismissed from inbox).
+     */
+    fun removeByDedupKey(dedupKey: String): Boolean {
+        val removed = queue.removeIf { it.envelope.dedupKey == dedupKey }
+        if (removed) {
+            seenKeys.remove(dedupKey)
+            publishSnapshot()
+        }
+        return removed
+    }
+
+    fun snapshot(): List<DeferredQueueItem> = queue.map { DeferredQueueItem(it.envelope, it.enqueuedAt) }
 
     /**
      * Check if a key was recently seen (for external dedup checks).
@@ -102,8 +124,17 @@ class DeferredInputQueue(
         seenKeys.entries.removeIf { now - it.value >= dedupTtlMs }
     }
 
+    private fun publishSnapshot() {
+        _items.value = snapshot()
+    }
+
     private data class QueuedInput(
         val envelope: SystemInputEnvelope,
         val enqueuedAt: Long,
     )
 }
+
+data class DeferredQueueItem(
+    val envelope: SystemInputEnvelope,
+    val enqueuedAt: Long,
+)

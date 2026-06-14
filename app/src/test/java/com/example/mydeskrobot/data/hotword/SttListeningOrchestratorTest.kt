@@ -30,6 +30,7 @@ class SttListeningOrchestratorTest {
     private fun runOrchestrator(
         fake: FakeSpeechToTextDataSource,
         config: ListeningConfig = testConfig(),
+        isAssistantTurnActive: () -> Boolean = { false },
         onEvent: suspend (HotwordEvent) -> Unit = {},
     ): Job {
         val orchestrator = SttListeningOrchestrator(
@@ -44,7 +45,7 @@ class SttListeningOrchestratorTest {
                 orchestrator.run(
                     isServiceActive = { true },
                     isSttEnabled = { true },
-                    isAssistantTurnActive = { false },
+                    isAssistantTurnActive = isAssistantTurnActive,
                     isBargeInMode = { false },
                     bargeInEchoReference = { null },
                 )
@@ -112,6 +113,30 @@ class SttListeningOrchestratorTest {
 
         val ready = events.filterIsInstance<HotwordEvent.UtteranceReadyForLlm>().singleOrNull()
         assertEquals("ciao mondo", ready?.phrase)
+        job.cancel()
+    }
+
+    @Test
+    fun `does not listen during assistant turn in active session`() = runBlocking {
+        val events = Collections.synchronizedList(mutableListOf<HotwordEvent>())
+        val fake = FakeSpeechToTextDataSource()
+        fake.enqueue(
+            FakeSpeechToTextDataSource.ListenScript(transcript = "assistente"),
+        )
+        var assistantTurnActive = false
+
+        val job = runOrchestrator(
+            fake = fake,
+            isAssistantTurnActive = { assistantTurnActive },
+        ) { events.add(it) }
+        delay(300)
+        assertTrue(events.any { it is HotwordEvent.SessionStarted })
+
+        val listensAtSessionStart = fake.listenCallCount
+        assistantTurnActive = true
+        delay(800)
+
+        assertEquals(listensAtSessionStart, fake.listenCallCount)
         job.cancel()
     }
 }

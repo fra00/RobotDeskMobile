@@ -7,8 +7,8 @@ LLM prompts in this project describe **what the robot can do** and **hard limits
 | Layer | Purpose | Example |
 |-------|---------|---------|
 | **Capabilities** | Tool catalog + hardware semantics | Joint names, `save_memory` vs `add_list_item` roles |
-| **Constraints** | Non-negotiable technical or product rules | One image per LLM turn; `reply: ""` for silent body moves; no OTP in voice |
-| **Illustrative examples** | Show valid JSON shape and plausible chains | Few-shot blocks labeled *illustrative only* |
+| **Constraints** | Non-negotiable technical or product rules | One image per LLM turn; `reply: ""` for silent body moves; `think` = orientation (goal/know/unknown/success/now), no multi-step plans in `think`; never TTS; no OTP in voice |
+| **Illustrative examples** | Show valid JSON shape and plausible chains | Few-shot JSON uses `<MARKER>` placeholders in `reply`, not fixed Italian phrases |
 
 The planner (the LLM) combines tools freely to reach the user's goal or heartbeat objective. See [TOOL_ARCHITECTURE.md](TOOL_ARCHITECTURE.md) §11 (autonomous tool chains).
 
@@ -23,6 +23,7 @@ The planner (the LLM) combines tools freely to reach the user's goal or heartbea
 3. **Capabilities stay neutral.** Tool descriptions say what a tool does and what it combines with — not "always call X before Y".
 4. **Optional patterns are optional.** Strategies like subject centering, multi-angle exploration, or mood-informed body expression are listed under *you may* / *if useful*, with soft limits (e.g. ~3 correction cycles), not mandatory decision trees.
 5. **Storage = semantics, not flowchart.** Memory, lists, and reminders are defined by what information *is*, not by the verb "ricorda" alone.
+6. **Autonomy parsimony is explicit.** OBSERVATION/INTENT are robot-internal (`MEMORY.md`); save only when decision-changing; max 3 INTENTs (app-enforced); when in doubt on heartbeat: silence, do not save.
 
 ## Where this applies
 

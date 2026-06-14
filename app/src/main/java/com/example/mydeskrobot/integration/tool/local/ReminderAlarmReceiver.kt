@@ -16,6 +16,7 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import com.example.mydeskrobot.MainActivity
 import com.example.mydeskrobot.R
+import com.example.mydeskrobot.data.check.FireAndCheckRepository
 import com.example.mydeskrobot.data.scheduled.ScheduledTaskRepository
 import com.example.mydeskrobot.data.scheduled.ScheduledTaskStatus
 import com.example.mydeskrobot.domain.input.SystemInputDispatcher
@@ -46,6 +47,7 @@ class ReminderAlarmReceiver : BroadcastReceiver() {
         }
 
         runBlocking { repository.markFired(taskId) }
+        runBlocking { FireAndCheckRepository.create(context).onReminderFired(taskId) }
 
         val message = task.message.ifBlank { "Promemoria" }
         showNotification(context, taskId, message)

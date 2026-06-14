@@ -7,7 +7,7 @@ Schema:
 {
   "facts": [
     {
-      "category": "IDENTITY | PREFERENCE | ROUTINE | FACT",
+      "category": "IDENTITY | PREFERENCE | ROUTINE | FACT (never OBSERVATION, INTENT, or PATTERN)",
       "value": "short normalized statement",
       "confidence": 0.0
     }
@@ -16,11 +16,14 @@ Schema:
 
 Rules:
 - Extract only durable user-related facts (name, likes, recurring routines, lasting preferences).
+- Do NOT extract OBSERVATION, INTENT, or PATTERN — those are saved by the robot during heartbeat via save_memory, not from chat logs.
 - Memory = knowledge still true weeks later. Do NOT extract one-off tasks, shopping items, dated appointments, or "domani/oggi devo …" — those belong in lists or reminders, not here.
 - Ignore: todos, notes, shopping, set_reminder content, tool results, transient plans, assistant-only statements.
-- ROUTINE only for repeating patterns ("ogni martedì …"), not a single future day.
+- ROUTINE for repeating patterns: "ogni martedì …", "il venerdì …", "di venerdì …" (article or "di" + weekday = every that day), "il venerdì di solito …", weekday ranges ("dal lunedì al sabato", "da martedì a venerdì", "tra/fra … e …"). NOT a single calendar day.
+- "il venerdì esco con gli amici" → ROUTINE with weekday kept; NEVER resolve to "il 12 giugno …".
 - Keep values concise and reusable in future conversations.
 - Always write values in Italian. Do not emit English duplicates of the same fact.
-- If a value must mention a calendar day, use the absolute date from CURRENT DATE AND TIME (e.g. "il 3 giugno 2026"), never relative words like oggi/domani/martedì alone.
-- Keep weekday names only inside recurring ROUTINE facts ("ogni martedì …"); do not resolve those to a single calendar date.
+- If a value must mention a one-off calendar day, use the absolute date from CURRENT DATE AND TIME (e.g. "il 3 giugno 2026"), never bare weekday alone in ROUTINE.
+- Keep weekday names inside recurring ROUTINE facts ("ogni martedì", "il venerdì", "dal lunedì al sabato"); do not resolve those to a single calendar date.
+- Bare weekday without article in one-off context → list/reminder or absolute date, NOT ROUTINE.
 - If nothing useful is found, return {"facts": []}.

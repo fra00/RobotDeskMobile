@@ -26,11 +26,12 @@
     <string name="status_capturing_image">Sto guardando… scatto foto</string>
     <string name="status_opening_browser">Apro il browser…</string>
     <string name="status_opening_spotify">Apro Spotify…</string>
+    <string name="status_opening_dialer">Apro il telefono…</string>
     <string name="status_setting_robot_context">Aggiorno contesto…</string>
     <string name="status_web_search">Cerco sul web…</string>
     <string name="status_fetch_url">Leggo la pagina…</string>
     <string name="status_analyzing_image">Analizzo la foto…</string>
-    <string name="status_speaking">Sto parlando… parla per interrompere, oppure «%1$s» per uscire</string>
+    <string name="status_speaking">Sto parlando… attendi la fine oppure «%1$s» per uscire</string>
     <string name="status_session_ended_exit">Sessione chiusa («%1$s»). Di\' di nuovo la wake word.</string>
     <string name="status_session_ended_silence">Silenzio prolungato: standby.</string>
 
@@ -54,6 +55,46 @@
     <string name="conversation_history_close">Chiudi</string>
     <string name="cd_show_conversation_history">Mostra cronologia conversazione</string>
 
+    <string name="reasoning_log_title">Log ragionamento LLM</string>
+    <string name="reasoning_log_empty">Nessun turno LLM registrato ancora.</string>
+    <string name="reasoning_log_close">Chiudi</string>
+    <string name="reasoning_log_clear">Svuota</string>
+    <string name="cd_show_reasoning_log">Mostra log ragionamento LLM</string>
+
+    <string name="mood_status_title">Stato umore</string>
+    <string name="mood_status_close">Chiudi</string>
+    <string name="cd_show_mood_status">Mostra stato umore e benessere</string>
+    <string name="mood_status_scale_label">Benessere (scala −1 … +1)</string>
+    <string name="mood_status_valence_value">Valenza attuale: %1$s · baseline %2$s</string>
+    <string name="mood_status_bounds">Limiti effettivi: %1$s … %2$s</string>
+    <string name="mood_status_wellbeing_section">Benessere persistente</string>
+    <string name="mood_status_base_emotion">Emozione di fondo: %1$s (%2$d%%)</string>
+    <string name="mood_status_reason">Motivo: %1$s</string>
+    <string name="mood_status_duration">In questo stato da: %1$d min</string>
+    <string name="mood_status_idle">Idle utente: %1$d min</string>
+    <string name="mood_status_recent_events">Ultimi eventi:</string>
+    <string name="mood_status_ephemeral_section">Espressione effimera (LLM)</string>
+    <string name="mood_status_ephemeral_emotion">Emozione turno: %1$s (%2$d%%)</string>
+    <string name="mood_status_ephemeral_ttl">Scade tra: %1$d s</string>
+    <string name="mood_status_ephemeral_note">Non modifica la valenza persistente.</string>
+    <string name="mood_status_display_section">Occhi in questo momento</string>
+    <string name="mood_status_display_emotion">Emozione mostrata: %1$s (%2$d%%)</string>
+    <string name="mood_status_prompt_section">STATO ROBOT (prompt LLM)</string>
+    <string name="mood_status_scale_negative">male</string>
+    <string name="mood_status_scale_positive">bene</string>
+    <string name="mood_status_scale_baseline_legend">linea = baseline</string>
+    <string name="mood_reason_eye_poke">poke occhi</string>
+    <string name="mood_reason_user_apology">scusa utente</string>
+    <string name="mood_reason_idle_long">idle lungo</string>
+    <string name="mood_reason_idle_very_long">idle molto lungo</string>
+    <string name="mood_reason_night_time">notte</string>
+    <string name="mood_reason_positive_interaction">interazione positiva</string>
+    <string name="mood_reason_negative_interaction">interazione negativa</string>
+    <string name="mood_reason_task_completed">task completato</string>
+    <string name="mood_reason_reminder_urgent">promemoria urgente</string>
+    <string name="mood_reason_user_returned">utente tornato</string>
+    <string name="mood_reason_heartbeat_suppressed">heartbeat soppresso</string>
+
     <string name="cd_service_off">Servizio di ascolto disattivato</string>
     <string name="cd_standby_on">In standby — in attesa della wake word</string>
     <string name="cd_session_active">Sessione conversazione attiva</string>
@@ -63,6 +104,28 @@
     <string name="cd_sleeping">Robot che dorme</string>
     <string name="cd_drowsy">Robot assonnato</string>
     <string name="cd_standby_sleeping">In standby — dorme</string>
+    <string name="cd_robot_context_work">Contesto robot: lavoro</string>
+    <string name="cd_robot_context_call">Contesto robot: chiamata</string>
+    <string name="cd_robot_context_meeting">Contesto robot: riunione</string>
+    <string name="cd_robot_context_focus">Contesto robot: focus</string>
+    <string name="cd_fire_and_check_scheduled">Controllo programmato</string>
+    <string name="cd_fire_and_check_awaiting">In attesa di verifica</string>
+    <string name="cd_fire_and_check_pending">Verifica da eseguire</string>
+    <string name="fire_and_check_dialog_title">Fire-and-check</string>
+    <string name="fire_and_check_label_goal">Controllo previsto: %1$s</string>
+    <string name="fire_and_check_label_verification">Passo di verifica: %1$s</string>
+    <string name="fire_and_check_label_trigger">Richiesta: %1$s</string>
+    <string name="fire_and_check_label_phase">Stato: %1$s</string>
+    <string name="fire_and_check_phase_scheduled">azione programmata</string>
+    <string name="fire_and_check_phase_awaiting">in attesa del controllo</string>
+    <string name="fire_and_check_phase_pending">verifica attiva</string>
+
+    <string name="cd_pending_inbox">Promemoria e notifiche in attesa</string>
+    <string name="pending_inbox_title">In attesa</string>
+    <string name="pending_inbox_empty">Nessun promemoria o notifica in coda</string>
+    <string name="pending_inbox_cancel">Annulla</string>
+    <string name="pending_inbox_kind_reminder">Promemoria</string>
+    <string name="pending_inbox_kind_notification">Notifica</string>
 
     <string name="cd_hotword_inactive">Attiva ascolto always-on</string>
     <string name="cd_hotword_active">Disattiva ascolto always-on</string>
@@ -79,6 +142,8 @@
     <string name="settings_title">Impostazioni</string>
     <string name="settings_llm">LLM</string>
     <string name="settings_memory">Memoria</string>
+    <string name="settings_spatial">Stanze / luoghi</string>
+    <string name="settings_log_day">Log Day</string>
     <string name="settings_close">Chiudi</string>
     <string name="settings_configure">Configura</string>
     <string name="settings_save">Salva</string>
@@ -119,6 +184,33 @@
     <string name="memory_reorganize_none">Nessun duplicato rilevato</string>
     <string name="memory_settings_saved">Impostazioni memoria salvate</string>
     <string name="memory_reset_done">Memoria cancellata</string>
+
+    <string name="spatial_settings_title">Stanze e luoghi</string>
+    <string name="spatial_settings_hint">Luoghi memorizzati dal robot (landmark visivi). Modifica label e landmark; il robot usa questi dati per riconoscere la stanza.</string>
+    <string name="spatial_settings_empty">Nessuna stanza memorizzata. Chiedi al robot di memorizzare questa stanza dopo uno scan.</string>
+    <string name="spatial_place_label">Nome stanza</string>
+    <string name="spatial_place_landmarks">Landmark (separati da virgola)</string>
+    <string name="spatial_place_delete">Elimina</string>
+    <string name="spatial_place_saved">Stanza aggiornata</string>
+    <string name="spatial_place_save_failed">Salvataggio non riuscito</string>
+    <string name="spatial_place_deleted">Stanza eliminata</string>
+
+    <string name="log_day_settings_title">Log Day</string>
+    <string name="log_day_enabled_label">Abilita log attività in standby</string>
+    <string name="log_day_interval_minutes_label">Intervallo analisi (minuti)</string>
+    <string name="log_day_summary_title">Riepilogo abitudini</string>
+    <string name="log_day_summary_empty">Nessun riepilogo ancora. Usa \"Aggiorna riepilogo\" dopo alcune attività registrate.</string>
+    <string name="log_day_events_title">Attività per giorno (ultimi 7 giorni)</string>
+    <string name="log_day_empty">Nessuna attività registrata</string>
+    <string name="log_day_refresh_summary">Aggiorna riepilogo</string>
+    <string name="log_day_clear">Svuota log</string>
+    <string name="log_day_settings_saved">Impostazioni Log Day salvate</string>
+    <string name="log_day_clear_done">Log attività svuotato</string>
+    <string name="log_day_summary_updated">Riepilogo abitudini aggiornato</string>
+    <string name="log_day_summary_failed">Impossibile aggiornare il riepilogo</string>
+    <string name="log_day_source_extractor">estrazione</string>
+    <string name="log_day_source_tool">tool</string>
+    <string name="log_day_source_voice">voce</string>
 
     <string name="settings_lists">Liste e note</string>
     <string name="list_settings_title">Liste salvate</string>

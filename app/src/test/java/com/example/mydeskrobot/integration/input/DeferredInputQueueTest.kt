@@ -115,6 +115,16 @@ class DeferredInputQueueTest {
     }
 
     @Test
+    fun `removeByDedupKey removes item without draining others`() {
+        queue.enqueue(createTestEnvelope("keep"))
+        queue.enqueue(createTestEnvelope("remove-me"))
+
+        assertTrue(queue.removeByDedupKey("remove-me"))
+        assertEquals(1, queue.size())
+        assertEquals("keep", queue.peek()?.dedupKey)
+    }
+
+    @Test
     fun `markSeen makes key appear as recently seen`() {
         assertFalse(queue.wasRecentlySeen("manual-key"))
 
