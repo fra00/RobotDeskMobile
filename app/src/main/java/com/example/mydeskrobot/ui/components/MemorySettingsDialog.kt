@@ -6,11 +6,12 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
@@ -30,6 +31,9 @@ import com.example.mydeskrobot.presentation.settings.MemorySettingsFormState
 fun MemorySettingsDialog(
     form: MemorySettingsFormState,
     memoryItems: List<MemoryItemUi>,
+    isReorganizing: Boolean,
+    feedbackMessage: String?,
+    feedbackIsError: Boolean,
     onFormChange: (MemorySettingsFormState) -> Unit,
     onMemoryItemValueChange: (Long, String) -> Unit,
     onSaveMemoryItem: (Long, String) -> Unit,
@@ -83,10 +87,40 @@ fun MemorySettingsDialog(
                     }
                 }
                 Spacer(modifier = Modifier.height(8.dp))
+                if (isReorganizing) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        CircularProgressIndicator(modifier = Modifier.size(20.dp))
+                        Text(
+                            text = stringResource(R.string.memory_consolidate_in_progress),
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+                if (!feedbackMessage.isNullOrBlank()) {
+                    Text(
+                        text = feedbackMessage,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (feedbackIsError) {
+                            MaterialTheme.colorScheme.error
+                        } else {
+                            MaterialTheme.colorScheme.primary
+                        },
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
                 TextButton(onClick = onResetMemory, modifier = Modifier.fillMaxWidth()) {
                     Text(stringResource(R.string.memory_reset_button))
                 }
-                TextButton(onClick = onReorganizeNow, modifier = Modifier.fillMaxWidth()) {
+                TextButton(
+                    onClick = onReorganizeNow,
+                    enabled = !isReorganizing,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
                     Text(stringResource(R.string.memory_reorganize_button))
                 }
             }

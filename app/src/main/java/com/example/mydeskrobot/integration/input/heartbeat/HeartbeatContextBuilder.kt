@@ -66,7 +66,7 @@ class HeartbeatContextBuilder(
 
         val habitSummary = activityLogRepository?.getHabitSummary()?.summaryText
         val recentActivities = activityLogRepository
-            ?.getRecentForContext(maxEvents = MAX_RECENT_ACTIVITIES, daysBack = 1)
+            ?.getRecentPhysicalForContext(maxEvents = MAX_RECENT_ACTIVITIES, daysBack = 1)
             ?.map { event ->
                 val time = activityTimeFormat.format(event.timestampMs)
                 "$time ${event.label}"

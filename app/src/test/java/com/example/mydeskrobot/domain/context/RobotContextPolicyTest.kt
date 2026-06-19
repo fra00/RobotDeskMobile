@@ -11,14 +11,14 @@ import java.util.Calendar
 class RobotContextPolicyTest {
 
     @Test
-    fun `shouldDropNotifications when profile is CALL`() {
+    fun `shouldSuppressNotificationTts when profile is CALL`() {
         val state = RobotContextState(profile = RobotProfile.CALL, notificationMode = NotificationMode.SILENT)
-        assertTrue(RobotContextPolicy.shouldDropNotifications(state))
+        assertTrue(RobotContextPolicy.shouldSuppressNotificationTts(state))
     }
 
     @Test
-    fun `shouldNotDrop when NORMAL`() {
-        assertFalse(RobotContextPolicy.shouldDropNotifications(RobotContextState.NORMAL))
+    fun `shouldNotSuppressTts when NORMAL`() {
+        assertFalse(RobotContextPolicy.shouldSuppressNotificationTts(RobotContextState.NORMAL))
     }
 
     @Test
@@ -52,13 +52,33 @@ class RobotContextPolicyTest {
     }
 
     @Test
-    fun `isSessionScoped when sessionOnly and not normal`() {
+    fun `shouldClearOnSessionEnd for session-only notification silence`() {
+        val state = RobotContextState(
+            profile = RobotProfile.NORMAL,
+            notificationMode = NotificationMode.SILENT,
+            sessionOnly = true,
+        )
+        assertTrue(RobotContextPolicy.shouldClearOnSessionEnd(state))
+    }
+
+    @Test
+    fun `shouldNotClearOnSessionEnd for work profile even with sessionOnly`() {
         val state = RobotContextState(
             profile = RobotProfile.WORK,
             notificationMode = NotificationMode.SILENT,
             sessionOnly = true,
         )
-        assertTrue(RobotContextPolicy.isSessionScoped(state))
+        assertFalse(RobotContextPolicy.shouldClearOnSessionEnd(state))
+    }
+
+    @Test
+    fun `shouldNotClearOnSessionEnd for call profile`() {
+        val state = RobotContextState(
+            profile = RobotProfile.CALL,
+            notificationMode = NotificationMode.SILENT,
+            sessionOnly = false,
+        )
+        assertFalse(RobotContextPolicy.shouldClearOnSessionEnd(state))
     }
 
     @Test
@@ -72,6 +92,6 @@ class RobotContextPolicyTest {
             RobotContextState(profile = RobotProfile.WORK, notificationMode = NotificationMode.SILENT),
         )
         assertTrue(section.contains("WORK"))
-        assertTrue(section.contains("SILENCED"))
+        assertTrue(section.contains("processed silently"))
     }
 }

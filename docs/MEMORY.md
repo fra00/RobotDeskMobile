@@ -21,11 +21,19 @@ Each voice turn runs [`MemoryIntentDetector`](../app/src/main/java/com/example/m
 |---------|------------------|------------------|
 | **QUERY** | "come si chiama il mio cane", "ricordi", "controlla la memoria" | IDENTITY + expanded fuzzy search on phrase |
 | **VISION** | "fai una foto", "guarda", "cosa vedi" | FACT + ROUTINE entity catalog for labeling photos |
-| **PLAN** | "cosa devo fare oggi", "agenda", "riunioni" | ROUTINE memories + **TODAY CONTEXT** (reminders, todos, notes) |
+| **PLAN** | "cosa devo fare oggi", "agenda", "domani", "riunioni" | ROUTINE memories + **CONTESTO GIORNO** (reminders, todos, notes) + **EPISODI PROSSIMI** (Log Day) |
 | **LEISURE** | "cosa posso guardare", "tempo libero" | PREFERENCE + phrase search |
 | **DEFAULT** | general chat | IDENTITY + fuzzy search (max 10) |
 
 Mixed intents merge blocks (e.g. photo + dog name → VISION catalog + QUERY search).
+
+### Usage counter (`useCount`)
+
+Each time a memory row is **injected into the dialog prompt** (`MemoryPromptContextProviderImpl` → `markUsed`), `useCount` increments and `lastUsedAt` updates. Extraction and manual saves do **not** bump the counter.
+
+When the store exceeds the cap, `pruneIfNeeded` removes low-priority rows ordered by `confidence ASC`, then `useCount ASC`, then `lastUsedAt ASC` — rarely injected memories are pruned first.
+
+**Consolidation** (`replaceUserFacingWithConsolidated`) creates fresh rows with `useCount = 0`; merging source counts is deferred.
 
 ### Vision mid-chain refresh
 
@@ -57,8 +65,9 @@ Impostazioni → Memoria: enable extraction, interval, **editable list** of all 
 ### Duplicate handling
 
 - **On save** (`upsert`): merges into an existing row when the value is semantically duplicate (same category), not only exact text match.
-- **Riorganizza ora**: removes near-duplicates (reworded Italian, IT/EN pairs) via [`MemoryDuplicateDetector`](../app/src/main/java/com/example/mydeskrobot/memory/MemoryDuplicateDetector.kt).
-- **Automatic**: each memory extraction cycle in standby also runs `reorganize()` (even when no new facts were extracted).
+- **Riorganizza ora**: runs Kotlin dedup (`reorganize`) then **LLM compaction** of all user-facing rows (`MemoryConsolidationService`) — merges fragments and cross-category near-duplicates into canonical `(CATEGORY) value` lines.
+- **Automatic**: after each memory extraction cycle in standby, compaction runs if content hash changed and row count > 3 (skips unchanged memory).
+- **Legacy dedup**: `reorganize()` still runs before compaction as a lightweight safety net.
 
 ## Categories
 
@@ -111,7 +120,7 @@ Prompt details: `llm_system_prompt.txt` section **STORAGE CHANNEL SEMANTICS**.
 1. "Come si chiama il mio cane?" (no photo) → name from memory or `list_memories`
 2. "Controlla la memoria sul cane" → states facts, not only count
 3. "Fai una foto" → describes scene; uses entity names if in catalog
-4. "Cosa devo fare oggi" → cites TODAY CONTEXT (reminders + todos)
+4. "Cosa devo fare oggi" → cites CONTESTO GIORNO + EPISODI PROSSIMI (reminders + todos + Log Day)
 5. "Cosa posso guardare oggi" (MotoGP in PREFERENCE) → leisure suggestion, not agenda
 6. Multi-angle scan: after each `take_photo`, vision entities available in prompt
 

@@ -66,9 +66,10 @@ Le linee guida dettagliate sono in **`.cursor/rules/*.mdc`**:
 5. Per pipeline STT (orchestrator + provider) → `docs/STT_ARCHITECTURE.md`.
 6. Per task schedulati / promemoria vocali → `docs/SCHEDULED_TASKS.md`.
 7. Per memoria utente (estrazione + tool + profili QUERY/VISION/PLAN/LEISURE, DayContext) → `docs/MEMORY.md`.
-7b. Per log attività giornaliere (Log Day, TTL 7 giorni, riepilogo abitudini) → `docs/ACTIVITY_LOG.md`.
+7b. Per log episodico Log Day (piani, thread sociali, EPISODI PROSSIMI in PLAN) → `docs/ACTIVITY_LOG.md`.
 8. Per contesto robot / silenzio notifiche → `docs/ROBOT_CONTEXT.md`.
 9. Per corpo fisico ESP32 (myDeskBody) → `docs/BODY_INTEGRATION.md` + prompt dinamico `body_capabilities_prompt.txt` via `BodyPromptProviderImpl`.
+9b. **Assembly prompt runtime** (`ReasoningEngineImpl.buildPromptWithContext`): base `llm_system_prompt.txt` + AVAILABLE TOOLS + condizionali: `body_capabilities` (ESP32), `heartbeat_playbook` (solo tick heartbeat/weekly_reflection), memory/day/activity/robot/spatial/mood. SSOT labels: `docs/PROMPT_PHILOSOPHY.md`.
 10. **Per filosofia prompt (capability + vincoli, esempi illustrativi)** → `docs/PROMPT_PHILOSOPHY.md`.
 11. Per policy risoluzione autonoma (tool diretto vs catena) → `docs/AGENT_REASONING.md`.
 12. Per espressioni occhi (campo `emotion` LLM) → `docs/ROBOT_EXPRESSIONS.md`.

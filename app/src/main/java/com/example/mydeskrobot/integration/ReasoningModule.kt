@@ -52,6 +52,7 @@ import com.example.mydeskrobot.integration.tool.remote.WeatherTool
 import com.example.mydeskrobot.data.body.BodySettingsRepository
 import com.example.mydeskrobot.integration.body.BodyApiClient
 import com.example.mydeskrobot.integration.body.BodyPromptProviderImpl
+import com.example.mydeskrobot.integration.input.heartbeat.HeartbeatPlaybookProviderImpl
 import com.example.mydeskrobot.integration.tool.hardware.BodyHomeTool
 import com.example.mydeskrobot.integration.tool.hardware.BodyStatusTool
 import com.example.mydeskrobot.integration.tool.hardware.MoveBodyJointTool
@@ -191,6 +192,7 @@ object ReasoningModule {
         val dayContextProvider = DayContextPromptProviderImpl(
             scheduledTaskRepository = scheduledTaskRepository,
             listItemRepository = listItemRepository,
+            activityLogRepository = activityLogRepository,
         )
         val robotContextRepository = RobotContextRepository(context)
         val robotContextProvider = RobotContextPromptProviderImpl(robotContextRepository)
@@ -198,6 +200,7 @@ object ReasoningModule {
             context = context,
             settingsRepository = BodySettingsRepository(context),
         )
+        val heartbeatPlaybookProvider = HeartbeatPlaybookProviderImpl(context)
         val activityContextProvider = ActivityContextProviderImpl(activityLogRepository)
 
         val spatialContextProvider: SpatialContextProvider? = spatialBindings?.contextProvider
@@ -209,6 +212,7 @@ object ReasoningModule {
             memoryContextProvider = memoryContextProvider,
             dayContextProvider = dayContextProvider,
             bodyCapabilitiesProvider = bodyCapabilitiesProvider,
+            heartbeatPlaybookProvider = heartbeatPlaybookProvider,
             robotContextProvider = robotContextProvider,
             moodContextProvider = moodContextProvider,
             spatialContextProvider = spatialContextProvider,

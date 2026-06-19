@@ -2,11 +2,13 @@ package com.example.mydeskrobot.memory
 
 import android.content.Context
 import androidx.room.Room
+import com.example.mydeskrobot.memory.consolidate.ConsolidatedMemoryLine
 import com.example.mydeskrobot.memory.db.MemoryCategory
 import com.example.mydeskrobot.memory.db.MemoryDao
 import com.example.mydeskrobot.memory.db.MemoryDatabase
 import com.example.mydeskrobot.memory.db.MemoryItemEntity
 import java.util.concurrent.TimeUnit
+import java.security.MessageDigest
 
 class UserMemoryRepository(
     private val dao: MemoryDao,
@@ -128,6 +130,44 @@ class UserMemoryRepository(
 
     suspend fun getUserFacingActive(): List<MemoryItemEntity> =
         dao.getUserFacingActive(MemoryCategory.USER_FACING.toList())
+
+    fun computeUserFacingContentHash(items: List<MemoryItemEntity>): String {
+        if (items.isEmpty()) return ""
+        val canonical = items
+            .sortedBy { it.id }
+            .joinToString("\n") { "${it.category.name}|${it.value.trim().lowercase()}" }
+        val digest = MessageDigest.getInstance("SHA-256")
+        val bytes = digest.digest(canonical.toByteArray(Charsets.UTF_8))
+        return bytes.joinToString("") { byte -> "%02x".format(byte) }
+    }
+
+    suspend fun computeUserFacingContentHash(): String =
+        computeUserFacingContentHash(getUserFacingActive())
+
+    /**
+     * Replaces all active user-facing rows with consolidated lines from the LLM pass.
+     */
+    suspend fun replaceUserFacingWithConsolidated(lines: List<ConsolidatedMemoryLine>): Int {
+        if (lines.isEmpty()) return 0
+        val now = System.currentTimeMillis()
+        val entities = lines.map { line ->
+            MemoryItemEntity(
+                category = line.category,
+                value = line.value.trim(),
+                confidence = 1.0f,
+                createdAt = now,
+                updatedAt = now,
+                useCount = 0,
+                sourceMessageId = SOURCE_MESSAGE_CONSOLIDATION,
+            )
+        }
+        dao.replaceUserFacingMemories(
+            categories = MemoryCategory.USER_FACING.toList(),
+            newItems = entities,
+            now = now,
+        )
+        return entities.size
+    }
 
     suspend fun getCoreIdentity(limit: Int = 2): List<MemoryItemEntity> =
         getByCategory(MemoryCategory.IDENTITY, limit)
@@ -382,6 +422,8 @@ class UserMemoryRepository(
     companion object {
         /** Marks facts saved explicitly via LLM tool (not conversation log extraction). */
         const val SOURCE_MESSAGE_LLM_TOOL: Long = -1L
+        /** Marks rows produced by periodic memory consolidation. */
+        const val SOURCE_MESSAGE_CONSOLIDATION: Long = -2L
 
         const val MAX_ACTIVE_INTENTS = 3
         const val DEFAULT_OBSERVATION_TTL_DAYS = 7
@@ -398,7 +440,10 @@ class UserMemoryRepository(
                 MemoryDatabase::class.java,
                 "user_memory.db",
             )
-                .addMigrations(MemoryDatabase.MIGRATION_1_2)
+                .addMigrations(
+                    MemoryDatabase.MIGRATION_1_2,
+                    MemoryDatabase.MIGRATION_2_3,
+                )
                 .build()
             return UserMemoryRepository(db.memoryDao())
         }

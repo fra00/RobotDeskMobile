@@ -97,7 +97,10 @@ class FakeMemoryDao(
     override suspend fun markUsed(ids: List<Long>, usedAt: Long) {
         items.forEachIndexed { index, item ->
             if (item.id in ids) {
-                items[index] = item.copy(lastUsedAt = usedAt)
+                items[index] = item.copy(
+                    lastUsedAt = usedAt,
+                    useCount = item.useCount + 1,
+                )
             }
         }
     }
@@ -114,6 +117,14 @@ class FakeMemoryDao(
     ): List<MemoryItemEntity> =
         getAllActive(now)
             .filter { it.category !in excludeCategories }
+            .sortedWith(
+                compareBy(
+                    { it.confidence },
+                    { it.useCount },
+                    { it.lastUsedAt },
+                    { it.updatedAt },
+                ),
+            )
             .take(limit)
 
     override suspend fun softDeleteExpired(now: Long): Int {
@@ -125,5 +136,29 @@ class FakeMemoryDao(
             }
         }
         return count
+    }
+
+    override suspend fun softDeleteActiveInCategories(
+        categories: List<MemoryCategory>,
+        now: Long,
+    ) {
+        items.forEachIndexed { index, item ->
+            if (
+                !item.isDeleted &&
+                item.category in categories &&
+                (item.expiresAt == null || item.expiresAt > now)
+            ) {
+                items[index] = item.copy(isDeleted = true, updatedAt = now)
+            }
+        }
+    }
+
+    override suspend fun replaceUserFacingMemories(
+        categories: List<MemoryCategory>,
+        newItems: List<MemoryItemEntity>,
+        now: Long,
+    ) {
+        softDeleteActiveInCategories(categories, now)
+        newItems.forEach { upsert(it) }
     }
 }

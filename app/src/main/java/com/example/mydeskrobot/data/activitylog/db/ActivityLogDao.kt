@@ -4,13 +4,18 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Update
 import androidx.room.Upsert
+import com.example.mydeskrobot.domain.activitylog.EpisodeKind
 import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface ActivityLogDao {
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insert(event: ActivityLogEventEntity): Long
+
+    @Update
+    suspend fun update(event: ActivityLogEventEntity)
 
     @Query(
         """
@@ -39,6 +44,52 @@ interface ActivityLogDao {
         """,
     )
     suspend fun findLatestByDayAndLabel(dayKey: String, label: String): ActivityLogEventEntity?
+
+    @Query(
+        """
+        SELECT * FROM activity_log_events
+        WHERE scheduledDayKey = :scheduledDayKey
+          AND eventKind = :eventKind
+          AND label = :label
+          AND (
+            (:actor IS NULL AND actor IS NULL)
+            OR (actor IS NOT NULL AND :actor IS NOT NULL AND actor = :actor)
+          )
+        ORDER BY timestampMs DESC
+        LIMIT 1
+        """,
+    )
+    suspend fun findEpisodicForMerge(
+        scheduledDayKey: String,
+        eventKind: EpisodeKind,
+        label: String,
+        actor: String?,
+    ): ActivityLogEventEntity?
+
+    @Query(
+        """
+        SELECT * FROM activity_log_events
+        WHERE scheduledDayKey = :targetDayKey
+          AND eventKind IN ('PLAN', 'SOCIAL_THREAD', 'COMMITMENT')
+        ORDER BY
+          CASE WHEN scheduledAtMs IS NULL THEN 1 ELSE 0 END,
+          scheduledAtMs ASC,
+          timestampMs DESC
+        LIMIT :limit
+        """,
+    )
+    suspend fun getUpcomingForDay(targetDayKey: String, limit: Int): List<ActivityLogEventEntity>
+
+    @Query(
+        """
+        SELECT * FROM activity_log_events
+        WHERE eventKind = 'SOCIAL_THREAD'
+          AND timestampMs >= :sinceMs
+        ORDER BY timestampMs DESC
+        LIMIT :limit
+        """,
+    )
+    suspend fun getOpenSocialThreads(sinceMs: Long, limit: Int): List<ActivityLogEventEntity>
 
     @Query("SELECT COUNT(*) FROM activity_log_events WHERE timestampMs >= :sinceMs")
     suspend fun countSince(sinceMs: Long): Int

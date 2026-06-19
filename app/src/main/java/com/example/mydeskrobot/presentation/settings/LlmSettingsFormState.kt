@@ -61,6 +61,7 @@ data class SettingsUiState(
     val spatialEditItems: List<SpatialPlaceUi> = emptyList(),
     val bodyForm: BodySettingsFormState = BodySettingsFormState(),
     val bodyTesting: Boolean = false,
+    val memoryReorganizing: Boolean = false,
     val feedbackMessage: String? = null,
     val feedbackIsError: Boolean = false,
 )

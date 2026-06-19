@@ -99,7 +99,7 @@ class MemoryPromptContextProviderImpl(
             detection.primary == MemoryRetrievalProfile.LEISURE ->
                 "USER PREFERENCES (suggest activities using these):"
             detection.primary == MemoryRetrievalProfile.PLAN ->
-                "USER ROUTINES (combine with TODAY CONTEXT):"
+                "USER ROUTINES (combine with CONTESTO GIORNO / EPISODI PROSSIMI):"
             else ->
                 "KNOWN USER MEMORY (use relevant facts in your reply):"
         }

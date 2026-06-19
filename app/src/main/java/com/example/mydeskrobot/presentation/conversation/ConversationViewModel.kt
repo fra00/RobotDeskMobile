@@ -44,6 +44,10 @@ import com.example.mydeskrobot.activity.summary.ActivityHabitSummarizer
 import com.example.mydeskrobot.data.activitylog.ActivityLogRepository
 import com.example.mydeskrobot.data.activitylog.ActivityLogSettingsRepository
 import com.example.mydeskrobot.domain.activitylog.ActivitySource
+import com.example.mydeskrobot.domain.activitylog.EpisodeConfidence
+import com.example.mydeskrobot.domain.activitylog.EpisodeKind
+import com.example.mydeskrobot.memory.consolidate.MemoryConsolidationResult
+import com.example.mydeskrobot.memory.consolidate.MemoryConsolidationService
 import com.example.mydeskrobot.memory.extract.MemoryExtractionScheduler
 import com.example.mydeskrobot.memory.extract.MemoryExtractionService
 import com.example.mydeskrobot.presentation.settings.BodySettingsFormState
@@ -76,6 +80,7 @@ import com.example.mydeskrobot.data.scheduled.ScheduledTaskAlarmScheduler
 import com.example.mydeskrobot.data.scheduled.ScheduledTaskRepository
 import com.example.mydeskrobot.domain.pending.PendingInboxKind
 import com.example.mydeskrobot.data.context.RobotContextRepository
+import com.example.mydeskrobot.data.pending.UnannouncedNotificationRepository
 import com.example.mydeskrobot.data.body.BodySettings
 import com.example.mydeskrobot.data.body.BodySettingsRepository
 import com.example.mydeskrobot.data.heartbeat.HeartbeatSettingsRepository
@@ -179,12 +184,17 @@ class ConversationViewModel(
     private val deferredInputQueue = DeferredInputQueue()
     private val inputSettingsRepository = InputSettingsRepository(appContext)
     private val robotContextRepository = RobotContextRepository(appContext)
+    private val unannouncedNotificationRepository = UnannouncedNotificationRepository(appContext)
     private val fireAndCheckRepository = FireAndCheckRepository.create(appContext)
     private val scheduledTaskRepository = ScheduledTaskRepository.create(appContext)
     private val heartbeatSettingsRepository = HeartbeatSettingsRepository(appContext)
     private val bodySettingsRepository = BodySettingsRepository(appContext)
     /** Tracks body settings baked into [reasoningEngine]; refreshed before each LLM turn. */
     private var engineBodySettingsKey: String? = null
+    /** True when the current system-input turn must skip TTS (silent notification mode). */
+    private var suppressTtsForCurrentTurn = false
+    private var pendingSilentNotificationEnvelope: SystemInputEnvelope? = null
+
     /** True when the current LLM turn was triggered by a heartbeat input. */
     private var currentInputIsHeartbeat = false
     private val moodRepository = MoodRepository(appContext)
@@ -208,6 +218,15 @@ class ConversationViewModel(
     /** True while waiting for sì/no after [ReasoningResult.NeedsConfirmation]. */
     private var confirmationPending = false
     private var scheduledTaskIdForFireAndCheckCompletion: Long? = null
+    private val memoryConsolidationService by lazy {
+        MemoryConsolidationService(
+            llmClient = LlmClientFactory.create(runBlockingLoadSettings()),
+            memoryRepository = memoryRepository,
+            settingsRepository = memorySettingsRepository,
+            systemPrompt = LlmPromptLoader.loadMemoryConsolidationPrompt(appContext),
+        )
+    }
+
     private val memoryExtractionScheduler by lazy {
         val prompt = LlmPromptLoader.loadMemoryExtractorPrompt(appContext)
         val extractionClient = LlmClientFactory.create(runBlockingLoadSettings())
@@ -229,6 +248,7 @@ class ConversationViewModel(
             onExtractingChanged = { extracting ->
                 _uiState.update { it.copy(isMemoryExtracting = extracting) }
             },
+            onAfterCycle = { runMemoryConsolidationIfNeeded(force = false) },
         )
     }
 
@@ -327,8 +347,10 @@ class ConversationViewModel(
             combine(
                 scheduledTaskRepository.observePending(),
                 deferredInputQueue.items,
-            ) { reminders, deferred ->
+                unannouncedNotificationRepository.notifications,
+            ) { reminders, deferred, unannounced ->
                 val merged = PendingInboxMapper.fromReminders(reminders) +
+                    PendingInboxMapper.fromUnannouncedNotifications(unannounced) +
                     PendingInboxMapper.fromDeferredItems(deferred)
                 merged.sortedBy { it.timeMillis }
             }.collect { merged ->
@@ -422,7 +444,9 @@ class ConversationViewModel(
     private suspend fun refreshPendingInbox() {
         val reminders = scheduledTaskRepository.listPending()
         val deferred = deferredInputQueue.snapshot()
+        val silenced = unannouncedNotificationRepository.getAll()
         val merged = PendingInboxMapper.fromReminders(reminders) +
+            PendingInboxMapper.fromUnannouncedNotifications(silenced) +
             PendingInboxMapper.fromDeferredItems(deferred)
         val uiItems = merged.sortedBy { it.timeMillis }.map { item ->
             val kindLabel = when (item.kind) {
@@ -449,6 +473,11 @@ class ConversationViewModel(
             val dedupKey = PendingInboxMapper.parseDeferredDedupKey(id)
             if (dedupKey != null) {
                 deferredInputQueue.removeByDedupKey(dedupKey)
+                return@launch
+            }
+            val unannouncedId = PendingInboxMapper.parseUnannouncedId(id)
+            if (unannouncedId != null) {
+                unannouncedNotificationRepository.remove(unannouncedId)
             }
         }
     }
@@ -540,6 +569,7 @@ class ConversationViewModel(
         viewModelScope.launch {
             memoryRepository.resetUserFacingMemory()
             memorySettingsRepository.setLastProcessedEntryCount(0L)
+            memorySettingsRepository.setLastConsolidatedContentHash("")
             _settingsUiState.update {
                 it.copy(
                     memoryEditItems = emptyList(),
@@ -552,19 +582,85 @@ class ConversationViewModel(
 
     private fun reorganizeMemoryManual() {
         viewModelScope.launch {
-            val removed = memoryRepository.reorganize()
             _settingsUiState.update {
                 it.copy(
-                    memoryEditItems = loadMemoryEditItems(),
-                    feedbackMessage = if (removed > 0) {
-                        appContext.getString(R.string.memory_reorganize_done, removed)
-                    } else {
-                        appContext.getString(R.string.memory_reorganize_none)
-                    },
+                    memoryReorganizing = true,
+                    feedbackMessage = null,
                     feedbackIsError = false,
                 )
             }
+            try {
+                val deduped = memoryRepository.reorganize()
+                val result = memoryConsolidationService.consolidateIfNeeded(force = true)
+                _settingsUiState.update {
+                    it.copy(
+                        memoryEditItems = loadMemoryEditItems(),
+                        memoryReorganizing = false,
+                        feedbackMessage = buildMemoryReorganizeMessage(deduped, result),
+                        feedbackIsError = result is MemoryConsolidationResult.Failed,
+                    )
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "Memory reorganize failed", e)
+                _settingsUiState.update {
+                    it.copy(
+                        memoryReorganizing = false,
+                        feedbackMessage = appContext.getString(R.string.memory_consolidate_failed),
+                        feedbackIsError = true,
+                    )
+                }
+            }
         }
+    }
+
+    private suspend fun runMemoryConsolidationIfNeeded(force: Boolean) {
+        val state = _uiState.value
+        if (!state.isHotwordListeningActive) return
+        if (!force && state.phase !is ConversationPhase.WaitingForHotword) return
+
+        when (val result = memoryConsolidationService.consolidateIfNeeded(force = force)) {
+            is MemoryConsolidationResult.Success -> Log.i(
+                TAG,
+                "Memory consolidation: ${result.before} -> ${result.after} rows",
+            )
+            is MemoryConsolidationResult.Failed -> Log.w(
+                TAG,
+                "Memory consolidation failed: ${result.reason}",
+            )
+            else -> Unit
+        }
+    }
+
+    private fun buildMemoryReorganizeMessage(
+        deduped: Int,
+        result: MemoryConsolidationResult,
+    ): String = when (result) {
+        is MemoryConsolidationResult.Success ->
+            appContext.getString(R.string.memory_consolidate_done, result.before, result.after)
+        is MemoryConsolidationResult.SkippedUnchanged ->
+            if (deduped > 0) {
+                appContext.getString(R.string.memory_reorganize_done, deduped)
+            } else {
+                appContext.getString(R.string.memory_consolidate_unchanged)
+            }
+        is MemoryConsolidationResult.SkippedTooFew ->
+            if (deduped > 0) {
+                appContext.getString(R.string.memory_reorganize_done, deduped)
+            } else {
+                appContext.getString(R.string.memory_consolidate_skipped_few)
+            }
+        is MemoryConsolidationResult.Failed ->
+            if (deduped > 0) {
+                appContext.getString(R.string.memory_consolidate_failed_with_dedup, deduped)
+            } else {
+                appContext.getString(R.string.memory_consolidate_failed)
+            }
+        MemoryConsolidationResult.SkippedNotConfigured ->
+            appContext.getString(R.string.memory_consolidate_not_configured)
+        MemoryConsolidationResult.SkippedAlreadyRunning ->
+            appContext.getString(R.string.memory_consolidate_unchanged)
     }
 
     private fun openSpatialSettings() {
@@ -753,6 +849,7 @@ class ConversationViewModel(
     private suspend fun loadLogDayGroups(): List<DayActivityGroupUi> {
         val timeFormat = java.text.SimpleDateFormat("HH:mm", java.util.Locale.ITALY)
         val dayFormat = java.text.SimpleDateFormat("EEEE d MMM", java.util.Locale.ITALY)
+        val scheduledDayFormat = java.text.SimpleDateFormat("dd/MM", java.util.Locale.ITALY)
         return activityLogRepository.getEventsGroupedByDay().map { group ->
             val dayLabel = runCatching {
                 val parsed = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.ITALY)
@@ -767,10 +864,40 @@ class ConversationViewModel(
                         timeLabel = timeFormat.format(event.timestampMs),
                         label = event.label,
                         sourceLabel = activitySourceLabel(event.source),
+                        rawPhrase = event.rawPhrase,
+                        episodeKindLabel = episodeKindLabel(event.eventKind),
+                        confidenceLabel = episodeConfidenceLabel(event.confidence),
+                        scheduledLabel = formatScheduledLabel(event, scheduledDayFormat, timeFormat),
                     )
                 },
             )
         }
+    }
+
+    private fun episodeKindLabel(kind: EpisodeKind): String? = when (kind) {
+        EpisodeKind.PHYSICAL_NOW -> null
+        EpisodeKind.PLAN -> appContext.getString(R.string.log_day_kind_plan)
+        EpisodeKind.SOCIAL_THREAD -> appContext.getString(R.string.log_day_kind_social)
+        EpisodeKind.COMMITMENT -> appContext.getString(R.string.log_day_kind_commitment)
+    }
+
+    private fun episodeConfidenceLabel(confidence: EpisodeConfidence): String? = when (confidence) {
+        EpisodeConfidence.CONFIRMED -> null
+        EpisodeConfidence.TENTATIVE -> appContext.getString(R.string.log_day_confidence_tentative)
+    }
+
+    private fun formatScheduledLabel(
+        event: com.example.mydeskrobot.domain.activitylog.ActivityLogEntry,
+        scheduledDayFormat: java.text.SimpleDateFormat,
+        timeFormat: java.text.SimpleDateFormat,
+    ): String? {
+        val dayKey = event.scheduledDayKey ?: return null
+        val dayLabel = runCatching {
+            val parsed = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.ITALY).parse(dayKey)
+            if (parsed != null) scheduledDayFormat.format(parsed) else dayKey
+        }.getOrDefault(dayKey)
+        val timeLabel = event.scheduledAtMs?.let { timeFormat.format(it) }
+        return if (timeLabel != null) "$dayLabel $timeLabel" else dayLabel
     }
 
     private fun activitySourceLabel(source: ActivitySource): String = when (source) {
@@ -1601,6 +1728,11 @@ class ConversationViewModel(
             return
         }
 
+        if (handleNotificationVoiceCommand(trimmed)) {
+            clearCurrentUtteranceDisplay()
+            return
+        }
+
         if (isAssistantTurnInProgress() || visionPipelineActive) {
             Log.d(TAG, "onUtteranceReadyForLlm: queued (assistant turn in progress)")
             queueUtteranceForLlm(trimmed)
@@ -1666,6 +1798,88 @@ class ConversationViewModel(
             }
         }
         return true
+    }
+
+    private fun handleNotificationVoiceCommand(phrase: String): Boolean {
+        val normalized = phrase.trim().lowercase()
+        val wantsRead = when {
+            normalized.contains("leggi") && normalized.contains("notif") -> true
+            normalized.contains("cosa mi è arrivato") -> true
+            normalized.contains("cosa mi e arrivato") -> true
+            normalized.contains("notifiche in attesa") -> true
+            normalized.contains("che notifiche hai") -> true
+            normalized.contains("hai notifiche") -> true
+            else -> false
+        }
+        val wantsMarkRead = when {
+            normalized.contains("segna") && normalized.contains("lett") -> true
+            normalized.contains("ignora") && normalized.contains("notif") -> true
+            normalized.contains("non mi interess") && normalized.contains("notif") -> true
+            else -> false
+        }
+        if (!wantsRead && !wantsMarkRead) return false
+
+        viewModelScope.launch {
+            if (wantsMarkRead) {
+                markUnannouncedNotificationsRead(userPhrase = phrase, speakAck = true)
+            } else {
+                speakUnannouncedNotificationsReply(phrase)
+            }
+        }
+        return true
+    }
+
+    private suspend fun speakUnannouncedNotificationsReply(userPhrase: String) {
+        val unannounced = unannouncedNotificationRepository.getAll()
+        val deferredNotifications = deferredInputQueue.snapshot().mapNotNull { item ->
+            (item.envelope.input as? RobotInput.Notification)?.let { notification ->
+                notification to item.envelope.dedupKey
+            }
+        }
+
+        if (unannounced.isEmpty() && deferredNotifications.isEmpty()) {
+            speakMemoryCommandReply(userPhrase, "Non hai notifiche da leggere.")
+            return
+        }
+
+        val lines = buildList {
+            unannounced.forEach { notification ->
+                add("${notification.appLabel}: ${notification.displayBody()}")
+            }
+            deferredNotifications.forEach { (notification, _) ->
+                val body = listOfNotNull(
+                    notification.title?.trim()?.takeIf { it.isNotBlank() },
+                    notification.text?.trim()?.takeIf { it.isNotBlank() },
+                ).joinToString(" — ")
+                add("${notification.appLabel}: $body")
+            }
+        }
+
+        val reply = when (lines.size) {
+            1 -> "Hai una notifica: ${lines.single()}"
+            else -> "Hai ${lines.size} notifiche: ${lines.joinToString(". ")}"
+        }
+
+        unannouncedNotificationRepository.clearAll()
+        deferredNotifications.forEach { (_, dedupKey) ->
+            deferredInputQueue.removeByDedupKey(dedupKey)
+        }
+
+        speakMemoryCommandReply(userPhrase, reply)
+    }
+
+    private suspend fun markUnannouncedNotificationsRead(userPhrase: String, speakAck: Boolean) {
+        val count = unannouncedNotificationRepository.getAll().size
+        unannouncedNotificationRepository.clearAll()
+        if (!speakAck) return
+        val reply = if (count == 0) {
+            "Non hai notifiche da segnare come lette."
+        } else if (count == 1) {
+            "Fatto, ho segnato una notifica come letta."
+        } else {
+            "Fatto, ho segnato $count notifiche come lette."
+        }
+        speakMemoryCommandReply(userPhrase, reply)
     }
 
     private suspend fun speakMemoryCommandReply(userPhrase: String, robotReply: String) {
@@ -1809,6 +2023,8 @@ class ConversationViewModel(
 
         if (intermediate.suppressIntermediateSpeech) return
 
+        if (suppressTtsForCurrentTurn) return
+
         val suppressSpeech = intermediate.speakConfidence != null && intermediate.speakConfidence <= 0.0
         if (suppressSpeech) return
 
@@ -1911,6 +2127,18 @@ class ConversationViewModel(
 
                 refreshPendingInbox()
 
+                if (suppressTtsForCurrentTurn) {
+                    val envelope = pendingSilentNotificationEnvelope
+                    val robotText = result.finalText.trim()
+                    deliverAssistantReplyWithoutSpeech(
+                        robotText = robotText,
+                        emotion = LlmEmotionMapper.fromLlmValue(result.emotion),
+                    )
+                    registerUnannouncedNotificationAfterSilentTurn(envelope, robotText)
+                    clearSilentNotificationTurnState()
+                    return
+                }
+
                 if (result.finalText.isBlank()) {
                     finalizeTurnWithoutSpeech(LlmEmotionMapper.fromLlmValue(result.emotion))
                 } else {
@@ -1932,11 +2160,23 @@ class ConversationViewModel(
 
             is ReasoningResult.Error -> {
                 currentInputIsHeartbeat = false
+                clearSilentNotificationTurnState()
                 handleLlmFailure(result.message)
             }
 
             is ReasoningResult.MaxStepsReached -> {
                 currentInputIsHeartbeat = false
+                if (suppressTtsForCurrentTurn) {
+                    val envelope = pendingSilentNotificationEnvelope
+                    val text = result.lastText.trim()
+                    deliverAssistantReplyWithoutSpeech(
+                        robotText = text,
+                        emotion = null,
+                    )
+                    registerUnannouncedNotificationAfterSilentTurn(envelope, text)
+                    clearSilentNotificationTurnState()
+                    return
+                }
                 val text = result.lastText.ifBlank { messages.emptyReplyError() }
                 val reply = LlmAssistantReply(text = text, emotion = null, imageRequired = false)
                 deliverAssistantReply(reply)
@@ -2075,6 +2315,52 @@ class ConversationViewModel(
     private fun clearVisionPipeline() {
         visionPipelineActive = false
         pendingVisionUserPhrase = null
+    }
+
+    private suspend fun deliverAssistantReplyWithoutSpeech(
+        robotText: String,
+        emotion: RobotEmotion?,
+    ) {
+        conversationLogBeforeCurrentTurn = null
+        lastLlmEmotion = emotion ?: lastLlmEmotion
+        moodManager.setEphemeralExpression(lastLlmEmotion)
+
+        if (robotText.isNotBlank()) {
+            lastAssistantResponse = robotText
+            viewModelScope.launch {
+                userAwarenessRepository.update { current ->
+                    UserStateTracker.analyzeRobotResponse(robotText, current)
+                }
+            }
+            _uiState.update {
+                it.copy(conversationLog = appendRobotLine(it.conversationLog, robotText))
+            }
+        }
+
+        refreshUiEmotionFromMood()
+        if (!_uiState.value.isHotwordListeningActive) return
+        resumeListeningAfterAssistantTurn()
+    }
+
+    private suspend fun registerUnannouncedNotificationAfterSilentTurn(
+        envelope: SystemInputEnvelope?,
+        robotSummary: String,
+    ) {
+        val notification = envelope?.input as? RobotInput.Notification ?: return
+        unannouncedNotificationRepository.register(
+            appLabel = notification.appLabel,
+            title = notification.title,
+            text = notification.text,
+            packageName = notification.packageName,
+            receivedAtMillis = notification.timestamp,
+            dedupKey = envelope.dedupKey,
+            robotSummary = robotSummary.takeIf { it.isNotBlank() },
+        )
+    }
+
+    private fun clearSilentNotificationTurnState() {
+        suppressTtsForCurrentTurn = false
+        pendingSilentNotificationEnvelope = null
     }
 
     private suspend fun deliverAssistantReply(
@@ -2268,9 +2554,9 @@ class ConversationViewModel(
         voiceSessionActive = false
         viewModelScope.launch {
             val stored = robotContextRepository.getStoredState()
-            if (RobotContextPolicy.isSessionScoped(stored)) {
+            if (RobotContextPolicy.shouldClearOnSessionEnd(stored)) {
                 robotContextRepository.clearToNormal()
-                Log.i(TAG, "Session ended — cleared session-scoped robot context")
+                Log.i(TAG, "Session ended — cleared session-only notification silence")
             }
         }
         emotionTransitionJob?.cancel()
@@ -2620,11 +2906,10 @@ class ConversationViewModel(
             Log.d(TAG, "Mic not active, dropping system input")
             return
         }
-        if (envelope.input is RobotInput.Notification || envelope.input is RobotInput.Heartbeat) {
+        if (envelope.input is RobotInput.Heartbeat) {
             val stored = kotlinx.coroutines.runBlocking { robotContextRepository.getStoredState() }
-            if (RobotContextPolicy.shouldDropNotifications(stored)) {
-                val kind = if (envelope.input is RobotInput.Heartbeat) "heartbeat" else "notification"
-                Log.d(TAG, "DROP system $kind (robot context silent)")
+            if (RobotContextPolicy.shouldSuppressNotificationTts(stored)) {
+                Log.d(TAG, "DROP system heartbeat (robot context silent)")
                 return
             }
         }
@@ -2648,6 +2933,11 @@ class ConversationViewModel(
         llmJob?.cancel()
         emotionTransitionJob?.cancel()
         HotwordController.beginAssistantTurn()
+
+        val stored = kotlinx.coroutines.runBlocking { robotContextRepository.getStoredState() }
+        suppressTtsForCurrentTurn = envelope.input is RobotInput.Notification &&
+            RobotContextPolicy.shouldSuppressNotificationTts(stored)
+        pendingSilentNotificationEnvelope = if (suppressTtsForCurrentTurn) envelope else null
 
         val state = _uiState.value
         conversationLogBeforeCurrentTurn = state.conversationLog
@@ -2710,6 +3000,7 @@ class ConversationViewModel(
                 handleReasoningResult(result)
             } catch (e: CancellationException) {
                 if (turnId == llmTurnGeneration) {
+                    clearSilentNotificationTurnState()
                     recoverFromCancelledLlmTurn()
                 }
                 throw e

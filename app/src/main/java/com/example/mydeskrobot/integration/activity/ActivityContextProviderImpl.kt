@@ -11,7 +11,7 @@ class ActivityContextProviderImpl(
 
     override suspend fun buildPromptSection(): String {
         val summary = activityLogRepository.getHabitSummary()?.summaryText
-        val recent = activityLogRepository.getRecentForContext(maxEvents = 8, daysBack = 2)
+        val recent = activityLogRepository.getRecentPhysicalForContext(maxEvents = 8, daysBack = 2)
         if (summary.isNullOrBlank() && recent.isEmpty()) return ""
 
         return buildString {
@@ -32,7 +32,7 @@ class ActivityContextProviderImpl(
 
     override suspend fun buildHeartbeatSection(): String {
         val summary = activityLogRepository.getHabitSummary()?.summaryText?.take(400)
-        val recent = activityLogRepository.getRecentForContext(maxEvents = 4, daysBack = 1)
+        val recent = activityLogRepository.getRecentPhysicalForContext(maxEvents = 4, daysBack = 1)
         if (summary.isNullOrBlank() && recent.isEmpty()) return ""
 
         return buildString {

@@ -17,6 +17,7 @@ class MemoryExtractionScheduler(
     private val getConversationLog: () -> String,
     private val isStandby: () -> Boolean,
     private val onExtractingChanged: (Boolean) -> Unit = {},
+    private val onAfterCycle: (suspend () -> Unit)? = null,
 ) {
     private var job: Job? = null
     private var lastRunAtMs: Long = 0L
@@ -53,41 +54,49 @@ class MemoryExtractionScheduler(
         if (now - lastRunAtMs < 30_000L) return
         lastRunAtMs = now
 
-        val log = getConversationLog()
-        if (log.isBlank()) {
-            settingsRepository.setLastProcessedEntryCount(0L)
-            return
-        }
-
-        val entries = MemoryExtractionService.extractEntriesFromConversationLog(log)
-        if (entries.isEmpty()) return
-
-        var processedCount = settings.lastProcessedEntryCount
-        if (processedCount > entries.size) {
-            Log.i(TAG, "Log shrank ($processedCount -> ${entries.size}); resetting extraction cursor")
-            processedCount = 0L
-            settingsRepository.setLastProcessedEntryCount(0L)
-        }
-
-        val delta = MemoryExtractionDelta.selectDelta(entries, processedCount)
-        if (delta.isEmpty()) {
-            runAutoDedup()
-            return
-        }
-
         try {
-            onExtractingChanged(true)
-            val saved = extractionService.processDelta(delta)
-            if (saved > 0) {
-                settingsRepository.setLastProcessedEntryCount(entries.size.toLong())
-                Log.i(TAG, "Saved $saved memory fact(s) from ${delta.size} log line(s)")
-            } else {
-                Log.w(TAG, "Extraction produced no facts for ${delta.size} log line(s)")
+            val log = getConversationLog()
+            if (log.isBlank()) {
+                settingsRepository.setLastProcessedEntryCount(0L)
+                runAutoDedup()
+                return
             }
+
+            val entries = MemoryExtractionService.extractEntriesFromConversationLog(log)
+            if (entries.isEmpty()) {
+                runAutoDedup()
+                return
+            }
+
+            var processedCount = settings.lastProcessedEntryCount
+            if (processedCount > entries.size) {
+                Log.i(TAG, "Log shrank ($processedCount -> ${entries.size}); resetting extraction cursor")
+                processedCount = 0L
+                settingsRepository.setLastProcessedEntryCount(0L)
+            }
+
+            val delta = MemoryExtractionDelta.selectDelta(entries, processedCount)
+            if (delta.isEmpty()) {
+                runAutoDedup()
+                return
+            }
+
+            try {
+                onExtractingChanged(true)
+                val saved = extractionService.processDelta(delta)
+                if (saved > 0) {
+                    settingsRepository.setLastProcessedEntryCount(entries.size.toLong())
+                    Log.i(TAG, "Saved $saved memory fact(s) from ${delta.size} log line(s)")
+                } else {
+                    Log.w(TAG, "Extraction produced no facts for ${delta.size} log line(s)")
+                }
+            } finally {
+                onExtractingChanged(false)
+            }
+            runAutoDedup()
         } finally {
-            onExtractingChanged(false)
+            onAfterCycle?.invoke()
         }
-        runAutoDedup()
     }
 
     private suspend fun runAutoDedup() {

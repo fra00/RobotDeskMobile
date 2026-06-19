@@ -4,7 +4,7 @@ import android.util.Log
 import com.example.mydeskrobot.activity.summary.ActivityHabitSummarizer
 import com.example.mydeskrobot.data.activitylog.ActivityLogSettingsRepository
 import com.example.mydeskrobot.memory.extract.MemoryExtractionDelta
-import com.example.mydeskrobot.memory.extract.MemoryExtractionService
+import com.example.mydeskrobot.memory.extract.ConversationLogParser
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -88,7 +88,7 @@ class ActivityLogExtractionScheduler(
             val saved = extractionService.processDelta(delta)
             if (saved > 0) {
                 settingsRepository.setLastProcessedEntryCount(entries.size.toLong())
-                Log.i(TAG, "Saved $saved activity event(s) from ${delta.size} log line(s)")
+                Log.i(TAG, "Saved $saved episodic event(s) from ${delta.size} log line(s)")
             }
         } finally {
             onExtractingChanged(false)

@@ -26,6 +26,10 @@ data class ActivityLogItemUi(
     val timeLabel: String,
     val label: String,
     val sourceLabel: String,
+    val rawPhrase: String? = null,
+    val episodeKindLabel: String? = null,
+    val confidenceLabel: String? = null,
+    val scheduledLabel: String? = null,
 )
 
 data class DayActivityGroupUi(

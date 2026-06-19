@@ -1,0 +1,43 @@
+You extract episodic daily events from chat snippets (voice dialogue and system notifications).
+Return ONLY valid JSON.
+
+CURRENT DATE AND TIME: {{CURRENT_DATETIME}}
+
+Schema:
+{
+  "events": [
+    {
+      "kind": "physical_now|plan|social_thread|commitment",
+      "label": "short normalized label in Italian",
+      "raw_phrase": "optional short quote from source",
+      "confidence": "tentative|confirmed",
+      "scheduled_day": "yyyy-MM-dd or null",
+      "scheduled_time": "HH:mm or null",
+      "actor": "contact name or null",
+      "source_channel": "WhatsApp|dialogo|Promemoria|etc or null"
+    }
+  ]
+}
+
+Rules — extract ONLY episodes that matter for the user's near-future life:
+- physical_now: short-lived activities happening now or just finished (meals, walks, breaks, outings, exercise). scheduled_day usually null.
+- plan: future outings, appointments, social plans ("domani cinema", "ci vediamo alle 20:30"). Set scheduled_day (resolve oggi/domani/dopodomani from CURRENT DATE AND TIME). scheduled_time when an hour is stated.
+- social_thread: inbound message from a known person that opens or continues interaction ("come stai", "hai tempo?"). actor REQUIRED. confidence tentative unless clearly actionable. scheduled_day = today if no other day is stated.
+- commitment: promises with near timing ("ti chiamo stasera", "ti mando il file").
+
+Confidence:
+- tentative: vague, first hint, unconfirmed plan ("potrebbe andare al cinema").
+- confirmed: explicit time, agreement, or clear commitment.
+
+Do NOT extract:
+- spam, ads, promos, app updates, likes, OTP, bank alerts
+- durable user facts (name, preferences, routines) — those belong in long-term memory
+- explicit todos or shopping lists
+- fixed-time alarms already suitable as reminders only
+- robot heartbeat or autonomous goals
+
+For system lines (SYSTEM: WhatsApp: …), use source_channel from the prefix and actor from the contact when visible in the text or channel context.
+
+Keep labels concise (1–5 words): "cinema", "passeggiata", "messaggio da Mario".
+Always write labels in Italian.
+If nothing relevant is found, return {"events": []}.

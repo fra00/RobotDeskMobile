@@ -2,9 +2,7 @@ package com.example.mydeskrobot.integration.input.notification
 
 import android.content.pm.PackageManager
 import android.util.Log
-import com.example.mydeskrobot.data.context.RobotContextRepository
 import com.example.mydeskrobot.data.input.InputSettingsRepository
-import com.example.mydeskrobot.domain.context.RobotContextPolicy
 import com.example.mydeskrobot.integration.input.InputSource
 import com.example.mydeskrobot.reasoning.model.InputPriority
 import com.example.mydeskrobot.reasoning.model.RobotInput
@@ -17,7 +15,6 @@ import java.util.concurrent.ConcurrentHashMap
  */
 class NotificationInputSource(
     private val settingsRepository: InputSettingsRepository,
-    private val robotContextRepository: RobotContextRepository,
     private val packageManager: PackageManager,
 ) : InputSource {
 
@@ -70,12 +67,6 @@ class NotificationInputSource(
 
     override fun shouldAccept(input: RobotInput): Boolean {
         if (input !is RobotInput.Notification) return false
-
-        val storedContext = runBlocking { robotContextRepository.getStoredState() }
-        if (RobotContextPolicy.shouldDropNotifications(storedContext)) {
-            Log.d(TAG, "DROP notification (robot context silent): ${input.packageName}")
-            return false
-        }
 
         if (SYSTEM_BLACKLIST.contains(input.packageName)) {
             Log.d(TAG, "Rejecting system notification from ${input.packageName}")

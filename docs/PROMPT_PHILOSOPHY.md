@@ -25,11 +25,38 @@ The planner (the LLM) combines tools freely to reach the user's goal or heartbea
 5. **Storage = semantics, not flowchart.** Memory, lists, and reminders are defined by what information *is*, not by the verb "ricorda" alone.
 6. **Autonomy parsimony is explicit.** OBSERVATION/INTENT are robot-internal (`MEMORY.md`); save only when decision-changing; max 3 INTENTs (app-enforced); when in doubt on heartbeat: silence, do not save.
 
+## SSOT labels (runtime prompt navigation)
+
+Cross-references in prompts use **labels** + section numbers — never duplicate full paragraphs elsewhere.
+
+| Label | Authority | Injected when |
+|-------|-----------|---------------|
+| `JSON_CONTRACT` | §2 `llm_system_prompt.txt` | always (base) |
+| `PERSISTENT_SEARCH` | §4 STEP 3 | always |
+| `FIRE_AND_CHECK` | §5 | always |
+| `STORAGE_CHANNEL` | §8 | always |
+| `ROBOT_FACE` | §9 | always |
+| `SYSTEM_INPUTS` | §10 | always |
+| `HEARTBEAT_PLAYBOOK` | `heartbeat_playbook_prompt.txt` | heartbeat / weekly_reflection ticks only |
+| `BODY_SEARCH` | `body_capabilities_prompt.txt` | ESP32 body configured |
+
+### Audit matrix (removed text → where it lives)
+
+| Removed / compressed | Preserved in |
+|---------------------|--------------|
+| Duplicate persistent-search JSON (nascondino, dito, computer ×N) | `PERSISTENT_SEARCH` (§4) + 2 canonical §7 examples + `BODY_SEARCH` |
+| Duplicate set_reminder fire_and_check example | `FIRE_AND_CHECK` (§5) single example |
+| `IMPORTANT for X` routing prose | `STORAGE_CHANNEL` decision table (§8) + AVAILABLE TOOLS params |
+| §11 heartbeat rules + examples | `HEARTBEAT_PLAYBOOK` asset (conditional inject) |
+| Multiple play_spotify / open_browser / set_robot_context / make_light examples | One JSON example each + trigger table |
+| Mood reply examples in §7 | `ROBOT_FACE` (§9) + injected STATO ROBOT |
+
 ## Where this applies
 
 | Asset | Role |
 |-------|------|
-| `llm_system_prompt.txt` | Global planner, storage semantics, heartbeat |
+| `llm_system_prompt.txt` | Global planner, storage semantics, system inputs (base) |
+| `heartbeat_playbook_prompt.txt` | Heartbeat + weekly_reflection (injected on system ticks) |
 | `body_capabilities_prompt.txt` | Body + vision (injected when ESP32 configured) |
 | Tool `description` fields | Short catalog entries in AVAILABLE TOOLS |
 | `memory_extractor_prompt.txt` | **Exception:** DB extraction rules (not dialog planner freedom) |

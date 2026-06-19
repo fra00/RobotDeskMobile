@@ -33,7 +33,7 @@ object MemoryIntentDetector {
     private val PLAN_KEYWORDS = listOf(
         "devo fare", "cosa fare oggi", "programma", "agenda", "impegni",
         "riunione", "riunioni", "promemoria", "todo", "lista", "compiti",
-        "appuntamento", "scadenza",
+        "appuntamento", "scadenza", "domani", "dopodomani",
     )
 
     private val LEISURE_KEYWORDS = listOf(

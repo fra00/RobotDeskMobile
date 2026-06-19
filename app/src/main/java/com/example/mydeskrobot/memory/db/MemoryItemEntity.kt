@@ -12,6 +12,7 @@ import androidx.room.PrimaryKey
         Index(value = ["isDeleted"]),
         Index(value = ["updatedAt"]),
         Index(value = ["lastUsedAt"]),
+        Index(value = ["useCount"]),
         Index(value = ["expiresAt"]),
     ],
 )
@@ -24,6 +25,8 @@ data class MemoryItemEntity(
     val createdAt: Long,
     val updatedAt: Long,
     val lastUsedAt: Long = 0L,
+    /** Incremented when injected into the LLM dialog prompt context. */
+    val useCount: Int = 0,
     val sourceMessageId: Long,
     val isDeleted: Boolean = false,
     /** Epoch millis when this row expires; null = permanent user memory. */

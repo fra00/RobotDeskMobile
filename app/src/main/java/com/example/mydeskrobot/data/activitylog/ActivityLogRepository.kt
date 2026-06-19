@@ -10,6 +10,8 @@ import com.example.mydeskrobot.domain.activitylog.ActivityHabitProfile
 import com.example.mydeskrobot.domain.activitylog.ActivityLogEntry
 import com.example.mydeskrobot.domain.activitylog.ActivitySource
 import com.example.mydeskrobot.domain.activitylog.DayActivityGroup
+import com.example.mydeskrobot.domain.activitylog.EpisodeConfidence
+import com.example.mydeskrobot.domain.activitylog.EpisodeKind
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import java.text.SimpleDateFormat
@@ -25,9 +27,30 @@ class ActivityLogRepository(
         rawPhrase: String? = null,
         source: ActivitySource,
         timestampMs: Long = System.currentTimeMillis(),
+        eventKind: EpisodeKind = EpisodeKind.PHYSICAL_NOW,
+        confidence: EpisodeConfidence = EpisodeConfidence.CONFIRMED,
+        scheduledAtMs: Long? = null,
+        scheduledDayKey: String? = null,
+        actor: String? = null,
+        sourceChannel: String? = null,
     ): Long {
         val normalizedLabel = normalizeLabel(label)
         if (normalizedLabel.isBlank()) return -1L
+
+        if (eventKind != EpisodeKind.PHYSICAL_NOW) {
+            return upsertEpisodicEvent(
+                label = normalizedLabel,
+                rawPhrase = rawPhrase,
+                source = source,
+                timestampMs = timestampMs,
+                eventKind = eventKind,
+                confidence = confidence,
+                scheduledAtMs = scheduledAtMs,
+                scheduledDayKey = scheduledDayKey,
+                actor = normalizeActor(actor),
+                sourceChannel = sourceChannel?.trim()?.takeIf { it.isNotBlank() },
+            )
+        }
 
         val dayKey = dayKeyFor(timestampMs)
         val existing = dao.findLatestByDayAndLabel(dayKey, normalizedLabel)
@@ -42,10 +65,95 @@ class ActivityLogRepository(
                 label = normalizedLabel,
                 rawPhrase = rawPhrase?.trim()?.takeIf { it.isNotBlank() },
                 source = source,
+                eventKind = eventKind,
+                confidence = confidence,
+                scheduledAtMs = scheduledAtMs,
+                scheduledDayKey = scheduledDayKey,
+                actor = normalizeActor(actor),
+                sourceChannel = sourceChannel?.trim()?.takeIf { it.isNotBlank() },
             ),
         )
         pruneExpired()
         return id
+    }
+
+    suspend fun upsertEpisodicEvent(
+        label: String,
+        rawPhrase: String? = null,
+        source: ActivitySource,
+        timestampMs: Long = System.currentTimeMillis(),
+        eventKind: EpisodeKind,
+        confidence: EpisodeConfidence = EpisodeConfidence.TENTATIVE,
+        scheduledAtMs: Long? = null,
+        scheduledDayKey: String? = null,
+        actor: String? = null,
+        sourceChannel: String? = null,
+    ): Long {
+        val normalizedLabel = normalizeLabel(label)
+        if (normalizedLabel.isBlank()) return -1L
+        val dayKey = dayKeyFor(timestampMs)
+        val normalizedActor = normalizeActor(actor)
+        val trimmedPhrase = rawPhrase?.trim()?.takeIf { it.isNotBlank() }
+        val trimmedChannel = sourceChannel?.trim()?.takeIf { it.isNotBlank() }
+        val targetDayKey = scheduledDayKey?.trim()?.takeIf { it.isNotBlank() } ?: dayKey
+
+        val existing = dao.findEpisodicForMerge(
+            scheduledDayKey = targetDayKey,
+            eventKind = eventKind,
+            label = normalizedLabel,
+            actor = normalizedActor,
+        )
+
+        if (existing != null) {
+            val mergedConfidence = mergeConfidence(existing.confidence, confidence)
+            val mergedScheduledAt = scheduledAtMs ?: existing.scheduledAtMs
+            val mergedPhrase = trimmedPhrase ?: existing.rawPhrase
+            val mergedChannel = trimmedChannel ?: existing.sourceChannel
+            dao.update(
+                existing.copy(
+                    timestampMs = timestampMs,
+                    rawPhrase = mergedPhrase,
+                    source = source,
+                    confidence = mergedConfidence,
+                    scheduledAtMs = mergedScheduledAt,
+                    actor = normalizedActor ?: existing.actor,
+                    sourceChannel = mergedChannel,
+                ),
+            )
+            pruneExpired()
+            return existing.id
+        }
+
+        val id = dao.insert(
+            ActivityLogEventEntity(
+                dayKey = dayKey,
+                timestampMs = timestampMs,
+                label = normalizedLabel,
+                rawPhrase = trimmedPhrase,
+                source = source,
+                eventKind = eventKind,
+                confidence = confidence,
+                scheduledAtMs = scheduledAtMs,
+                scheduledDayKey = targetDayKey,
+                actor = normalizedActor,
+                sourceChannel = trimmedChannel,
+            ),
+        )
+        pruneExpired()
+        return id
+    }
+
+    suspend fun getUpcomingForDay(targetDayKey: String, limit: Int = 8): List<ActivityLogEntry> =
+        dao.getUpcomingForDay(targetDayKey, limit).map { it.toDomain() }
+
+    suspend fun getOpenSocialThreads(daysBack: Int = 2, limit: Int = 4): List<ActivityLogEntry> {
+        val calendar = Calendar.getInstance()
+        calendar.add(Calendar.DAY_OF_YEAR, -daysBack)
+        calendar.set(Calendar.HOUR_OF_DAY, 0)
+        calendar.set(Calendar.MINUTE, 0)
+        calendar.set(Calendar.SECOND, 0)
+        calendar.set(Calendar.MILLISECOND, 0)
+        return dao.getOpenSocialThreads(calendar.timeInMillis, limit).map { it.toDomain() }
     }
 
     fun observeEventsLast7Days(): Flow<List<ActivityLogEntry>> {
@@ -64,7 +172,7 @@ class ActivityLogRepository(
             .sortedByDescending { it.dayKey }
     }
 
-    suspend fun getRecentForContext(maxEvents: Int, daysBack: Int = 2): List<ActivityLogEntry> {
+    suspend fun getRecentPhysicalForContext(maxEvents: Int, daysBack: Int = 2): List<ActivityLogEntry> {
         val calendar = Calendar.getInstance()
         calendar.add(Calendar.DAY_OF_YEAR, -daysBack)
         calendar.set(Calendar.HOUR_OF_DAY, 0)
@@ -73,6 +181,7 @@ class ActivityLogRepository(
         calendar.set(Calendar.MILLISECOND, 0)
         return dao.getSince(calendar.timeInMillis)
             .map { it.toDomain() }
+            .filter { it.eventKind == EpisodeKind.PHYSICAL_NOW }
             .sortedByDescending { it.timestampMs }
             .take(maxEvents)
     }
@@ -123,12 +232,63 @@ class ActivityLogRepository(
             label.trim()
                 .replace(Regex("\\s+"), " ")
 
+        fun normalizeActor(actor: String?): String? =
+            actor?.trim()?.replace(Regex("\\s+"), " ")?.takeIf { it.isNotBlank() }
+
+        fun parseScheduledAtMs(scheduledDayKey: String?, scheduledTime: String?): Long? {
+            val dayKey = scheduledDayKey?.trim()?.takeIf { it.isNotBlank() } ?: return null
+            val time = scheduledTime?.trim()?.takeIf { it.isNotBlank() } ?: return null
+            val dayFormat = SimpleDateFormat("yyyy-MM-dd", Locale.ITALY)
+            val dayDate = dayFormat.parse(dayKey) ?: return null
+            val parts = time.split(":")
+            if (parts.size < 2) return null
+            val hour = parts[0].toIntOrNull() ?: return null
+            val minute = parts[1].toIntOrNull() ?: return null
+            val calendar = Calendar.getInstance(Locale.ITALY)
+            calendar.time = dayDate
+            calendar.set(Calendar.HOUR_OF_DAY, hour)
+            calendar.set(Calendar.MINUTE, minute)
+            calendar.set(Calendar.SECOND, 0)
+            calendar.set(Calendar.MILLISECOND, 0)
+            return calendar.timeInMillis
+        }
+
+        fun dayBoundsForDayKey(dayKey: String): Pair<Long, Long> {
+            val dayFormat = SimpleDateFormat("yyyy-MM-dd", Locale.ITALY)
+            val parsed = dayFormat.parse(dayKey)
+                ?: return todayBoundsMillis()
+            val calendar = Calendar.getInstance(Locale.ITALY)
+            calendar.time = parsed
+            calendar.set(Calendar.HOUR_OF_DAY, 0)
+            calendar.set(Calendar.MINUTE, 0)
+            calendar.set(Calendar.SECOND, 0)
+            calendar.set(Calendar.MILLISECOND, 0)
+            val start = calendar.timeInMillis
+            calendar.add(Calendar.DAY_OF_YEAR, 1)
+            val end = calendar.timeInMillis
+            return start to end
+        }
+
+        fun todayBoundsMillis(): Pair<Long, Long> = dayBoundsForDayKey(dayKeyFor(System.currentTimeMillis()))
+
+        private fun mergeConfidence(
+            existing: EpisodeConfidence,
+            incoming: EpisodeConfidence,
+        ): EpisodeConfidence {
+            if (existing == EpisodeConfidence.CONFIRMED || incoming == EpisodeConfidence.CONFIRMED) {
+                return EpisodeConfidence.CONFIRMED
+            }
+            return EpisodeConfidence.TENTATIVE
+        }
+
         fun create(context: Context): ActivityLogRepository {
             val db = Room.databaseBuilder(
                 context.applicationContext,
                 ActivityLogDatabase::class.java,
                 "activity_log.db",
-            ).build()
+            )
+                .addMigrations(ActivityLogDatabase.MIGRATION_1_2)
+                .build()
             return ActivityLogRepository(db.activityLogDao())
         }
 
@@ -144,6 +304,12 @@ private fun ActivityLogEventEntity.toDomain(): ActivityLogEntry =
         label = label,
         rawPhrase = rawPhrase,
         source = source,
+        eventKind = eventKind,
+        confidence = confidence,
+        scheduledAtMs = scheduledAtMs,
+        scheduledDayKey = scheduledDayKey,
+        actor = actor,
+        sourceChannel = sourceChannel,
     )
 
 private fun ActivityHabitProfileEntity.toDomain(): ActivityHabitProfile =

@@ -15,7 +15,10 @@ object LlmPromptLoader {
     const val PRESENCE_DETECTION_PROMPT_ASSET_PATH = "prompts/presence_detection_prompt.txt"
     const val ROOM_LANDMARKS_PROMPT_ASSET_PATH = "prompts/room_landmarks_prompt.txt"
     const val BODY_CAPABILITIES_PROMPT_ASSET_PATH = "prompts/body_capabilities_prompt.txt"
-    const val ACTIVITY_EXTRACTOR_PROMPT_ASSET_PATH = "prompts/activity_extractor_prompt.txt"
+    const val HEARTBEAT_PLAYBOOK_PROMPT_ASSET_PATH = "prompts/heartbeat_playbook_prompt.txt"
+    const val MEMORY_CONSOLIDATION_PROMPT_ASSET_PATH = "prompts/memory_consolidation_prompt.txt"
+    const val EPISODIC_EXTRACTOR_PROMPT_ASSET_PATH = "prompts/episodic_extractor_prompt.txt"
+    const val ACTIVITY_EXTRACTOR_PROMPT_ASSET_PATH = EPISODIC_EXTRACTOR_PROMPT_ASSET_PATH
     const val ACTIVITY_HABIT_SUMMARY_PROMPT_ASSET_PATH = "prompts/activity_habit_summary_prompt.txt"
 
     private const val DATETIME_PLACEHOLDER = "{{CURRENT_DATETIME}}"
@@ -38,6 +41,14 @@ object LlmPromptLoader {
         return text.replace(DATETIME_PLACEHOLDER, getCurrentDateTimeString())
     }
 
+    fun loadMemoryConsolidationPrompt(context: Context): String {
+        val text = loadTextAsset(context, MEMORY_CONSOLIDATION_PROMPT_ASSET_PATH)
+        require(text.isNotBlank()) {
+            "Memory consolidation prompt asset is empty: $MEMORY_CONSOLIDATION_PROMPT_ASSET_PATH"
+        }
+        return text.replace(DATETIME_PLACEHOLDER, getCurrentDateTimeString())
+    }
+
     private fun getCurrentDateTimeString(): String {
         val dateFormat = SimpleDateFormat("EEEE d MMMM yyyy, HH:mm", Locale.ITALIAN)
         return dateFormat.format(Date())
@@ -47,6 +58,14 @@ object LlmPromptLoader {
         val text = loadTextAsset(context, BODY_CAPABILITIES_PROMPT_ASSET_PATH)
         require(text.isNotBlank()) {
             "Body capabilities prompt asset is empty: $BODY_CAPABILITIES_PROMPT_ASSET_PATH"
+        }
+        return text
+    }
+
+    fun loadHeartbeatPlaybookPrompt(context: Context): String {
+        val text = loadTextAsset(context, HEARTBEAT_PLAYBOOK_PROMPT_ASSET_PATH)
+        require(text.isNotBlank()) {
+            "Heartbeat playbook prompt asset is empty: $HEARTBEAT_PLAYBOOK_PROMPT_ASSET_PATH"
         }
         return text
     }

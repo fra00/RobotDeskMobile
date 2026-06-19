@@ -4,6 +4,7 @@ import com.example.mydeskrobot.reasoning.llm.LlmClient
 import com.example.mydeskrobot.reasoning.memory.MemoryRetrievalProfile
 import com.example.mydeskrobot.reasoning.model.IntermediateResponse
 import com.example.mydeskrobot.reasoning.model.ReasoningResult
+import com.example.mydeskrobot.reasoning.model.RobotInput
 import com.example.mydeskrobot.reasoning.model.SystemInputEnvelope
 import com.example.mydeskrobot.reasoning.tool.ToolExecutor
 import com.example.mydeskrobot.reasoning.tool.toSystemPromptSection
@@ -29,6 +30,7 @@ class ReasoningEngineImpl(
     private val moodContextProvider: MoodContextProvider? = null,
     private val spatialContextProvider: SpatialContextProvider? = null,
     private val activityContextProvider: ActivityContextProvider? = null,
+    private val heartbeatPlaybookProvider: HeartbeatPlaybookProvider? = null,
     maxChainSteps: Int = 10,
     private val reasoningLogObserver: ReasoningLogObserver = NoOpReasoningLogObserver,
 ) : ReasoningEngine {
@@ -98,7 +100,7 @@ class ReasoningEngineImpl(
         if (envelope.formattedForLlm.isBlank()) {
             return ReasoningResult.Error("Empty system input")
         }
-        refreshSystemPromptForSystemInput()
+        refreshSystemPromptForSystemInput(envelope.input)
         return orchestrator.processSystemInput(envelope, onIntermediateResponse)
     }
     
@@ -133,8 +135,10 @@ class ReasoningEngineImpl(
         orchestrator.updateSystemPrompt(buildPromptWithContext(userText))
     }
 
-    private suspend fun refreshSystemPromptForSystemInput() {
-        orchestrator.updateSystemPrompt(buildPromptWithContext(""))
+    private suspend fun refreshSystemPromptForSystemInput(systemInput: RobotInput) {
+        orchestrator.updateSystemPrompt(
+            buildPromptWithContext(userText = "", systemInput = systemInput),
+        )
     }
 
     private suspend fun refreshSystemPromptForVision(userText: String) {
@@ -149,9 +153,13 @@ class ReasoningEngineImpl(
     private suspend fun buildPromptWithContext(
         userText: String,
         memoryProfileOverride: MemoryRetrievalProfile? = null,
+        systemInput: RobotInput? = null,
     ): String {
         val toolPrompt = buildFullSystemPrompt()
         val bodyContext = bodyCapabilitiesProvider?.buildContextSection().orEmpty()
+        val heartbeatContext = heartbeatPlaybookProvider
+            ?.buildContextSection(systemInput)
+            .orEmpty()
         val memoryContext = memoryContextProvider
             ?.buildContextFor(userText, memoryProfileOverride)
             .orEmpty()
@@ -166,6 +174,10 @@ class ReasoningEngineImpl(
             if (bodyContext.isNotBlank()) {
                 append("\n\n")
                 append(bodyContext)
+            }
+            if (heartbeatContext.isNotBlank()) {
+                append("\n\n")
+                append(heartbeatContext)
             }
             if (memoryContext.isNotBlank()) {
                 append("\n\n")

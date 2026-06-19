@@ -5,6 +5,7 @@ import com.example.mydeskrobot.memory.db.MemoryCategory
 import com.example.mydeskrobot.memory.db.MemoryItemEntity
 import com.example.mydeskrobot.reasoning.memory.MemoryRetrievalProfile
 import kotlinx.coroutines.test.runTest
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -38,6 +39,18 @@ class MemoryPromptContextProviderTest {
 
         assertTrue(context.contains("KNOWN USER MEMORY"))
         assertTrue(context.contains("Brina"))
+    }
+
+    @Test
+    fun buildContextFor_incrementsUseCountOnInjectedMemories() = runTest {
+        val dog = entity(1L, MemoryCategory.FACT, "L'utente ha un cane di nome Brina")
+        val dao = FakeMemoryDao(listOf(dog))
+        val provider = MemoryPromptContextProviderImpl(UserMemoryRepository.createForTest(dao))
+
+        provider.buildContextFor("Come si chiama il mio cane?")
+
+        val updated = dao.getAllActive(now = Long.MAX_VALUE).single { it.id == 1L }
+        assertEquals(1, updated.useCount)
     }
 
     @Test

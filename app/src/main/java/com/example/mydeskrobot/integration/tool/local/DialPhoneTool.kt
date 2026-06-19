@@ -79,7 +79,6 @@ class DialPhoneTool(
       robotContextRepository.applyFromToolParams(
         mapOf(
           "profile" to "call",
-          "session_only" to true,
           "notifications" to "silent",
         ),
       )

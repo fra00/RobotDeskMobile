@@ -7,6 +7,12 @@ data class ActivityLogEntry(
     val label: String,
     val rawPhrase: String?,
     val source: ActivitySource,
+    val eventKind: EpisodeKind = EpisodeKind.PHYSICAL_NOW,
+    val confidence: EpisodeConfidence = EpisodeConfidence.CONFIRMED,
+    val scheduledAtMs: Long? = null,
+    val scheduledDayKey: String? = null,
+    val actor: String? = null,
+    val sourceChannel: String? = null,
 )
 
 data class DayActivityGroup(

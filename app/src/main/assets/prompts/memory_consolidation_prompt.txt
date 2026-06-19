@@ -1,0 +1,26 @@
+You consolidate the desk robot's persistent user memory (long-term facts about the user).
+
+You receive ALL active user-facing memories. Rewrite them into fewer, canonical Italian lines.
+
+Tasks:
+1. Remove duplicate or near-duplicate lines (including IT/EN pairs) — keep the most complete wording.
+2. Merge fragments about the SAME topic into one canonical line (e.g. split work hours → one schedule line).
+3. Resolve contradictions — prefer the more specific and more recent line (dates in input help).
+4. Drop obsolete lines superseded by a newer complete line.
+5. Keep unrelated topics as separate lines — do NOT merge different subjects into one line.
+
+Categories (required on every output line):
+- IDENTITY — name, age, role, stable who-the-user-is facts
+- PREFERENCE — tastes, likes/dislikes
+- ROUTINE — recurring habits, schedules, weekly patterns
+- FACT — other stable facts (pets, places, lasting context)
+
+Rules:
+- Write in Italian only.
+- Do not invent information not present in the input.
+- Do not lose important details when merging.
+- Each line must stand alone and stay in the correct category.
+- Output format EXACTLY: (CATEGORY) text
+- One fact per line. No numbering, bullets, headers, or explanations.
+
+CURRENT DATE AND TIME: {{CURRENT_DATETIME}}

@@ -3,6 +3,7 @@ package com.example.mydeskrobot.presentation.conversation
 import com.example.mydeskrobot.data.scheduled.db.ScheduledTaskEntity
 import com.example.mydeskrobot.domain.pending.PendingInboxItem
 import com.example.mydeskrobot.domain.pending.PendingInboxKind
+import com.example.mydeskrobot.domain.pending.UnannouncedNotification
 import com.example.mydeskrobot.integration.input.DeferredQueueItem
 import com.example.mydeskrobot.reasoning.model.RobotInput
 import java.text.SimpleDateFormat
@@ -22,6 +23,17 @@ object PendingInboxMapper {
                 timeMillis = task.triggerAtMillis,
                 title = "Promemoria",
                 body = task.message,
+            )
+        }
+
+    fun fromUnannouncedNotifications(items: List<UnannouncedNotification>): List<PendingInboxItem> =
+        items.map { notification ->
+            PendingInboxItem(
+                id = unannouncedId(notification.id),
+                kind = PendingInboxKind.NOTIFICATION,
+                timeMillis = notification.receivedAtMillis,
+                title = notification.appLabel,
+                body = notification.displayBody(),
             )
         }
 
@@ -61,9 +73,14 @@ object PendingInboxMapper {
     fun parseDeferredDedupKey(id: String): String? =
         id.takeIf { it.startsWith(DEFERRED_PREFIX) }?.removePrefix(DEFERRED_PREFIX)
 
+    fun parseUnannouncedId(id: String): String? =
+        id.takeIf { it.startsWith(UNANNOUNCED_PREFIX) }?.removePrefix(UNANNOUNCED_PREFIX)
+
     private fun reminderId(taskId: Long) = "$REMINDER_PREFIX$taskId"
 
     private fun deferredId(dedupKey: String) = "$DEFERRED_PREFIX$dedupKey"
+
+    private fun unannouncedId(notificationId: String) = "$UNANNOUNCED_PREFIX$notificationId"
 
     private fun buildNotificationBody(title: String?, text: String?): String {
         val parts = listOfNotNull(title?.trim()?.takeIf { it.isNotBlank() }, text?.trim()?.takeIf { it.isNotBlank() })
@@ -85,6 +102,7 @@ object PendingInboxMapper {
 
     private const val REMINDER_PREFIX = "reminder:"
     private const val DEFERRED_PREFIX = "deferred:"
+    private const val UNANNOUNCED_PREFIX = "unannounced:"
 }
 
 data class PendingInboxItemUi(

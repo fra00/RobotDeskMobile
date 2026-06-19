@@ -46,13 +46,32 @@ object RobotContextPolicy {
         return stored
     }
 
-    fun shouldDropNotifications(state: RobotContextState, nowEpochMs: Long = System.currentTimeMillis()): Boolean {
+    fun shouldSuppressNotificationTts(
+        state: RobotContextState,
+        nowEpochMs: Long = System.currentTimeMillis(),
+    ): Boolean {
         val effective = resolveEffectiveState(state, nowEpochMs)
         return effective.notificationMode == NotificationMode.SILENT
     }
 
-    fun isSessionScoped(state: RobotContextState): Boolean {
-        return state.sessionOnly && !state.isNormal
+    /** @deprecated Use [shouldSuppressNotificationTts]. */
+    fun shouldQueueNotificationsSilently(
+        state: RobotContextState,
+        nowEpochMs: Long = System.currentTimeMillis(),
+    ): Boolean = shouldSuppressNotificationTts(state, nowEpochMs)
+
+    /** @deprecated Use [shouldSuppressNotificationTts]. */
+    fun shouldDropNotifications(state: RobotContextState, nowEpochMs: Long = System.currentTimeMillis()): Boolean =
+        shouldSuppressNotificationTts(state, nowEpochMs)
+
+    /**
+     * Session end clears only ephemeral notification silencing (profile stays NORMAL).
+     * User-set profiles (work, call, meeting, focus) persist until explicit reset or expiry.
+     */
+    fun shouldClearOnSessionEnd(state: RobotContextState): Boolean {
+        return state.sessionOnly &&
+            state.profile == RobotProfile.NORMAL &&
+            state.notificationMode == NotificationMode.SILENT
     }
 
     fun buildPromptSection(state: RobotContextState, nowEpochMs: Long = System.currentTimeMillis()): String {
@@ -70,7 +89,7 @@ object RobotContextPolicy {
         }
 
         val notifLine = if (effective.notificationMode == NotificationMode.SILENT) {
-            "Notifications: SILENCED for the robot (do not announce incoming notifications)."
+            "Notifications: processed silently (no TTS until user asks to hear them)."
         } else {
             "Notifications: normal."
         }

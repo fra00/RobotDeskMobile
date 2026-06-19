@@ -128,8 +128,15 @@ fun LogDaySettingsDialog(
                             modifier = Modifier.padding(vertical = 4.dp),
                         )
                         group.events.forEach { event ->
+                            val meta = buildList {
+                                event.episodeKindLabel?.let { add(it) }
+                                event.confidenceLabel?.let { add(it) }
+                                event.scheduledLabel?.let { add(it) }
+                                add(event.sourceLabel)
+                            }.joinToString(" · ")
+                            val detail = event.rawPhrase?.let { " — $it" }.orEmpty()
                             Text(
-                                text = "${event.timeLabel} · ${event.label} (${event.sourceLabel})",
+                                text = "${event.timeLabel} · ${event.label}$detail ($meta)",
                                 style = MaterialTheme.typography.bodySmall,
                                 modifier = Modifier.padding(start = 8.dp, bottom = 2.dp),
                             )

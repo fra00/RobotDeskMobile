@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Transaction
 
 @Dao
 interface MemoryDao {
@@ -146,7 +147,7 @@ interface MemoryDao {
     @Query(
         """
         UPDATE memory_items
-        SET lastUsedAt = :usedAt
+        SET lastUsedAt = :usedAt, useCount = useCount + 1
         WHERE id IN (:ids)
         """
     )
@@ -180,7 +181,7 @@ interface MemoryDao {
         WHERE isDeleted = 0
         AND category NOT IN (:excludeCategories)
         AND (expiresAt IS NULL OR expiresAt > :now)
-        ORDER BY confidence ASC, lastUsedAt ASC, updatedAt ASC
+        ORDER BY confidence ASC, useCount ASC, lastUsedAt ASC, updatedAt ASC
         LIMIT :limit
         """
     )
@@ -200,4 +201,28 @@ interface MemoryDao {
         """
     )
     suspend fun softDeleteExpired(now: Long): Int
+
+    @Query(
+        """
+        UPDATE memory_items
+        SET isDeleted = 1, updatedAt = :now
+        WHERE isDeleted = 0
+        AND category IN (:categories)
+        AND (expiresAt IS NULL OR expiresAt > :now)
+        """,
+    )
+    suspend fun softDeleteActiveInCategories(
+        categories: List<MemoryCategory>,
+        now: Long = System.currentTimeMillis(),
+    )
+
+    @Transaction
+    suspend fun replaceUserFacingMemories(
+        categories: List<MemoryCategory>,
+        newItems: List<MemoryItemEntity>,
+        now: Long = System.currentTimeMillis(),
+    ) {
+        softDeleteActiveInCategories(categories, now)
+        newItems.forEach { upsert(it) }
+    }
 }

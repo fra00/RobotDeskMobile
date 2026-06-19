@@ -3,6 +3,7 @@ package com.example.mydeskrobot.data.activitylog
 import com.example.mydeskrobot.domain.activitylog.ActivitySource
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -75,5 +76,69 @@ class ActivityLogRepositoryTest {
     @Test
     fun `normalizeLabel collapses whitespace`() {
         assertEquals("pausa caffè", ActivityLogRepository.normalizeLabel("  pausa   caffè  "))
+    }
+
+    @Test
+    fun `upsertEpisodicEvent merges tentative to confirmed`() = runBlocking {
+        val tomorrow = tomorrowDayKey()
+        val first = repository.upsertEpisodicEvent(
+            label = "cinema",
+            rawPhrase = "domani cinema",
+            source = ActivitySource.EXTRACTOR,
+            eventKind = com.example.mydeskrobot.domain.activitylog.EpisodeKind.PLAN,
+            confidence = com.example.mydeskrobot.domain.activitylog.EpisodeConfidence.TENTATIVE,
+            scheduledDayKey = tomorrow,
+        )
+        val second = repository.upsertEpisodicEvent(
+            label = "cinema",
+            rawPhrase = "alle 20:30",
+            source = ActivitySource.EXTRACTOR,
+            eventKind = com.example.mydeskrobot.domain.activitylog.EpisodeKind.PLAN,
+            confidence = com.example.mydeskrobot.domain.activitylog.EpisodeConfidence.CONFIRMED,
+            scheduledDayKey = tomorrow,
+            scheduledAtMs = ActivityLogRepository.parseScheduledAtMs(tomorrow, "20:30"),
+        )
+        assertEquals(first, second)
+        val upcoming = repository.getUpcomingForDay(tomorrow)
+        assertEquals(1, upcoming.size)
+        assertEquals(com.example.mydeskrobot.domain.activitylog.EpisodeConfidence.CONFIRMED, upcoming[0].confidence)
+        assertNotNull(upcoming[0].scheduledAtMs)
+    }
+
+    @Test
+    fun `getUpcomingForDay filters by day and kind`() = runBlocking {
+        val tomorrow = tomorrowDayKey()
+        val today = ActivityLogRepository.dayKeyFor(System.currentTimeMillis())
+        repository.upsertEpisodicEvent(
+            label = "cinema",
+            source = ActivitySource.EXTRACTOR,
+            eventKind = com.example.mydeskrobot.domain.activitylog.EpisodeKind.PLAN,
+            scheduledDayKey = tomorrow,
+        )
+        repository.appendEvent(
+            label = "colazione",
+            source = ActivitySource.TOOL,
+            eventKind = com.example.mydeskrobot.domain.activitylog.EpisodeKind.PHYSICAL_NOW,
+        )
+        repository.upsertEpisodicEvent(
+            label = "dentista",
+            source = ActivitySource.EXTRACTOR,
+            eventKind = com.example.mydeskrobot.domain.activitylog.EpisodeKind.PLAN,
+            scheduledDayKey = today,
+        )
+        assertEquals(1, repository.getUpcomingForDay(tomorrow).size)
+        assertEquals("cinema", repository.getUpcomingForDay(tomorrow).first().label)
+    }
+
+    @Test
+    fun `parseScheduledAtMs combines day and time`() {
+        val ms = ActivityLogRepository.parseScheduledAtMs("2026-06-03", "20:30")
+        assertNotNull(ms)
+    }
+
+    private fun tomorrowDayKey(): String {
+        val calendar = java.util.Calendar.getInstance(java.util.Locale.ITALY)
+        calendar.add(java.util.Calendar.DAY_OF_YEAR, 1)
+        return ActivityLogRepository.dayKeyFor(calendar.timeInMillis)
     }
 }

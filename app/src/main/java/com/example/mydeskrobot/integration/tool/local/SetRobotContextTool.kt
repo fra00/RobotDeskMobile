@@ -44,7 +44,9 @@ class SetRobotContextTool(
                 ToolParameter(
                     name = "session_only",
                     type = "boolean",
-                    description = "If true, context ends when the voice session ends",
+                    description = "If true with profile normal + notifications silent only: " +
+                        "notification silence ends when the voice session ends. " +
+                        "Do not use for work/call/meeting/focus profiles.",
                     required = false,
                 ),
                 ToolParameter(
@@ -121,7 +123,7 @@ class SetRobotContextTool(
             RobotProfile.NORMAL -> "normale"
         }
         val notif = if (state.notificationMode.name == "SILENT") {
-            " Notifiche silenziate per il robot."
+            " Le notifiche verranno elaborate senza lettura vocale."
         } else {
             ""
         }

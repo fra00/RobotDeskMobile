@@ -116,39 +116,8 @@ class MemoryExtractionService(
     companion object {
         private const val TAG = "MemoryExtraction"
 
-        fun extractEntriesFromConversationLog(conversationLog: String): List<ChatLogEntry> {
-            if (conversationLog.isBlank()) return emptyList()
-            val lines = conversationLog
-                .split('\n')
-                .map { it.trim() }
-                .filter { it.isNotBlank() }
-
-            val entries = mutableListOf<ChatLogEntry>()
-            var id = 1L
-            lines.forEach { line ->
-                when {
-                    line.startsWith("Tu:", ignoreCase = true) -> {
-                        entries.add(
-                            ChatLogEntry(
-                                id = id++,
-                                role = "user",
-                                text = line.removePrefix("Tu:").trim(),
-                            ),
-                        )
-                    }
-                    line.startsWith("Robot:", ignoreCase = true) -> {
-                        entries.add(
-                            ChatLogEntry(
-                                id = id++,
-                                role = "assistant",
-                                text = line.removePrefix("Robot:").trim(),
-                            ),
-                        )
-                    }
-                }
-            }
-            return entries
-        }
+        fun extractEntriesFromConversationLog(conversationLog: String): List<ChatLogEntry> =
+            ConversationLogParser.parseUserAssistantEntries(conversationLog)
 
         internal fun extractJsonBody(raw: String): String {
             val trimmed = raw.trim()

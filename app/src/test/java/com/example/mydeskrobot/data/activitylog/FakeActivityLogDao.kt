@@ -3,6 +3,7 @@ package com.example.mydeskrobot.data.activitylog
 import com.example.mydeskrobot.data.activitylog.db.ActivityHabitProfileEntity
 import com.example.mydeskrobot.data.activitylog.db.ActivityLogDao
 import com.example.mydeskrobot.data.activitylog.db.ActivityLogEventEntity
+import com.example.mydeskrobot.domain.activitylog.EpisodeKind
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
@@ -27,6 +28,14 @@ class FakeActivityLogDao(
         return id
     }
 
+    override suspend fun update(event: ActivityLogEventEntity) {
+        val index = events.indexOfFirst { it.id == event.id }
+        if (index >= 0) {
+            events[index] = event
+            emit()
+        }
+    }
+
     override fun observeSince(sinceMs: Long): Flow<List<ActivityLogEventEntity>> =
         eventsFlow.map { list -> list.filter { it.timestampMs >= sinceMs }.sortedByDescending { it.timestampMs } }
 
@@ -36,6 +45,36 @@ class FakeActivityLogDao(
     override suspend fun findLatestByDayAndLabel(dayKey: String, label: String): ActivityLogEventEntity? =
         events.filter { it.dayKey == dayKey && it.label == label }
             .maxByOrNull { it.timestampMs }
+
+    override suspend fun findEpisodicForMerge(
+        scheduledDayKey: String,
+        eventKind: EpisodeKind,
+        label: String,
+        actor: String?,
+    ): ActivityLogEventEntity? =
+        events.filter {
+            it.scheduledDayKey == scheduledDayKey &&
+                it.eventKind == eventKind &&
+                it.label == label &&
+                ((actor == null && it.actor == null) || (actor != null && it.actor == actor))
+        }.maxByOrNull { it.timestampMs }
+
+    override suspend fun getUpcomingForDay(targetDayKey: String, limit: Int): List<ActivityLogEventEntity> =
+        events.filter {
+            it.scheduledDayKey == targetDayKey &&
+                it.eventKind in listOf(EpisodeKind.PLAN, EpisodeKind.SOCIAL_THREAD, EpisodeKind.COMMITMENT)
+        }
+            .sortedWith(
+                compareBy<ActivityLogEventEntity> { it.scheduledAtMs == null }
+                    .thenBy { it.scheduledAtMs ?: Long.MAX_VALUE }
+                    .thenByDescending { it.timestampMs },
+            )
+            .take(limit)
+
+    override suspend fun getOpenSocialThreads(sinceMs: Long, limit: Int): List<ActivityLogEventEntity> =
+        events.filter { it.eventKind == EpisodeKind.SOCIAL_THREAD && it.timestampMs >= sinceMs }
+            .sortedByDescending { it.timestampMs }
+            .take(limit)
 
     override suspend fun countSince(sinceMs: Long): Int =
         events.count { it.timestampMs >= sinceMs }

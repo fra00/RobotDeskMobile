@@ -182,6 +182,13 @@
     <string name="memory_reorganize_button">Riorganizza ora</string>
     <string name="memory_reorganize_done">Memoria riorganizzata: %1$d duplicati rimossi</string>
     <string name="memory_reorganize_none">Nessun duplicato rilevato</string>
+    <string name="memory_consolidate_done">Memoria compattata: da %1$d a %2$d righe</string>
+    <string name="memory_consolidate_unchanged">Memoria già compatta</string>
+    <string name="memory_consolidate_skipped_few">Troppe poche righe da compattare</string>
+    <string name="memory_consolidate_failed">Compattazione memoria non riuscita</string>
+    <string name="memory_consolidate_failed_with_dedup">Compattazione non riuscita; rimossi %1$d duplicati</string>
+    <string name="memory_consolidate_in_progress">Compattazione memoria in corso…</string>
+    <string name="memory_consolidate_not_configured">LLM non configurato per la compattazione</string>
     <string name="memory_settings_saved">Impostazioni memoria salvate</string>
     <string name="memory_reset_done">Memoria cancellata</string>
 
@@ -211,6 +218,10 @@
     <string name="log_day_source_extractor">estrazione</string>
     <string name="log_day_source_tool">tool</string>
     <string name="log_day_source_voice">voce</string>
+    <string name="log_day_kind_plan">piano</string>
+    <string name="log_day_kind_social">sociale</string>
+    <string name="log_day_kind_commitment">impegno</string>
+    <string name="log_day_confidence_tentative">tentativo</string>
 
     <string name="settings_lists">Liste e note</string>
     <string name="list_settings_title">Liste salvate</string>
