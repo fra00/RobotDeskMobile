@@ -7,16 +7,9 @@
 
 ---
 
-## Prossimo: Autonomous Agent (fasi H1–H6)
+## Prossimo: Autonomous Agent (fasi H2–H6)
 
-### H1 — Heartbeat base ⬅️ IN CORSO
-- [ ] `RobotInput.Heartbeat` + `HeartbeatInputSource`
-- [ ] `HeartbeatScheduler` (AlarmManager)
-- [ ] `HeartbeatContextBuilder` (payload minimo)
-- [ ] Prompt HEARTBEAT nel system prompt
-- [ ] Settings: on/off, intervallo, fascia oraria
-
-### H2 — Confidence threshold
+### H2 — Confidence threshold ⬅️ IN CORSO
 - [ ] `speak_confidence` nel JSON response
 - [ ] Soglia configurabile
 - [ ] Log "heartbeat suppressed"
@@ -43,6 +36,7 @@
 
 ## Backlog (dopo H1–H2)
 
+- Memory safety pin Level 2 (`isPinned` schema + comando vocale “ricordalo sempre”)
 - Tool per prender appunti (Note)
 - Tool per lista spesa
 - News (fetch contenuto troppo grande — serve chunking o estrazione titoli)
@@ -54,6 +48,10 @@
 
 ## Completato
 
+- ~~Unified memory RAG (Fase 0–2 + read-path + consolidation v2 + write-path unified-first + legacy mirror removed + factory singleton)~~ — `memory_documents.db`, hybrid recall, `UnifiedMemoryFactory` process-scoped
+- ~~Memory review follow-up (2.1 / 2.2 / 2.3)~~ — projection guard + weekly reconcile, recall budget + week/month cues, safety pin Level 1 — see `docs/MEMORY_REVIEW_FOLLOWUP.md`
+- ~~Memory hygiene~~ — `MemoryIntentDetector` rimosso (sostituito da `MemoryRecallCueResolver`); `UserMemoryRepository` resta solo per migrazione one-shot + test
+- ~~H1 — Heartbeat base~~ — `HeartbeatInputSource`, `HeartbeatScheduler`, `HeartbeatContextBuilder`, `heartbeat_playbook_prompt.txt`, settings UI
 - ~~Tool per leggere sito e riassumere~~ (`web_search` + `fetch_url`)
 - ~~Tool per ascoltare la musica~~ (`play_spotify`)
 - ~~Contesto robot / silenzio notifiche~~ (`set_robot_context`)

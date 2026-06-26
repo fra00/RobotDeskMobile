@@ -7,12 +7,10 @@ import com.example.mydeskrobot.domain.llm.LlmSettings
 import com.example.mydeskrobot.domain.vision.VisionImageCapture
 import com.example.mydeskrobot.integration.llm.LlmClientFactory
 import com.example.mydeskrobot.data.context.RobotContextRepository
-import com.example.mydeskrobot.integration.context.DayContextPromptProviderImpl
 import com.example.mydeskrobot.integration.context.RobotContextPromptProviderImpl
-import com.example.mydeskrobot.data.scheduled.ScheduledTaskRepository
 import com.example.mydeskrobot.data.activitylog.ActivityLogRepository
-import com.example.mydeskrobot.integration.activity.ActivityContextProviderImpl
-import com.example.mydeskrobot.integration.memory.MemoryPromptContextProviderImpl
+import com.example.mydeskrobot.integration.memory.LlmMemoryRecallPlanner
+import com.example.mydeskrobot.integration.memory.UnifiedRecallMemoryContextProvider
 import com.example.mydeskrobot.integration.tool.local.SetRobotContextTool
 import com.example.mydeskrobot.integration.tool.Tool
 import com.example.mydeskrobot.integration.tool.ToolRouter
@@ -57,7 +55,7 @@ import com.example.mydeskrobot.integration.tool.hardware.BodyHomeTool
 import com.example.mydeskrobot.integration.tool.hardware.BodyStatusTool
 import com.example.mydeskrobot.integration.tool.hardware.MoveBodyJointTool
 import com.example.mydeskrobot.integration.tool.hardware.MoveBodyJointsTool
-import com.example.mydeskrobot.memory.UserMemoryRepository
+import com.example.mydeskrobot.memory.unified.UnifiedMemoryFactory
 import kotlinx.coroutines.runBlocking
 import com.example.mydeskrobot.integration.mood.DelegatingMoodContextProvider
 import com.example.mydeskrobot.integration.spatial.SpatialRuntimeBindings
@@ -71,7 +69,6 @@ import com.example.mydeskrobot.reasoning.NoOpReasoningLogObserver
 import com.example.mydeskrobot.reasoning.ReasoningLogObserver
 import com.example.mydeskrobot.reasoning.ReasoningEngine
 import com.example.mydeskrobot.reasoning.ReasoningEngineImpl
-import com.example.mydeskrobot.reasoning.SpatialContextProvider
 
 /**
  * Module that configures and creates the ReasoningEngine.
@@ -98,8 +95,8 @@ object ReasoningModule {
         val basePrompt = LlmPromptLoader.loadSystemPrompt(context)
         
         val llmClient = LlmClientFactory.create(llmSettings)
-        val memoryRepository = UserMemoryRepository.create(context)
-        val activityLogRepository = ActivityLogRepository.create(context)
+        val unifiedMemoryRepository = UnifiedMemoryFactory.createRepository(context)
+        val memoryWriter = UnifiedMemoryFactory.createWriter(context)
         val listItemRepository = ListItemRepository.create(context)
 
         val tools = buildList {
@@ -109,30 +106,30 @@ object ReasoningModule {
             add(BrowserTool(context))
             val phoneContactResolver = PhoneContactResolver(
                 contactsResolver = AndroidContactsPhoneResolver(context),
-                memoryRepository = memoryRepository,
+                unifiedMemoryRepository = unifiedMemoryRepository,
             )
             add(ResolvePhoneContactTool(phoneContactResolver))
             add(DialPhoneTool(context))
             val whatsAppTargetResolver = WhatsAppTargetResolver(
                 whatsAppContactResolver = AndroidWhatsAppContactResolver(context),
                 phoneContactResolver = phoneContactResolver,
-                memoryRepository = memoryRepository,
+                unifiedMemoryRepository = unifiedMemoryRepository,
             )
             add(ResolveWhatsAppTargetTool(whatsAppTargetResolver))
             add(SendWhatsAppTool(context))
             add(SpotifyTool(context))
             add(SetRobotContextTool(RobotContextRepository(context)))
-            add(ReminderTool(context))
+            add(ReminderTool(context, memoryWriter = memoryWriter))
             add(GetRemindersTool(context))
-            add(DeleteReminderTool(context))
-            add(SaveMemoryTool(memoryRepository))
-            add(LogDailyActivityTool(activityLogRepository))
-            add(ListMemoriesTool(memoryRepository))
-            add(DeleteMemoryTool(memoryRepository))
-            add(AddListItemTool(listItemRepository))
+            add(DeleteReminderTool(context, memoryWriter = memoryWriter))
+            add(SaveMemoryTool(unifiedMemoryRepository))
+            add(LogDailyActivityTool(memoryWriter))
+            add(ListMemoriesTool(unifiedMemoryRepository))
+            add(DeleteMemoryTool(unifiedMemoryRepository))
+            add(AddListItemTool(listItemRepository, memoryWriter))
             add(ListItemsTool(listItemRepository))
-            add(UpdateListItemTool(listItemRepository))
-            add(DeleteListItemTool(listItemRepository))
+            add(UpdateListItemTool(listItemRepository, memoryWriter))
+            add(DeleteListItemTool(listItemRepository, memoryWriter))
             add(VolumeTool(context))
             add(MakeLightTool())
             add(NotificationTool(context))
@@ -173,12 +170,13 @@ object ReasoningModule {
                     ),
                 )
                 add(MatchPlaceTool(placeRepository))
-                add(SavePlaceTool(placeRepository))
+                add(SavePlaceTool(placeRepository, memoryWriter))
                 add(ListPlacesTool(placeRepository))
                 add(
                     SetCurrentPlaceTool(
                         placeRepository = placeRepository,
                         spatialContextManager = { spatial.requireManager() },
+                        memoryWriter = memoryWriter,
                     ),
                 )
             }
@@ -187,12 +185,12 @@ object ReasoningModule {
         }
         
         val toolRouter = ToolRouter(tools)
-        val memoryContextProvider = MemoryPromptContextProviderImpl(memoryRepository)
-        val scheduledTaskRepository = ScheduledTaskRepository.create(context)
-        val dayContextProvider = DayContextPromptProviderImpl(
-            scheduledTaskRepository = scheduledTaskRepository,
-            listItemRepository = listItemRepository,
-            activityLogRepository = activityLogRepository,
+        val memoryContextProvider = UnifiedRecallMemoryContextProvider(
+            unifiedMemoryRepository = unifiedMemoryRepository,
+        )
+        val memoryRecallPlanner = LlmMemoryRecallPlanner(
+            llmClient = llmClient,
+            systemPrompt = LlmPromptLoader.loadMemoryRecallPlannerPrompt(context),
         )
         val robotContextRepository = RobotContextRepository(context)
         val robotContextProvider = RobotContextPromptProviderImpl(robotContextRepository)
@@ -201,22 +199,20 @@ object ReasoningModule {
             settingsRepository = BodySettingsRepository(context),
         )
         val heartbeatPlaybookProvider = HeartbeatPlaybookProviderImpl(context)
-        val activityContextProvider = ActivityContextProviderImpl(activityLogRepository)
 
-        val spatialContextProvider: SpatialContextProvider? = spatialBindings?.contextProvider
+        spatialBindings?.contextProvider?.unifiedMemoryRepository = unifiedMemoryRepository
 
         return ReasoningEngineImpl(
             llmClient = llmClient,
             toolExecutor = toolRouter,
             baseSystemPrompt = basePrompt,
+            memoryRecallPlanner = memoryRecallPlanner,
             memoryContextProvider = memoryContextProvider,
-            dayContextProvider = dayContextProvider,
+            spatialContextProvider = spatialBindings?.contextProvider,
             bodyCapabilitiesProvider = bodyCapabilitiesProvider,
             heartbeatPlaybookProvider = heartbeatPlaybookProvider,
             robotContextProvider = robotContextProvider,
             moodContextProvider = moodContextProvider,
-            spatialContextProvider = spatialContextProvider,
-            activityContextProvider = activityContextProvider,
             maxChainSteps = 10,
             reasoningLogObserver = reasoningLogObserver,
         )

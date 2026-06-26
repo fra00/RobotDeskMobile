@@ -57,6 +57,21 @@ Le linee guida dettagliate sono in **`.cursor/rules/*.mdc`**:
 | `60-security-and-config.mdc` | API key, privacy |
 | `70-testing-and-quality.mdc` | Test e checklist |
 
+## Documentazione: `docs/` vs `docs/guides/`
+
+| Cartella | Pubblico | Lingua | Uso |
+|----------|----------|--------|-----|
+| **`docs/`** | Agenti AI, implementatori | Prevalentemente inglese | Contratti, architettura, path sorgente, checklist QA — **SSOT tecnico** per codice e PR |
+| **`docs/guides/`** | Umano (configuratore, tester) | Italiano | Guide narrative, diagrammi, FAQ — comprensione e smoke test; **non** sostituiscono le spec |
+
+**Regola:** per implementare una feature, leggere `docs/` (e questa pagina). Per capire il comportamento dal punto di vista umano, leggere `docs/guides/`. Se cambia il runtime, aggiornare entrambe le linee.
+
+| Argomento | Guide (umano) | Spec (agente) |
+|-----------|---------------|---------------|
+| Memoria | `docs/guides/MEMORIA.md`, `docs/guides/MEMORIA_TECNICA.md` | `docs/MEMORY.md`, `docs/MEMORY_ACCESS.md` |
+
+Indice guide: `docs/guides/README.md`.
+
 ## Prima di implementare
 
 1. Leggere `00` e `10`.
@@ -65,8 +80,10 @@ Le linee guida dettagliate sono in **`.cursor/rules/*.mdc`**:
 4. Per input esterni → `docs/INPUT_ARCHITECTURE.md`.
 5. Per pipeline STT (orchestrator + provider) → `docs/STT_ARCHITECTURE.md`.
 6. Per task schedulati / promemoria vocali → `docs/SCHEDULED_TASKS.md`.
-7. Per memoria utente (estrazione + tool + profili QUERY/VISION/PLAN/LEISURE, DayContext) → `docs/MEMORY.md`.
-7b. Per log episodico Log Day (piani, thread sociali, EPISODI PROSSIMI in PLAN) → `docs/ACTIVITY_LOG.md`.
+7. Per memoria utente (unified recall + tool + consolidation) → `docs/MEMORY.md` (spec); panoramica umana → `docs/guides/MEMORIA.md`.
+7b. Per log episodico Log Day (piani, thread sociali, EPISODI in unified recall) → `docs/ACTIVITY_LOG.md`.
+7c. Per accesso unificato memoria (write path, recall, notifiche unread) → `docs/MEMORY_ACCESS.md`.
+7d. Per LLM recall planner (piano JSON per turno vocale, no fallback) → `docs/MEMORY_RECALL_PLANNER.md`.
 8. Per contesto robot / silenzio notifiche → `docs/ROBOT_CONTEXT.md`.
 9. Per corpo fisico ESP32 (myDeskBody) → `docs/BODY_INTEGRATION.md` + prompt dinamico `body_capabilities_prompt.txt` via `BodyPromptProviderImpl`.
 9b. **Assembly prompt runtime** (`ReasoningEngineImpl.buildPromptWithContext`): base `llm_system_prompt.txt` + AVAILABLE TOOLS + condizionali: `body_capabilities` (ESP32), `heartbeat_playbook` (solo tick heartbeat/weekly_reflection), memory/day/activity/robot/spatial/mood. SSOT labels: `docs/PROMPT_PHILOSOPHY.md`.

@@ -2,6 +2,7 @@ package com.example.mydeskrobot.integration.tool.local
 
 import android.content.Context
 import com.example.mydeskrobot.data.lists.ListItemRepository
+import com.example.mydeskrobot.memory.unified.UnifiedMemoryWriter
 import com.example.mydeskrobot.integration.tool.Tool
 import com.example.mydeskrobot.integration.tool.ToolLocality
 import com.example.mydeskrobot.reasoning.model.ToolInvocation
@@ -11,9 +12,8 @@ import com.example.mydeskrobot.reasoning.tool.ToolParameter
 
 class DeleteListItemTool(
     private val repository: ListItemRepository,
+    private val memoryWriter: UnifiedMemoryWriter,
 ) : Tool {
-
-    constructor(context: Context) : this(ListItemRepository.create(context))
 
     override val name: String = "delete_list_item"
     override val locality: ToolLocality = ToolLocality.LOCAL
@@ -60,6 +60,7 @@ class DeleteListItemTool(
                     recoverable = true,
                 )
             }
+            memoryWriter.onListItemRemoved(itemId)
             return ToolResult.Success(
                 data = mapOf(
                     "success" to true,
@@ -78,6 +79,7 @@ class DeleteListItemTool(
         }
 
         val type = ListToolSupport.parseType(invocation.params["type"])
+        val matches = repository.list(type = type, query = query, limit = ListItemRepository.MAX_LIMIT)
         val deletedCount = repository.deleteByTextMatch(query, type)
         if (deletedCount == 0) {
             return ToolResult.Error(
@@ -86,6 +88,7 @@ class DeleteListItemTool(
                 recoverable = true,
             )
         }
+        matches.forEach { memoryWriter.onListItemRemoved(it.id) }
 
         return ToolResult.Success(
             data = mapOf(

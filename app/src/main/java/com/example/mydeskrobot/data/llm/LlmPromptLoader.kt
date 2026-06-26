@@ -17,6 +17,7 @@ object LlmPromptLoader {
     const val BODY_CAPABILITIES_PROMPT_ASSET_PATH = "prompts/body_capabilities_prompt.txt"
     const val HEARTBEAT_PLAYBOOK_PROMPT_ASSET_PATH = "prompts/heartbeat_playbook_prompt.txt"
     const val MEMORY_CONSOLIDATION_PROMPT_ASSET_PATH = "prompts/memory_consolidation_prompt.txt"
+    const val MEMORY_RECALL_PLANNER_PROMPT_ASSET_PATH = "prompts/memory_recall_planner_prompt.txt"
     const val EPISODIC_EXTRACTOR_PROMPT_ASSET_PATH = "prompts/episodic_extractor_prompt.txt"
     const val ACTIVITY_EXTRACTOR_PROMPT_ASSET_PATH = EPISODIC_EXTRACTOR_PROMPT_ASSET_PATH
     const val ACTIVITY_HABIT_SUMMARY_PROMPT_ASSET_PATH = "prompts/activity_habit_summary_prompt.txt"
@@ -45,6 +46,14 @@ object LlmPromptLoader {
         val text = loadTextAsset(context, MEMORY_CONSOLIDATION_PROMPT_ASSET_PATH)
         require(text.isNotBlank()) {
             "Memory consolidation prompt asset is empty: $MEMORY_CONSOLIDATION_PROMPT_ASSET_PATH"
+        }
+        return text.replace(DATETIME_PLACEHOLDER, getCurrentDateTimeString())
+    }
+
+    fun loadMemoryRecallPlannerPrompt(context: Context): String {
+        val text = loadTextAsset(context, MEMORY_RECALL_PLANNER_PROMPT_ASSET_PATH)
+        require(text.isNotBlank()) {
+            "Memory recall planner prompt asset is empty: $MEMORY_RECALL_PLANNER_PROMPT_ASSET_PATH"
         }
         return text.replace(DATETIME_PLACEHOLDER, getCurrentDateTimeString())
     }

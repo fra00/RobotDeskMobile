@@ -33,6 +33,7 @@ class ActivityLogRepository(
         scheduledDayKey: String? = null,
         actor: String? = null,
         sourceChannel: String? = null,
+        isUnread: Boolean = false,
     ): Long {
         val normalizedLabel = normalizeLabel(label)
         if (normalizedLabel.isBlank()) return -1L
@@ -49,6 +50,7 @@ class ActivityLogRepository(
                 scheduledDayKey = scheduledDayKey,
                 actor = normalizeActor(actor),
                 sourceChannel = sourceChannel?.trim()?.takeIf { it.isNotBlank() },
+                isUnread = isUnread,
             )
         }
 
@@ -71,6 +73,7 @@ class ActivityLogRepository(
                 scheduledDayKey = scheduledDayKey,
                 actor = normalizeActor(actor),
                 sourceChannel = sourceChannel?.trim()?.takeIf { it.isNotBlank() },
+                isUnread = isUnread,
             ),
         )
         pruneExpired()
@@ -88,6 +91,7 @@ class ActivityLogRepository(
         scheduledDayKey: String? = null,
         actor: String? = null,
         sourceChannel: String? = null,
+        isUnread: Boolean = false,
     ): Long {
         val normalizedLabel = normalizeLabel(label)
         if (normalizedLabel.isBlank()) return -1L
@@ -118,6 +122,7 @@ class ActivityLogRepository(
                     scheduledAtMs = mergedScheduledAt,
                     actor = normalizedActor ?: existing.actor,
                     sourceChannel = mergedChannel,
+                    isUnread = isUnread || existing.isUnread,
                 ),
             )
             pruneExpired()
@@ -137,6 +142,7 @@ class ActivityLogRepository(
                 scheduledDayKey = targetDayKey,
                 actor = normalizedActor,
                 sourceChannel = trimmedChannel,
+                isUnread = isUnread,
             ),
         )
         pruneExpired()
@@ -218,6 +224,12 @@ class ActivityLogRepository(
         dao.deleteProfile()
     }
 
+    suspend fun markEventRead(eventId: Long) {
+        val event = dao.getById(eventId) ?: return
+        if (!event.isUnread) return
+        dao.update(event.copy(isUnread = false))
+    }
+
     companion object {
         const val RETENTION_DAYS = 7
         private val RETENTION_MS = TimeUnit.DAYS.toMillis(RETENTION_DAYS.toLong())
@@ -287,7 +299,10 @@ class ActivityLogRepository(
                 ActivityLogDatabase::class.java,
                 "activity_log.db",
             )
-                .addMigrations(ActivityLogDatabase.MIGRATION_1_2)
+                .addMigrations(
+                    ActivityLogDatabase.MIGRATION_1_2,
+                    ActivityLogDatabase.MIGRATION_2_3,
+                )
                 .build()
             return ActivityLogRepository(db.activityLogDao())
         }
@@ -310,6 +325,7 @@ private fun ActivityLogEventEntity.toDomain(): ActivityLogEntry =
         scheduledDayKey = scheduledDayKey,
         actor = actor,
         sourceChannel = sourceChannel,
+        isUnread = isUnread,
     )
 
 private fun ActivityHabitProfileEntity.toDomain(): ActivityHabitProfile =

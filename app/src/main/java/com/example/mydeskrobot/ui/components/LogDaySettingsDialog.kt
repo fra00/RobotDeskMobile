@@ -135,8 +135,13 @@ fun LogDaySettingsDialog(
                                 add(event.sourceLabel)
                             }.joinToString(" · ")
                             val detail = event.rawPhrase?.let { " — $it" }.orEmpty()
+                            val unreadBadge = if (event.isUnread) {
+                                " ${stringResource(R.string.log_day_unread_badge)}"
+                            } else {
+                                ""
+                            }
                             Text(
-                                text = "${event.timeLabel} · ${event.label}$detail ($meta)",
+                                text = "${event.timeLabel} · ${event.label}$detail$unreadBadge ($meta)",
                                 style = MaterialTheme.typography.bodySmall,
                                 modifier = Modifier.padding(start = 8.dp, bottom = 2.dp),
                             )

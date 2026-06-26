@@ -3,58 +3,55 @@ package com.example.mydeskrobot.memory.consolidate
 import android.util.Log
 import com.example.mydeskrobot.integration.llm.LlmHttpErrors
 import com.example.mydeskrobot.memory.MemorySettingsRepository
-import com.example.mydeskrobot.memory.UserMemoryRepository
 import com.example.mydeskrobot.memory.db.MemoryCategory
 import com.example.mydeskrobot.memory.db.MemoryItemEntity
+import com.example.mydeskrobot.memory.unified.UnifiedMemoryRepository
+import com.example.mydeskrobot.memory.unified.db.MemoryDocumentEntity
 import com.example.mydeskrobot.reasoning.llm.LlmClient
 import com.example.mydeskrobot.reasoning.model.ConversationMessage
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 class MemoryConsolidationService(
     private val llmClient: LlmClient,
-    private val memoryRepository: UserMemoryRepository,
+    private val unifiedMemoryRepository: UnifiedMemoryRepository,
     private val settingsRepository: MemorySettingsRepository,
     private val systemPrompt: String,
 ) {
-    @Volatile
-    private var running = false
+    private val consolidationMutex = Mutex()
 
     suspend fun consolidateIfNeeded(force: Boolean = false): MemoryConsolidationResult {
         if (!llmClient.isConfigured()) {
             return MemoryConsolidationResult.SkippedNotConfigured
         }
-        if (running) {
-            return MemoryConsolidationResult.SkippedAlreadyRunning
-        }
 
-        val active = memoryRepository.getUserFacingActive()
-        if (active.size <= MIN_ROWS_TO_CONSOLIDATE) {
-            return MemoryConsolidationResult.SkippedTooFew(active.size)
-        }
-
-        val contentHash = memoryRepository.computeUserFacingContentHash(active)
-        if (!force) {
-            val lastHash = settingsRepository.getLastConsolidatedContentHash()
-            if (lastHash != null && lastHash == contentHash) {
-                return MemoryConsolidationResult.SkippedUnchanged
+        return consolidationMutex.withLock {
+            unifiedMemoryRepository.ensureMigrated()
+            val active = unifiedMemoryRepository.getUserFacingActiveDocuments()
+            if (active.size <= MIN_ROWS_TO_CONSOLIDATE) {
+                return@withLock MemoryConsolidationResult.SkippedTooFew(active.size)
             }
-        }
 
-        running = true
-        try {
-            return runConsolidation(active, contentHash)
-        } finally {
-            running = false
+            val contentHash = unifiedMemoryRepository.computeUserFacingContentHash(active)
+            if (!force) {
+                val lastHash = settingsRepository.getLastConsolidatedContentHash()
+                if (lastHash != null && lastHash == contentHash) {
+                    return@withLock MemoryConsolidationResult.SkippedUnchanged
+                }
+            }
+
+            runConsolidation(active, contentHash)
         }
     }
 
     private suspend fun runConsolidation(
-        active: List<MemoryItemEntity>,
+        active: List<MemoryDocumentEntity>,
         contentHashBefore: String,
     ): MemoryConsolidationResult {
-        val userMessage = buildUserMessage(active)
+        val userMessage = buildUserMessageFromUnified(active)
         val llmResult = llmClient.chat(
             messages = listOf(ConversationMessage.User(userMessage)),
             systemPrompt = systemPrompt,
@@ -75,41 +72,88 @@ class MemoryConsolidationService(
             return MemoryConsolidationResult.Failed("parse_empty")
         }
 
-        if (!isOutputRatioAcceptable(before = active.size, after = parsed.size)) {
+        val inputLines = active.mapNotNull { doc ->
+            val categoryName = doc.category?.trim().orEmpty()
+            if (categoryName.isBlank()) return@mapNotNull null
+            val category = runCatching { MemoryCategory.valueOf(categoryName) }.getOrNull()
+                ?: return@mapNotNull null
+            MemoryConsolidationCoverage.InputLine(category = category, value = doc.value)
+        }
+        val safeParsed = MemoryConsolidationCoverage.appendUncoveredInputLines(
+            input = inputLines,
+            consolidated = parsed,
+        )
+        val survivors = safeParsed.size - parsed.size
+        if (survivors > 0) {
+            Log.w(TAG, "Consolidation coverage guard re-appended $survivors input line(s)")
+        }
+
+        val beforeCount = active.size
+        if (!isOutputRatioAcceptable(before = beforeCount, after = safeParsed.size)) {
             Log.w(
                 TAG,
-                "Consolidation output too aggressive: before=${active.size} after=${parsed.size}",
+                "Consolidation output too aggressive: before=$beforeCount after=${safeParsed.size}",
             )
             return MemoryConsolidationResult.Failed("output_too_aggressive")
         }
 
-        settingsRepository.saveConsolidationBackup(active)
-        val replaced = memoryRepository.replaceUserFacingWithConsolidated(parsed)
-        if (replaced <= 0) {
-            return MemoryConsolidationResult.Failed("apply_failed")
+        settingsRepository.saveConsolidationBackup(backupEntitiesFromUnified(active))
+        val afterCount = unifiedMemoryRepository.replaceUserFacingWithConsolidated(safeParsed)
+        if (afterCount <= 0) {
+            return MemoryConsolidationResult.Failed("unified_apply_failed")
         }
 
-        val hashAfter = memoryRepository.computeUserFacingContentHash(
-            memoryRepository.getUserFacingActive(),
-        )
+        val hashAfter = unifiedMemoryRepository.computeUserFacingContentHash()
         settingsRepository.setLastConsolidatedContentHash(hashAfter.ifBlank { contentHashBefore })
         Log.i(
             TAG,
-            "Consolidation applied: ${active.size} -> $replaced rows (parsed=${parsed.size})",
+            "Consolidation applied: $beforeCount -> $afterCount rows (parsed=${safeParsed.size}, llm=${parsed.size})",
         )
         return MemoryConsolidationResult.Success(
-            before = active.size,
-            after = replaced,
+            before = beforeCount,
+            after = afterCount,
         )
     }
 
-    private fun buildUserMessage(memories: List<MemoryItemEntity>): String {
+    private fun backupEntitiesFromUnified(docs: List<MemoryDocumentEntity>): List<MemoryItemEntity> {
+        val now = System.currentTimeMillis()
+        return docs.mapNotNull { doc ->
+            val categoryName = doc.category?.trim().orEmpty()
+            if (categoryName.isBlank()) return@mapNotNull null
+            val category = runCatching { MemoryCategory.valueOf(categoryName) }.getOrNull()
+                ?: return@mapNotNull null
+            MemoryItemEntity(
+                category = category,
+                value = doc.value,
+                confidence = doc.confidence,
+                createdAt = doc.createdAt,
+                updatedAt = doc.updatedAt,
+                useCount = doc.useCount,
+                lastUsedAt = doc.lastUsedAt,
+                sourceMessageId = 0L,
+            )
+        }.ifEmpty {
+            listOf(
+                MemoryItemEntity(
+                    category = MemoryCategory.FACT,
+                    value = "backup-empty",
+                    confidence = 1f,
+                    createdAt = now,
+                    updatedAt = now,
+                    sourceMessageId = 0L,
+                ),
+            )
+        }
+    }
+
+    private fun buildUserMessageFromUnified(memories: List<MemoryDocumentEntity>): String {
         val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.ITALIAN)
         val lines = memories
             .sortedByDescending { it.updatedAt }
             .joinToString("\n") { memory ->
                 val date = dateFormat.format(Date(memory.updatedAt))
-                "[$date] (${memory.category.name}) ${memory.value}"
+                val category = memory.category ?: MemoryCategory.FACT.name
+                "[$date] ($category) ${memory.value}"
             }
         return buildString {
             appendLine("MEMORIES TO CONSOLIDATE:")

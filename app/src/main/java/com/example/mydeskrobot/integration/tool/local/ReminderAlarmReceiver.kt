@@ -22,6 +22,7 @@ import com.example.mydeskrobot.data.scheduled.ScheduledTaskStatus
 import com.example.mydeskrobot.domain.input.SystemInputDispatcher
 import com.example.mydeskrobot.domain.input.SystemInputEvent
 import com.example.mydeskrobot.integration.input.scheduled.ScheduledTaskInputSource
+import com.example.mydeskrobot.memory.unified.UnifiedMemoryFactory
 import com.example.mydeskrobot.reasoning.model.RobotInput
 import kotlinx.coroutines.runBlocking
 
@@ -50,6 +51,14 @@ class ReminderAlarmReceiver : BroadcastReceiver() {
         runBlocking { FireAndCheckRepository.create(context).onReminderFired(taskId) }
 
         val message = task.message.ifBlank { "Promemoria" }
+        runBlocking {
+            UnifiedMemoryFactory.createWriter(context).onReminderFired(
+                taskId = taskId,
+                message = message,
+                triggerAtMillis = task.triggerAtMillis,
+            )
+        }
+
         showNotification(context, taskId, message)
 
         val fired = RobotInput.ScheduledTaskFired(

@@ -2,7 +2,7 @@ package com.example.mydeskrobot.memory.extract
 
 import android.util.Log
 import com.example.mydeskrobot.memory.MemorySettingsRepository
-import com.example.mydeskrobot.memory.UserMemoryRepository
+import com.example.mydeskrobot.memory.unified.UnifiedMemoryRepository
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -13,7 +13,7 @@ class MemoryExtractionScheduler(
     private val scope: CoroutineScope,
     private val settingsRepository: MemorySettingsRepository,
     private val extractionService: MemoryExtractionService,
-    private val memoryRepository: UserMemoryRepository,
+    private val unifiedMemoryRepository: UnifiedMemoryRepository,
     private val getConversationLog: () -> String,
     private val isStandby: () -> Boolean,
     private val onExtractingChanged: (Boolean) -> Unit = {},
@@ -34,7 +34,6 @@ class MemoryExtractionScheduler(
         }
     }
 
-    /** Runs one extraction pass immediately (e.g. right after voice session ends). */
     fun requestRunOnce() {
         scope.launch { runExtractionCycleIfReady() }
     }
@@ -100,7 +99,7 @@ class MemoryExtractionScheduler(
     }
 
     private suspend fun runAutoDedup() {
-        val deduped = memoryRepository.reorganize()
+        val deduped = unifiedMemoryRepository.reorganize()
         if (deduped > 0) {
             Log.i(TAG, "Auto dedup removed $deduped duplicate memory item(s)")
         }

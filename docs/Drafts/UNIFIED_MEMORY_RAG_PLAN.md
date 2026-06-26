@@ -1,12 +1,6 @@
 # Unified Memory RAG — Piano di lavoro (DRAFT)
 
-> Proposta architetturale per My Desk Robot. Versione **0.3-draft** — non implementata.  
-> Destinato a review tecnica (LLM / team) e implementazione incrementale.  
-> Review esterna v0.1 + v0.2 incorporate + **filosofia cognitiva**.
-
-**Progetto:** My Desk Robot  
-**Data:** 2025-06-19 (agg. v0.3)  
-**Stato:** Draft — **GO** (review v0.2); pronto per Fase 0 benchmark  
+> **Stato:** Fase 0–2 + read-path Fase 5 + consolidation v2 + write-path unified-first **implementate** (2026-06). `MemoryIntentDetector` rimosso → recall via `MemoryRecallCueResolver` + `recallForQuestion()`. `UnifiedMemoryFactory` = singleton process-scoped.
 
 ---
 
@@ -20,14 +14,14 @@ Oggi la macromemoria è **frammentata** (più DB, più provider, retrieval a tok
 
 **North star (6 principi → pattern tecnici):**
 
-| # | Principio cognitivo | Pattern implementativo |
-|---|---------------------|------------------------|
-| 1 | Ciò che usi spesso resta; ciò che conta è difficile da dimenticare | `useCount`, `lastUsedAt`, `confidence`, pruning che **non** elimina prima i ricordi forti/usati |
-| 2 | Un solo accesso mentale, molte fonti | `UnifiedMemoryRepository.searchRelevant()` — un API, molti `kind` |
-| 3 | Memoria ottimizzata, non frammentata | `MemoryConsolidationService` (resta) + canonical docs + re-embed |
-| 4 | Miglior rapporto qualità domanda↔memoria | Embedding + `minScore` + filtri metadata |
-| 5 | Non recuperare/iniettare se non inerente | Soglia pertinenza + **blocco vuoto** se nessun hit; no injection “sempre tutto” |
-| 6 | Il cervello può considerare un ricordo assurdo e ignorarlo | Retrieval porta candidati; **LLM dialogo** scarta il non pertinente; prompt: non usare tutto ciò che vedi |
+| #   | Principio cognitivo                                                | Pattern implementativo                                                                                    |
+| --- | ------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
+| 1   | Ciò che usi spesso resta; ciò che conta è difficile da dimenticare | `useCount`, `lastUsedAt`, `confidence`, pruning che **non** elimina prima i ricordi forti/usati           |
+| 2   | Un solo accesso mentale, molte fonti                               | `UnifiedMemoryRepository.searchRelevant()` — un API, molti `kind`                                         |
+| 3   | Memoria ottimizzata, non frammentata                               | `MemoryConsolidationService` (resta) + canonical docs + re-embed                                          |
+| 4   | Miglior rapporto qualità domanda↔memoria                           | Embedding + `minScore` + filtri metadata                                                                  |
+| 5   | Non recuperare/iniettare se non inerente                           | Soglia pertinenza + **blocco vuoto** se nessun hit; no injection “sempre tutto”                           |
+| 6   | Il cervello può considerare un ricordo assurdo e ignorarlo         | Retrieval porta candidati; **LLM dialogo** scarta il non pertinente; prompt: non usare tutto ciò che vedi |
 
 **Decisione SSOT (chiusa in v0.2):** l'indice unified è **source of truth** per read/write; migrazione batch da legacy in standby — **no dual-write prolungato**.
 
@@ -66,12 +60,12 @@ Il sistema non deve essere un catalogo di IF/THEN per ogni domanda. Deve replica
 
 Non un router LLM dedicato ogni turno — **pattern a costo crescente**:
 
-| Strato | Pattern | Quando |
-|--------|---------|--------|
-| **A — Struttura** | Query diretta su `kind` + metadata (data, stato attivo) | Promemoria, liste, PLAN “oggi”, spatial |
+| Strato            | Pattern                                                    | Quando                                    |
+| ----------------- | ---------------------------------------------------------- | ----------------------------------------- |
+| **A — Struttura** | Query diretta su `kind` + metadata (data, stato attivo)    | Promemoria, liste, PLAN “oggi”, spatial   |
 | **B — Rilevanza** | Semantic search + `minScore` + hint `MemoryIntentDetector` | Domande su fatti utente, episodi puntuali |
-| **C — Catalogo** | Elenco per `useCount` / `updatedAt` senza query | Vision entity, “cosa conosco di te” ampio |
-| **D — LLM tool** | `list_memories` / `get_macromemory` in catena | Solo se injection insufficiente |
+| **C — Catalogo**  | Elenco per `useCount` / `updatedAt` senza query            | Vision entity, “cosa conosco di te” ampio |
+| **D — LLM tool**  | `list_memories` / `get_macromemory` in catena              | Solo se injection insufficiente           |
 
 **Principio 5:** se lo strato B non supera `minScore` → **nessuna memoria iniettata** (es. “chi era Garibaldi?”). Il LLM risponde da conoscenza generale senza rumore.
 
@@ -89,9 +83,9 @@ Sequenza corretta: **consolidate → recall → LLM discernimento**.
 
 ### EPISODE: doppio livello (principio 3 sui log)
 
-| Livello | Uso | Query tipo |
-|---------|-----|------------|
-| Episodio singolo | “Quando mi ha scritto Marco?” | RAG + filtro actor/channel |
+| Livello                   | Uso                               | Query tipo                                             |
+| ------------------------- | --------------------------------- | ------------------------------------------------------ |
+| Episodio singolo          | “Quando mi ha scritto Marco?”     | RAG + filtro actor/channel                             |
 | `HABIT_SUMMARY` aggregato | “Cosa ho fatto questa settimana?” | Doc derivato (già parzialmente `ActivityHabitProfile`) |
 
 Episodi raw non devono saturare il recall su domande generiche temporali.
@@ -102,25 +96,25 @@ Episodi raw non devono saturare il recall su domande generiche temporali.
 
 ### 2.1 Store dati separati
 
-| Store | Repository | Contenuto tipico | Persistenza |
-|-------|------------|------------------|-------------|
-| User memory | `UserMemoryRepository` | IDENTITY, PREFERENCE, ROUTINE, FACT, OBSERVATION, INTENT, PATTERN | Room `user_memory.db` |
-| Log Day | `ActivityLogRepository` | PHYSICAL_NOW, PLAN, SOCIAL_THREAD, COMMITMENT, TENTATIVE/CONFIRMED | Room `activity_log.db` |
-| Promemoria | `ScheduledTaskRepository` | Task vocali/notifiche a scadenza | Room |
-| Liste | `ListItemRepository` | TODO, NOTE, SHOPPING | Room |
-| Spatial | spatial DAO | Stanze, landmark, posizione corrente | Room |
+| Store       | Repository                | Contenuto tipico                                                   | Persistenza            |
+| ----------- | ------------------------- | ------------------------------------------------------------------ | ---------------------- |
+| User memory | `UserMemoryRepository`    | IDENTITY, PREFERENCE, ROUTINE, FACT, OBSERVATION, INTENT, PATTERN  | Room `user_memory.db`  |
+| Log Day     | `ActivityLogRepository`   | PHYSICAL_NOW, PLAN, SOCIAL_THREAD, COMMITMENT, TENTATIVE/CONFIRMED | Room `activity_log.db` |
+| Promemoria  | `ScheduledTaskRepository` | Task vocali/notifiche a scadenza                                   | Room                   |
+| Liste       | `ListItemRepository`      | TODO, NOTE, SHOPPING                                               | Room                   |
+| Spatial     | spatial DAO               | Stanze, landmark, posizione corrente                               | Room                   |
 
 ### 2.2 Injection nel prompt (per turno vocale)
 
 Assemblate in `ReasoningEngineImpl.buildPromptWithContext()`:
 
-| Provider | Trigger / condizione | Cosa inietta |
-|----------|----------------------|--------------|
-| `MemoryPromptContextProviderImpl` | Profilo intent + query | Max 8–20 righe user memory |
-| `DayContextPromptProviderImpl` | `MemoryIntentDetector` include PLAN | Reminders + todo + note + EPISODI PROSSIMI |
-| `ActivityContextProviderImpl` | Sempre (voice) | PROFILO ABITUDINI + ATTIVITÀ RECENTI (physical) |
-| `SpatialContextProvider` | SPATIAL / vision | Stanza corrente, luoghi |
-| Heartbeat | `HeartbeatContextBuilder` | INTENT, OBSERVATION, PATTERN |
+| Provider                          | Trigger / condizione                | Cosa inietta                                    |
+| --------------------------------- | ----------------------------------- | ----------------------------------------------- |
+| `MemoryPromptContextProviderImpl` | Profilo intent + query              | Max 8–20 righe user memory                      |
+| `DayContextPromptProviderImpl`    | `MemoryIntentDetector` include PLAN | Reminders + todo + note + EPISODI PROSSIMI      |
+| `ActivityContextProviderImpl`     | Sempre (voice)                      | PROFILO ABITUDINI + ATTIVITÀ RECENTI (physical) |
+| `SpatialContextProvider`          | SPATIAL / vision                    | Stanza corrente, luoghi                         |
+| Heartbeat                         | `HeartbeatContextBuilder`           | INTENT, OBSERVATION, PATTERN                    |
 
 ### 2.3 Retrieval user memory oggi
 
@@ -133,12 +127,12 @@ Assemblate in `ReasoningEngineImpl.buildPromptWithContext()`:
 
 ### 2.4 Write path attuali
 
-| Canale | Servizio / tool | Output |
-|--------|-----------------|--------|
-| Estrazione standby | `MemoryExtractionService` | Upsert Room user memory |
-| Estrazione episodi | `ActivityExtractionService` | Upsert Log Day |
-| Tool espliciti | `save_memory`, `log_daily_activity`, `set_reminder`, `add_list_item` | Rispettivi store |
-| Consolidation | `MemoryConsolidationService` | Replace user-facing con righe canoniche |
+| Canale             | Servizio / tool                                                      | Output                                  |
+| ------------------ | -------------------------------------------------------------------- | --------------------------------------- |
+| Estrazione standby | `MemoryExtractionService`                                            | Upsert Room user memory                 |
+| Estrazione episodi | `ActivityExtractionService`                                          | Upsert Log Day                          |
+| Tool espliciti     | `save_memory`, `log_daily_activity`, `set_reminder`, `add_list_item` | Rispettivi store                        |
+| Consolidation      | `MemoryConsolidationService`                                         | Replace user-facing con righe canoniche |
 
 ---
 
@@ -146,8 +140,8 @@ Assemblate in `ReasoningEngineImpl.buildPromptWithContext()`:
 
 ### P1 — Retrieval semantico insufficiente
 
-Query: *"quando lavoro il venerdì?"*  
-Memoria DB: *"orario mattutino fine settimana"*  
+Query: _"quando lavoro il venerdì?"_  
+Memoria DB: _"orario mattutino fine settimana"_  
 → **miss** (zero token condivisi).
 
 ### P2 — Cap arbitrario per turno
@@ -170,11 +164,11 @@ Esempio reale in DB:
 "lun-ven dalle 9:00 alle 13:00"
 ```
 
-Risposta attuale: parziale. Risposta attesa: *"lun-gio 9:00–13:00 e 14:00–18:00; venerdì solo 9:00–13:00."*
+Risposta attuale: parziale. Risposta attesa: _"lun-gio 9:00–13:00 e 14:00–18:00; venerdì solo 9:00–13:00."_
 
 ### P4 — Fragmentazione architetturale
 
-Per rispondere a domande composite (*"cosa devo fare oggi?"*, *"quando mi ha scritto Marco?"*) servono **N query a N repository** con logiche diverse. Difficile estendere e testare.
+Per rispondere a domande composite (_"cosa devo fare oggi?"_, _"quando mi ha scritto Marco?"_) servono **N query a N repository** con logiche diverse. Difficile estendere e testare.
 
 ### P5 — Forget / search / resolver
 
@@ -265,35 +259,35 @@ ReasoningEngineImpl → system prompt LLM
 
 ### 5.1 Nuovi componenti
 
-| Componente | Responsabilità |
-|------------|----------------|
-| `TextEmbedder` | Carica ONNX, `embed(text): FloatArray`, lazy init, cache opzionale |
-| `UnifiedMemoryIndex` | Persistenza documenti + HNSW / brute-force cosine |
-| `UnifiedMemoryRepository` | CRUD, search, markUsed, prune, migrate from legacy |
-| `UnifiedMemoryWriter` | Adapters write-path: extraction, tools, consolidation |
-| `UnifiedMemoryPromptProvider` | Sostituisce injection frammentata per read-path dialogo |
-| `MemoryConsolidationService` (v2) | Operates on `MemoryDocumentKind.USER_FACT` (+ optional EPISODE) |
-| `MemoryReindexJob` | Re-embed batch dopo consolidation / model upgrade |
+| Componente                        | Responsabilità                                                     |
+| --------------------------------- | ------------------------------------------------------------------ |
+| `TextEmbedder`                    | Carica ONNX, `embed(text): FloatArray`, lazy init, cache opzionale |
+| `UnifiedMemoryIndex`              | Persistenza documenti + HNSW / brute-force cosine                  |
+| `UnifiedMemoryRepository`         | CRUD, search, markUsed, prune, migrate from legacy                 |
+| `UnifiedMemoryWriter`             | Adapters write-path: extraction, tools, consolidation              |
+| `UnifiedMemoryPromptProvider`     | Sostituisce injection frammentata per read-path dialogo            |
+| `MemoryConsolidationService` (v2) | Operates on `MemoryDocumentKind.USER_FACT` (+ optional EPISODE)    |
+| `MemoryReindexJob`                | Re-embed batch dopo consolidation / model upgrade                  |
 
 ### 5.2 Componenti deprecati (fase transizione)
 
-| Componente | Destino |
-|------------|---------|
-| `MemoryPromptContextProviderImpl` | → `UnifiedMemoryPromptProvider` |
+| Componente                                | Destino                                           |
+| ----------------------------------------- | ------------------------------------------------- |
+| `MemoryPromptContextProviderImpl`         | → `UnifiedMemoryPromptProvider`                   |
 | Injection separata Day/Activity per voice | → query RAG con filtri `kind` + `scheduledDayKey` |
-| `MemoryTopicMatcher` come primary | → fallback secondario |
-| Multi-DB write duplicato | → writer unico + sync legacy opzionale |
+| `MemoryTopicMatcher` come primary         | → fallback secondario                             |
+| Multi-DB write duplicato                  | → writer unico + sync legacy opzionale            |
 
 ### 5.3 Componenti che restano (con adattamento)
 
-| Componente | Ruolo |
-|------------|-------|
-| `MemoryIntentDetector` | Hint filtri metadata |
-| `MemoryConsolidationService` | Logica merge LLM (adapter su nuovo schema) |
-| `ActivityExtractionService` | Scrive `EPISODE` documents |
-| `MemoryExtractionService` | Scrive `USER_FACT` documents |
-| Tool locali | Scrivono via `UnifiedMemoryWriter` |
-| Heartbeat playbook | Legge AUTONOMY + EPISODE imminenti via search/filtri |
+| Componente                   | Ruolo                                                |
+| ---------------------------- | ---------------------------------------------------- |
+| `MemoryIntentDetector`       | Hint filtri metadata                                 |
+| `MemoryConsolidationService` | Logica merge LLM (adapter su nuovo schema)           |
+| `ActivityExtractionService`  | Scrive `EPISODE` documents                           |
+| `MemoryExtractionService`    | Scrive `USER_FACT` documents                         |
+| Tool locali                  | Scrivono via `UnifiedMemoryWriter`                   |
+| Heartbeat playbook           | Legge AUTONOMY + EPISODE imminenti via search/filtri |
 
 ---
 
@@ -352,13 +346,13 @@ val benchmarkPairs = listOf(
 
 ### Policy embedding
 
-| Evento | Azione |
-|--------|--------|
-| Nuovo documento | embed on write (IO dispatcher) |
-| Consolidation merge | embed solo righe canoniche nuove |
-| Update value | re-embed |
-| Soft delete | rimuovi da indice attivo |
-| Model upgrade | `MemoryReindexJob` full rebuild background |
+| Evento              | Azione                                     |
+| ------------------- | ------------------------------------------ |
+| Nuovo documento     | embed on write (IO dispatcher)             |
+| Consolidation merge | embed solo righe canoniche nuove           |
+| Update value        | re-embed                                   |
+| Soft delete         | rimuovi da indice attivo                   |
+| Model upgrade       | `MemoryReindexJob` full rebuild background |
 
 ---
 
@@ -381,25 +375,25 @@ suspend fun buildContext(userText: String, hints: TurnHints): String {
 
 ### 8.2 Filtri metadata per intent (esempi)
 
-| Intent / domanda | Filtri suggeriti |
-|------------------|------------------|
-| PLAN / *"cosa devo fare oggi"* | `kind in [REMINDER, LIST_ITEM, EPISODE]` + `scheduledDayKey = today` |
-| QUERY entity | `kind = USER_FACT` + semantic top-k |
-| VISION / foto | `kind = USER_FACT`, category FACT/ROUTINE, **o** catalogo entity senza query |
-| Social / WhatsApp | `kind = EPISODE`, category SOCIAL_THREAD, actor opzionale |
-| Heartbeat | AUTONOMY + EPISODE imminenti TENTATIVE oggi |
-| DEFAULT chat | USER_FACT top-k + EPISODE recenti opzionali |
+| Intent / domanda               | Filtri suggeriti                                                             |
+| ------------------------------ | ---------------------------------------------------------------------------- |
+| PLAN / _"cosa devo fare oggi"_ | `kind in [REMINDER, LIST_ITEM, EPISODE]` + `scheduledDayKey = today`         |
+| QUERY entity                   | `kind = USER_FACT` + semantic top-k                                          |
+| VISION / foto                  | `kind = USER_FACT`, category FACT/ROUTINE, **o** catalogo entity senza query |
+| Social / WhatsApp              | `kind = EPISODE`, category SOCIAL_THREAD, actor opzionale                    |
+| Heartbeat                      | AUTONOMY + EPISODE imminenti TENTATIVE oggi                                  |
+| DEFAULT chat                   | USER_FACT top-k + EPISODE recenti opzionali                                  |
 
 ### 8.3 Casi speciali (non solo vector)
 
-| Caso | Strategia |
-|------|-----------|
-| Query vuota / vision | Catalogo entity: top N per `useCount` / `updatedAt` su USER_FACT FACT/ROUTINE |
-| Promemoria imminente | Filtro temporale strutturato + sort by `scheduledAtMs` |
-| *"segna come lette"* | Operazione su store, non retrieval |
-| Forget *"dimentica cane"* | semantic search + soft delete matched ids |
-| Domanda fuori dominio (*"chi era Garibaldi?"*) | Nessun hit ≥ `minScore` → **blocco memoria vuoto** (principio 5) |
-| Query tipo proprietà/elenco (*"cosa è verde?"*) | Limite strutturale RAG; LLM + onestà o tool esplicito — non promettere elenco completo via similarity |
+| Caso                                            | Strategia                                                                                             |
+| ----------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| Query vuota / vision                            | Catalogo entity: top N per `useCount` / `updatedAt` su USER_FACT FACT/ROUTINE                         |
+| Promemoria imminente                            | Filtro temporale strutturato + sort by `scheduledAtMs`                                                |
+| _"segna come lette"_                            | Operazione su store, non retrieval                                                                    |
+| Forget _"dimentica cane"_                       | semantic search + soft delete matched ids                                                             |
+| Domanda fuori dominio (_"chi era Garibaldi?"_)  | Nessun hit ≥ `minScore` → **blocco memoria vuoto** (principio 5)                                      |
+| Query tipo proprietà/elenco (_"cosa è verde?"_) | Limite strutturale RAG; LLM + onestà o tool esplicito — non promettere elenco completo via similarity |
 
 ### 8.4 Soglia minima di pertinenza (`minScore`) — obbligatoria
 
@@ -414,10 +408,10 @@ searchRelevant(query, limit = 20, filters, minScore = calibratedThreshold)
 
 **Divisione del lavoro:**
 
-| Fase | Responsabile | Cosa fa |
-|------|--------------|---------|
-| Retrieval + minScore | Codice | Scarta rumore **lontano**; risparmia token |
-| Discernimento fine | LLM cognitivo | Tra candidati sopra soglia, usa/ignora (principio 6) |
+| Fase                 | Responsabile  | Cosa fa                                              |
+| -------------------- | ------------- | ---------------------------------------------------- |
+| Retrieval + minScore | Codice        | Scarta rumore **lontano**; risparmia token           |
+| Discernimento fine   | LLM cognitivo | Tra candidati sopra soglia, usa/ignora (principio 6) |
 
 Non sono in competizione: due filtri in sequenza con granularità diversa.
 
@@ -425,19 +419,19 @@ Non sono in competizione: due filtri in sequenza con granularità diversa.
 
 Il principio 6 **non** giustifica retrieval mediocre (“il LLM sistemerà”). Ogni layer ha obblighi **misurabili**:
 
-| Responsabilità | Owner | Obbligo verificabile |
-|----------------|-------|----------------------|
-| Rumore lontano / fuori dominio | Retrieval (`minScore`, filtri) | **M2b:** blocco vuoto su ≥90% query fuori dominio |
-| Paraphrase pertinente trovata | Retrieval (embedding) | **M2 / M2c:** recall su golden set |
-| Falso positivo semantico sopra soglia | LLM dialogo | **M6-discern:** risposta corretta ignorando candidato spurio |
-| Query tipo elenco/proprietà | Prompt dialogo + LLM | **M6-honesty:** non inventare elenco completo (vedi §8.6) |
+| Responsabilità                        | Owner                          | Obbligo verificabile                                         |
+| ------------------------------------- | ------------------------------ | ------------------------------------------------------------ |
+| Rumore lontano / fuori dominio        | Retrieval (`minScore`, filtri) | **M2b:** blocco vuoto su ≥90% query fuori dominio            |
+| Paraphrase pertinente trovata         | Retrieval (embedding)          | **M2 / M2c:** recall su golden set                           |
+| Falso positivo semantico sopra soglia | LLM dialogo                    | **M6-discern:** risposta corretta ignorando candidato spurio |
+| Query tipo elenco/proprietà           | Prompt dialogo + LLM           | **M6-honesty:** non inventare elenco completo (vedi §8.6)    |
 
 **Regola:** se M2/M2c falliscono → **non** attribuire al LLM; migliorare retrieval/soglie/modello.  
 Se M2/M2c passano ma M6-discern fallisce → prompt dialogo o modello dialogo.
 
 ### 8.6 Dipendenza prompt dialogo (limite strutturale RAG)
 
-Casi tipo *"cosa è verde?"* / *"cosa ho comprato di verde?"* richiedono istruzioni in `llm_system_prompt.txt` (fuori scope storage, **in scope release**):
+Casi tipo _"cosa è verde?"_ / _"cosa ho comprato di verde?"_ richiedono istruzioni in `llm_system_prompt.txt` (fuori scope storage, **in scope release**):
 
 - Non enumerare tutti gli elementi con una proprietà se il contesto iniettato è un campione similarity-based
 - Usare solo memorie **pertinenti alla domanda specifica**; ignorare metafore/idiomi (es. “verde d’invidia”)
@@ -451,17 +445,17 @@ Task implementativo: aggiornare prompt in **Fase 2** insieme a `UnifiedMemoryPro
 
 ### 9.1 Mapping sorgenti → documenti
 
-| Sorgente | kind | Note |
-|----------|------|------|
-| `save_memory` tool | USER_FACT | category da param |
-| Memory extraction | USER_FACT | skip one-off task |
-| Activity extraction | EPISODE | kind, confidence, actor |
-| `log_daily_activity` | EPISODE | |
-| `set_reminder` | REMINDER | externalRef = taskId |
-| `add_list_item` | LIST_ITEM | |
-| Spatial save/match | SPATIAL | |
-| Heartbeat save | AUTONOMY | TTL da categoria |
-| Consolidation output | USER_FACT | source = consolidation |
+| Sorgente             | kind      | Note                    |
+| -------------------- | --------- | ----------------------- |
+| `save_memory` tool   | USER_FACT | category da param       |
+| Memory extraction    | USER_FACT | skip one-off task       |
+| Activity extraction  | EPISODE   | kind, confidence, actor |
+| `log_daily_activity` | EPISODE   |                         |
+| `set_reminder`       | REMINDER  | externalRef = taskId    |
+| `add_list_item`      | LIST_ITEM |                         |
+| Spatial save/match   | SPATIAL   |                         |
+| Heartbeat save       | AUTONOMY  | TTL da categoria        |
+| Consolidation output | USER_FACT | source = consolidation  |
 
 ### 9.2 Idempotenza / dedup on write
 
@@ -473,12 +467,12 @@ Task implementativo: aggiornare prompt in **Fase 2** insieme a `UnifiedMemoryPro
 
 Pattern “usato spesso + difficile da dimenticare”:
 
-| Segnale | Effetto |
-|---------|---------|
-| `useCount` ↑ su recall/injection | Memoria “forte” — ultima a essere prunata |
-| `confidence` alta + IDENTITY/ROUTINE | Resistenza al prune |
-| `lastUsedAt` recente | Boost opzionale in ranking (tie-break), non sostituto di semantic score |
-| Consolidation | Rigenera canonical line; `useCount` reset su nuove righe (già oggi) |
+| Segnale                              | Effetto                                                                 |
+| ------------------------------------ | ----------------------------------------------------------------------- |
+| `useCount` ↑ su recall/injection     | Memoria “forte” — ultima a essere prunata                               |
+| `confidence` alta + IDENTITY/ROUTINE | Resistenza al prune                                                     |
+| `lastUsedAt` recente                 | Boost opzionale in ranking (tie-break), non sostituto di semantic score |
+| Consolidation                        | Rigenera canonical line; `useCount` reset su nuove righe (già oggi)     |
 
 Pruning: ordine `confidence ASC`, `useCount ASC`, `lastUsedAt ASC` — **dimentica prima ciò che non conta e non si usa**.
 
@@ -506,10 +500,10 @@ Pruning: ordine `confidence ASC`, `useCount ASC`, `lastUsedAt ASC` — **dimenti
 
 ### 10.3 Costo latenza consolidation
 
-| Fase | Tempo stimato |
-|------|---------------|
-| LLM merge 40→8 righe | 1–5 s (già oggi) |
-| Re-embed 8 righe | ~250 ms |
+| Fase                  | Tempo stimato                          |
+| --------------------- | -------------------------------------- |
+| LLM merge 40→8 righe  | 1–5 s (già oggi)                       |
+| Re-embed 8 righe      | ~250 ms                                |
 | Full reindex 500 docs | ~15 s (solo se necessario, background) |
 
 **Regola:** consolidation e reindex **non bloccano** STT/TTS; job su `Dispatchers.IO` + flag `isReorganizing` in UI settings.
@@ -574,26 +568,26 @@ Pruning: ordine `confidence ASC`, `useCount ASC`, `lastUsedAt ASC` — **dimenti
 
 ### Must-have (release blocker)
 
-| ID | Metrica | Target |
-|----|---------|--------|
-| M1 | Query *"orari di lavoro"* → risposta completa lun-ven | Tutti gli slot corretti |
-| M2 | Recall@15 vs baseline token matcher | **Fase 0:** ≥75–80% golden set 30 query **e** miglioramento vs AS-IS; **post-consolidation:** ≥85%; target 90% a regime |
-| M2b | Falsi positivi retrieval (fuori dominio) | 0 memorie iniettate (minScore) su ≥90% casi tipo “Garibaldi” |
-| M2c | Falsi negativi retrieval (paraphrase pertinenti) | ≥85% domande con fatto noto in memoria **non** restituiscono blocco vuoto (es. “lavori da casa?” ↔ “smart working”) |
-| M6-discern | Principio 6 — LLM ignora spurii sopra soglia | ≥90% su set **adversarial** noto (es. “cosa ho comprato di verde?” con “amico verde d’invidia” in contesto) |
-| M6-honesty | Query elenco/proprietà | LLM non inventa elenco completo; ammette limite o chiede precisione — valutazione manuale su 5 casi |
-| M3 | Latenza embed query per turno | p95 ≤ 50 ms |
-| M4 | Latenza search | p95 ≤ 20 ms (N ≤ 2000) |
-| M5 | Zero regressione vision catalog | Entity names iniettati pre-foto |
-| M6 | PLAN oggi | Reminder + todo + episodi oggi via metadata filter |
+| ID         | Metrica                                               | Target                                                                                                                  |
+| ---------- | ----------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| M1         | Query _"orari di lavoro"_ → risposta completa lun-ven | Tutti gli slot corretti                                                                                                 |
+| M2         | Recall@15 vs baseline token matcher                   | **Fase 0:** ≥75–80% golden set 30 query **e** miglioramento vs AS-IS; **post-consolidation:** ≥85%; target 90% a regime |
+| M2b        | Falsi positivi retrieval (fuori dominio)              | 0 memorie iniettate (minScore) su ≥90% casi tipo “Garibaldi”                                                            |
+| M2c        | Falsi negativi retrieval (paraphrase pertinenti)      | ≥85% domande con fatto noto in memoria **non** restituiscono blocco vuoto (es. “lavori da casa?” ↔ “smart working”)     |
+| M6-discern | Principio 6 — LLM ignora spurii sopra soglia          | ≥90% su set **adversarial** noto (es. “cosa ho comprato di verde?” con “amico verde d’invidia” in contesto)             |
+| M6-honesty | Query elenco/proprietà                                | LLM non inventa elenco completo; ammette limite o chiede precisione — valutazione manuale su 5 casi                     |
+| M3         | Latenza embed query per turno                         | p95 ≤ 50 ms                                                                                                             |
+| M4         | Latenza search                                        | p95 ≤ 20 ms (N ≤ 2000)                                                                                                  |
+| M5         | Zero regressione vision catalog                       | Entity names iniettati pre-foto                                                                                         |
+| M6         | PLAN oggi                                             | Reminder + todo + episodi oggi via metadata filter                                                                      |
 
 ### Nice-to-have
 
-| ID | Metrica | Target |
-|----|---------|--------|
-| M7 | Riduzione righe duplicate post-consolidation | ≥ 50% cluster orari |
-| M8 | useCount correlato a retrieval reale | markUsed su doc iniettati |
-| M9 | APK size impact | Modello downloadable, APK + ≤ 5MB wrapper |
+| ID  | Metrica                                      | Target                                    |
+| --- | -------------------------------------------- | ----------------------------------------- |
+| M7  | Riduzione righe duplicate post-consolidation | ≥ 50% cluster orari                       |
+| M8  | useCount correlato a retrieval reale         | markUsed su doc iniettati                 |
+| M9  | APK size impact                              | Modello downloadable, APK + ≤ 5MB wrapper |
 
 ---
 
@@ -624,15 +618,15 @@ Usare per test manuali e automatici:
 
 ## 14. Rischi e mitigazioni
 
-| Rischio | Impatto | Mitigazione |
-|---------|---------|-------------|
-| Modello ONNX troppo pesante | APK, RAM, cold start | Download first-run; e5-small fallback |
-| False positive semantic | Risposte wrong topic | Filtri metadata + hybrid token score |
-| Consolidation troppo aggressiva | Perdita fatti | Backup, ratio guard, rollback UI |
-| Dual-write inconsistency | Drift legacy/unified | **Evitato:** unified SSOT + migrazione batch; no sync notturno fragile |
-| EPISODE TTL 7 giorni vs USER_FACT permanente | Confusione indice | `expiresAt` + prune job per kind |
-| VISION senza query testuale | Miss entity | Catalog path dedicato, non solo search |
-| Reindex full durante dialogo | UI freeze | Background only + progress |
+| Rischio                                      | Impatto              | Mitigazione                                                            |
+| -------------------------------------------- | -------------------- | ---------------------------------------------------------------------- |
+| Modello ONNX troppo pesante                  | APK, RAM, cold start | Download first-run; e5-small fallback                                  |
+| False positive semantic                      | Risposte wrong topic | Filtri metadata + hybrid token score                                   |
+| Consolidation troppo aggressiva              | Perdita fatti        | Backup, ratio guard, rollback UI                                       |
+| Dual-write inconsistency                     | Drift legacy/unified | **Evitato:** unified SSOT + migrazione batch; no sync notturno fragile |
+| EPISODE TTL 7 giorni vs USER_FACT permanente | Confusione indice    | `expiresAt` + prune job per kind                                       |
+| VISION senza query testuale                  | Miss entity          | Catalog path dedicato, non solo search                                 |
+| Reindex full durante dialogo                 | UI freeze            | Background only + progress                                             |
 
 ---
 
@@ -640,12 +634,12 @@ Usare per test manuali e automatici:
 
 ### Chiuse
 
-| # | Decisione | Scelta v0.2 |
-|---|-----------|-------------|
-| 1 | **SSOT** | Unified index = source of truth; legacy migrato poi deprecato |
-| 2 | **EPISODE** | Doppio livello: episodio singolo + `HABIT_SUMMARY` aggregato |
-| 4 | **Cap injection** | Dinamico: tutti i doc con `score >= minScore`, max 20 — non injection fissa “sempre tutto” |
-| 5 | **ObjectBox v1** | No; Room + cosine fino a profiling |
+| #   | Decisione         | Scelta v0.2                                                                                |
+| --- | ----------------- | ------------------------------------------------------------------------------------------ |
+| 1   | **SSOT**          | Unified index = source of truth; legacy migrato poi deprecato                              |
+| 2   | **EPISODE**       | Doppio livello: episodio singolo + `HABIT_SUMMARY` aggregato                               |
+| 4   | **Cap injection** | Dinamico: tutti i doc con `score >= minScore`, max 20 — non injection fissa “sempre tutto” |
+| 5   | **ObjectBox v1**  | No; Room + cosine fino a profiling                                                         |
 
 ### Ancora aperte
 
@@ -692,31 +686,31 @@ Il reviewer deve rispondere:
 
 ## 18. Riferimenti codice attuale
 
-| Area | File principale |
-|------|-----------------|
+| Area              | File principale                                                               |
+| ----------------- | ----------------------------------------------------------------------------- |
 | Injection memoria | `app/src/main/java/.../integration/memory/MemoryPromptContextProviderImpl.kt` |
-| Token retrieval | `app/src/main/java/.../memory/MemoryTopicMatcher.kt` |
-| Consolidation | `app/src/main/java/.../memory/consolidate/MemoryConsolidationService.kt` |
-| Intent hint | `app/src/main/java/.../reasoning/memory/MemoryIntentDetector.kt` |
-| Prompt assembly | `app/src/main/java/.../reasoning/ReasoningEngineImpl.kt` |
-| Log Day injection | `DayContextPromptProviderImpl.kt`, `ActivityContextProviderImpl.kt` |
-| Estrazione | `MemoryExtractionService.kt`, `ActivityExtractionService.kt` |
-| Documentazione | `docs/MEMORY.md`, `docs/ACTIVITY_LOG.md` |
+| Token retrieval   | `app/src/main/java/.../memory/MemoryTopicMatcher.kt`                          |
+| Consolidation     | `app/src/main/java/.../memory/consolidate/MemoryConsolidationService.kt`      |
+| Intent hint       | `app/src/main/java/.../reasoning/memory/MemoryIntentDetector.kt`              |
+| Prompt assembly   | `app/src/main/java/.../reasoning/ReasoningEngineImpl.kt`                      |
+| Log Day injection | `DayContextPromptProviderImpl.kt`, `ActivityContextProviderImpl.kt`           |
+| Estrazione        | `MemoryExtractionService.kt`, `ActivityExtractionService.kt`                  |
+| Documentazione    | `docs/MEMORY.md`, `docs/ACTIVITY_LOG.md`                                      |
 
 ---
 
 ## 19. Decision log (da compilare in implementazione)
 
-| Data | Decisione | Razionale |
-|------|-----------|-----------|
-| 2025-06-19 | Unified = SSOT | Evita dual-write; un accesso cognitivo |
-| 2025-06-19 | Consolidation resta | Anti-fragmentazione; complementare al RAG |
-| 2025-06-19 | Pattern cognitivi > regole rigide | LLM cognitivo + retrieval come supporto |
-| 2025-06-19 | Review v0.2 → GO | Inizio implementazione da Fase 0 |
-| 2025-06-19 | Confine retrieval/LLM misurabile | M2b + M2c + M6-discern (v0.3) |
-| TBD | Storage: Room vs ObjectBox | Dopo benchmark N e latency |
-| TBD | minScore + dedup + hybrid weights | Calibrazione Fase 0 / tuning Fase 6 |
+| Data       | Decisione                         | Razionale                                 |
+| ---------- | --------------------------------- | ----------------------------------------- |
+| 2025-06-19 | Unified = SSOT                    | Evita dual-write; un accesso cognitivo    |
+| 2025-06-19 | Consolidation resta               | Anti-fragmentazione; complementare al RAG |
+| 2025-06-19 | Pattern cognitivi > regole rigide | LLM cognitivo + retrieval come supporto   |
+| 2025-06-19 | Review v0.2 → GO                  | Inizio implementazione da Fase 0          |
+| 2025-06-19 | Confine retrieval/LLM misurabile  | M2b + M2c + M6-discern (v0.3)             |
+| TBD        | Storage: Room vs ObjectBox        | Dopo benchmark N e latency                |
+| TBD        | minScore + dedup + hybrid weights | Calibrazione Fase 0 / tuning Fase 6       |
 
 ---
 
-*Fine documento — Unified Memory RAG Plan v0.3-draft*
+_Fine documento — Unified Memory RAG Plan v0.3-draft_

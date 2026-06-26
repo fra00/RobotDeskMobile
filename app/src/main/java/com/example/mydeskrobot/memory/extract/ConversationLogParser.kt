@@ -60,4 +60,7 @@ object ConversationLogParser {
 
     fun parseUserAssistantEntries(conversationLog: String): List<ChatLogEntry> =
         parseAllEntries(conversationLog).filter { it.role == "user" || it.role == "assistant" }
+
+    fun parseEpisodicEntries(conversationLog: String): List<ChatLogEntry> =
+        parseAllEntries(conversationLog).filter { it.role == "user" || it.role == "assistant" || it.role == "system" }
 }

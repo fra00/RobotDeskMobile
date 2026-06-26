@@ -3,6 +3,7 @@ package com.example.mydeskrobot.memory
 import android.content.Context
 import androidx.room.Room
 import com.example.mydeskrobot.memory.consolidate.ConsolidatedMemoryLine
+import com.example.mydeskrobot.memory.consolidate.MemoryConsolidationApplicator
 import com.example.mydeskrobot.memory.db.MemoryCategory
 import com.example.mydeskrobot.memory.db.MemoryDao
 import com.example.mydeskrobot.memory.db.MemoryDatabase
@@ -145,29 +146,55 @@ class UserMemoryRepository(
         computeUserFacingContentHash(getUserFacingActive())
 
     /**
-     * Replaces all active user-facing rows with consolidated lines from the LLM pass.
+     * Applies consolidated lines in-place on legacy store (non-unified fallback path).
      */
     suspend fun replaceUserFacingWithConsolidated(lines: List<ConsolidatedMemoryLine>): Int {
         if (lines.isEmpty()) return 0
         val now = System.currentTimeMillis()
-        val entities = lines.map { line ->
-            MemoryItemEntity(
-                category = line.category,
-                value = line.value.trim(),
-                confidence = 1.0f,
-                createdAt = now,
-                updatedAt = now,
-                useCount = 0,
-                sourceMessageId = SOURCE_MESSAGE_CONSOLIDATION,
+        val active = getUserFacingActive()
+        val plan = MemoryConsolidationApplicator.plan(
+            active = active.map { it.toConsolidationRow() },
+            consolidated = lines,
+        )
+        plan.deactivateIds.forEach { dao.softDeleteById(it, now) }
+        plan.updates.forEach { (id, update) ->
+            val existing = dao.findActiveById(id) ?: return@forEach
+            dao.upsert(
+                existing.copy(
+                    category = update.category,
+                    value = update.value,
+                    useCount = update.useCount,
+                    lastUsedAt = update.lastUsedAt,
+                    updatedAt = now,
+                    sourceMessageId = SOURCE_MESSAGE_CONSOLIDATION,
+                ),
             )
         }
-        dao.replaceUserFacingMemories(
-            categories = MemoryCategory.USER_FACING.toList(),
-            newItems = entities,
-            now = now,
-        )
-        return entities.size
+        plan.inserts.forEach { line ->
+            dao.upsert(
+                MemoryItemEntity(
+                    category = line.category,
+                    value = line.value.trim(),
+                    confidence = 1f,
+                    createdAt = now,
+                    updatedAt = now,
+                    sourceMessageId = SOURCE_MESSAGE_CONSOLIDATION,
+                ),
+            )
+        }
+        return getUserFacingActive().size
     }
+
+    private fun MemoryItemEntity.toConsolidationRow(): MemoryConsolidationApplicator.MemoryRow =
+        MemoryConsolidationApplicator.MemoryRow(
+            id = id,
+            category = category,
+            value = value,
+            useCount = useCount,
+            lastUsedAt = lastUsedAt,
+            updatedAt = updatedAt,
+            createdAt = createdAt,
+        )
 
     suspend fun getCoreIdentity(limit: Int = 2): List<MemoryItemEntity> =
         getByCategory(MemoryCategory.IDENTITY, limit)
@@ -379,9 +406,21 @@ class UserMemoryRepository(
                 }
                 if (cluster.size <= 1) continue
                 val keeper = cluster.maxWithOrNull(
-                    compareBy<MemoryItemEntity> { it.confidence }
+                    compareBy<MemoryItemEntity> { it.useCount }
+                        .thenBy { it.confidence }
                         .thenBy { it.updatedAt },
                 ) ?: continue
+                val mergedUseCount = cluster.sumOf { it.useCount }
+                val mergedLastUsed = cluster.maxOf { it.lastUsedAt }
+                if (mergedUseCount != keeper.useCount || mergedLastUsed != keeper.lastUsedAt) {
+                    dao.upsert(
+                        keeper.copy(
+                            useCount = mergedUseCount,
+                            lastUsedAt = mergedLastUsed,
+                            updatedAt = now,
+                        ),
+                    )
+                }
                 cluster.filter { it.id != keeper.id }.forEach { toDelete += it.id }
             }
         }

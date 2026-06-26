@@ -5,16 +5,25 @@ import com.example.mydeskrobot.integration.tool.Tool
 import com.example.mydeskrobot.integration.tool.ToolLocality
 import com.example.mydeskrobot.memory.UserMemoryRepository
 import com.example.mydeskrobot.memory.db.MemoryCategory
+import com.example.mydeskrobot.memory.unified.UnifiedMemoryRepository
 import com.example.mydeskrobot.reasoning.model.ToolInvocation
 import com.example.mydeskrobot.reasoning.model.ToolResult
 import com.example.mydeskrobot.reasoning.tool.ToolDefinition
 import com.example.mydeskrobot.reasoning.tool.ToolParameter
 
-class ListMemoriesTool(
-    private val memoryRepository: UserMemoryRepository,
+class ListMemoriesTool private constructor(
+    private val unifiedMemoryRepository: UnifiedMemoryRepository?,
+    private val legacyTestRepository: UserMemoryRepository?,
 ) : Tool {
 
-    constructor(context: Context) : this(UserMemoryRepository.create(context))
+    constructor(unifiedMemoryRepository: UnifiedMemoryRepository) : this(unifiedMemoryRepository, null)
+
+    constructor(legacyMemoryRepository: UserMemoryRepository) : this(null, legacyMemoryRepository)
+
+    constructor(context: Context) : this(
+        com.example.mydeskrobot.memory.unified.UnifiedMemoryFactory.createRepository(context),
+        null,
+    )
 
     override val name: String = "list_memories"
     override val locality: ToolLocality = ToolLocality.LOCAL
@@ -53,17 +62,28 @@ class ListMemoriesTool(
         val category = MemoryToolSupport.parseCategory(invocation.params["category"])
         val query = (invocation.params["query"] as? String)?.trim().orEmpty()
 
-        val items = when {
-            query.isNotBlank() -> memoryRepository.searchRelevant(
-                query = query,
-                limit = limit,
-                includeRobotInternal = true,
-            )
-            category != null -> memoryRepository.getByCategory(category, limit)
-            else -> memoryRepository.getUserFacingActive().take(limit)
+        val memories = if (unifiedMemoryRepository != null) {
+            val items = when {
+                query.isNotBlank() -> unifiedMemoryRepository.searchToolRelevant(
+                    query = query,
+                    limit = limit,
+                    includeRobotInternal = true,
+                )
+                category != null -> unifiedMemoryRepository.getToolByCategory(category, limit)
+                else -> unifiedMemoryRepository.getUserFacingActiveDocuments().take(limit)
+            }
+            items.map { MemoryToolSupport.documentToMap(it) }
+        } else {
+            val legacy = legacyTestRepository
+                ?: return ToolResult.Error(message = "Memoria non disponibile", code = "NOT_FOUND")
+            val items = when {
+                query.isNotBlank() -> legacy.searchRelevant(query, limit, includeRobotInternal = true)
+                category != null -> legacy.getByCategory(category, limit)
+                else -> legacy.getUserFacingActive().take(limit)
+            }
+            items.map { MemoryToolSupport.legacyEntityToMap(it) }
         }
 
-        val memories = items.map { MemoryToolSupport.entityToMap(it) }
         return ToolResult.Success(
             data = mapOf(
                 "count" to memories.size,

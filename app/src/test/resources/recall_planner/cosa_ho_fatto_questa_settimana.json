@@ -1,0 +1,8 @@
+{
+  "temporal_scope": "WEEK",
+  "focus_day_key": null,
+  "recall_focus": "GENERAL",
+  "search_queries": ["attività questa settimana", "episodi recenti"],
+  "include_habit_summary": true,
+  "localize_spatial": false
+}

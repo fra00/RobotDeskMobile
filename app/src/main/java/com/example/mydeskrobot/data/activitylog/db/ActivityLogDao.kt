@@ -108,4 +108,7 @@ interface ActivityLogDao {
 
     @Query("DELETE FROM activity_habit_profile")
     suspend fun deleteProfile()
+
+    @Query("SELECT * FROM activity_log_events WHERE id = :id LIMIT 1")
+    suspend fun getById(id: Long): ActivityLogEventEntity?
 }

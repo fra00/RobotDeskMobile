@@ -3,6 +3,7 @@ package com.example.mydeskrobot.integration.tool.local
 import android.content.Context
 import com.example.mydeskrobot.data.lists.ListItemRepository
 import com.example.mydeskrobot.domain.time.RelativeDateNormalizer
+import com.example.mydeskrobot.memory.unified.UnifiedMemoryWriter
 import com.example.mydeskrobot.integration.tool.Tool
 import com.example.mydeskrobot.integration.tool.ToolLocality
 import com.example.mydeskrobot.reasoning.model.ToolInvocation
@@ -12,9 +13,8 @@ import com.example.mydeskrobot.reasoning.tool.ToolParameter
 
 class AddListItemTool(
     private val repository: ListItemRepository,
+    private val memoryWriter: UnifiedMemoryWriter,
 ) : Tool {
-
-    constructor(context: Context) : this(ListItemRepository.create(context))
 
     override val name: String = "add_list_item"
     override val locality: ToolLocality = ToolLocality.LOCAL
@@ -67,6 +67,12 @@ class AddListItemTool(
         val checked = ListToolSupport.parseChecked(invocation.params["checked"]) ?: false
 
         val id = repository.add(type, text, checked)
+        memoryWriter.onListItemAdded(
+            itemId = id,
+            type = type,
+            text = text,
+            checked = checked,
+        )
         return ToolResult.Success(
             data = mapOf(
                 "success" to true,

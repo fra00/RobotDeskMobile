@@ -26,6 +26,18 @@ object PendingInboxMapper {
             )
         }
 
+    fun fromUnreadEpisodes(episodes: List<com.example.mydeskrobot.memory.unified.db.MemoryDocumentEntity>): List<PendingInboxItem> =
+        episodes.mapNotNull { episode ->
+            val externalRef = episode.externalRef ?: return@mapNotNull null
+            PendingInboxItem(
+                id = unreadEpisodeId(externalRef),
+                kind = PendingInboxKind.NOTIFICATION,
+                timeMillis = episode.createdAt,
+                title = episode.sourceChannel ?: episode.actor ?: "Notifica",
+                body = episode.value,
+            )
+        }
+
     fun fromUnannouncedNotifications(items: List<UnannouncedNotification>): List<PendingInboxItem> =
         items.map { notification ->
             PendingInboxItem(
@@ -73,12 +85,17 @@ object PendingInboxMapper {
     fun parseDeferredDedupKey(id: String): String? =
         id.takeIf { it.startsWith(DEFERRED_PREFIX) }?.removePrefix(DEFERRED_PREFIX)
 
+    fun parseUnreadEpisodeExternalRef(id: String): String? =
+        id.takeIf { it.startsWith(UNREAD_EPISODE_PREFIX) }?.removePrefix(UNREAD_EPISODE_PREFIX)
+
     fun parseUnannouncedId(id: String): String? =
         id.takeIf { it.startsWith(UNANNOUNCED_PREFIX) }?.removePrefix(UNANNOUNCED_PREFIX)
 
     private fun reminderId(taskId: Long) = "$REMINDER_PREFIX$taskId"
 
     private fun deferredId(dedupKey: String) = "$DEFERRED_PREFIX$dedupKey"
+
+    private fun unreadEpisodeId(externalRef: String) = "$UNREAD_EPISODE_PREFIX$externalRef"
 
     private fun unannouncedId(notificationId: String) = "$UNANNOUNCED_PREFIX$notificationId"
 
@@ -103,6 +120,7 @@ object PendingInboxMapper {
     private const val REMINDER_PREFIX = "reminder:"
     private const val DEFERRED_PREFIX = "deferred:"
     private const val UNANNOUNCED_PREFIX = "unannounced:"
+    private const val UNREAD_EPISODE_PREFIX = "unread_episode:"
 }
 
 data class PendingInboxItemUi(

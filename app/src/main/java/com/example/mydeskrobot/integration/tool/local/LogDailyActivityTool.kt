@@ -1,10 +1,10 @@
 package com.example.mydeskrobot.integration.tool.local
 
-import android.content.Context
 import com.example.mydeskrobot.data.activitylog.ActivityLogRepository
-import com.example.mydeskrobot.domain.activitylog.ActivitySource
 import com.example.mydeskrobot.domain.activitylog.EpisodeConfidence
 import com.example.mydeskrobot.domain.activitylog.EpisodeKind
+import com.example.mydeskrobot.memory.unified.MemoryDocumentSource
+import com.example.mydeskrobot.memory.unified.UnifiedMemoryWriter
 import com.example.mydeskrobot.integration.tool.Tool
 import com.example.mydeskrobot.integration.tool.ToolLocality
 import com.example.mydeskrobot.reasoning.model.ToolInvocation
@@ -13,10 +13,8 @@ import com.example.mydeskrobot.reasoning.tool.ToolDefinition
 import com.example.mydeskrobot.reasoning.tool.ToolParameter
 
 class LogDailyActivityTool(
-    private val activityLogRepository: ActivityLogRepository,
+    private val memoryWriter: UnifiedMemoryWriter,
 ) : Tool {
-
-    constructor(context: Context) : this(ActivityLogRepository.create(context))
 
     override val name: String = "log_daily_activity"
 
@@ -94,40 +92,30 @@ class LogDailyActivityTool(
         )
         val actor = invocation.params["actor"] as? String
 
-        val id = if (eventKind == EpisodeKind.PHYSICAL_NOW) {
-            activityLogRepository.appendEvent(
-                label = activity,
-                rawPhrase = note,
-                source = ActivitySource.TOOL,
-                eventKind = eventKind,
-                confidence = confidence,
-                scheduledAtMs = scheduledAtMs,
-                scheduledDayKey = scheduledDayKey,
-                actor = actor,
-            )
-        } else {
-            activityLogRepository.upsertEpisodicEvent(
-                label = activity,
-                rawPhrase = note,
-                source = ActivitySource.TOOL,
-                eventKind = eventKind,
-                confidence = confidence,
-                scheduledAtMs = scheduledAtMs,
-                scheduledDayKey = scheduledDayKey,
-                actor = actor,
-            )
-        }
-        if (id < 0L) {
+        val result = memoryWriter.saveEpisode(
+            label = activity,
+            rawPhrase = note,
+            source = com.example.mydeskrobot.domain.activitylog.ActivitySource.TOOL,
+            eventKind = eventKind,
+            confidence = confidence,
+            scheduledAtMs = scheduledAtMs,
+            scheduledDayKey = scheduledDayKey,
+            actor = actor,
+            memorySource = MemoryDocumentSource.TOOL,
+        )
+        if (result.eventId < 0L) {
             return ToolResult.Error(
                 message = "Impossibile registrare l'attività",
                 code = "LOG_FAILED",
                 recoverable = true,
             )
         }
+        val normalizedLabel = ActivityLogRepository.normalizeLabel(activity)
         return ToolResult.Success(
             data = mapOf(
-                "activity_id" to id,
-                "label" to ActivityLogRepository.normalizeLabel(activity),
+                "activity_id" to result.eventId,
+                "label" to normalizedLabel,
+                "index_ok" to result.indexOk,
             ),
         )
     }

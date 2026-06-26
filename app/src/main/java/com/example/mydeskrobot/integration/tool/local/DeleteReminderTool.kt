@@ -4,6 +4,7 @@ import android.content.Context
 import com.example.mydeskrobot.data.check.FireAndCheckRepository
 import com.example.mydeskrobot.data.scheduled.ScheduledTaskAlarmScheduler
 import com.example.mydeskrobot.data.scheduled.ScheduledTaskRepository
+import com.example.mydeskrobot.memory.unified.UnifiedMemoryWriter
 import com.example.mydeskrobot.integration.tool.Tool
 import com.example.mydeskrobot.integration.tool.ToolLocality
 import com.example.mydeskrobot.reasoning.model.ToolInvocation
@@ -15,6 +16,7 @@ class DeleteReminderTool(
     private val context: Context,
     private val repository: ScheduledTaskRepository = ScheduledTaskRepository.create(context),
     private val fireAndCheckRepository: FireAndCheckRepository = FireAndCheckRepository.create(context),
+    private val memoryWriter: UnifiedMemoryWriter,
 ) : Tool {
 
     override val name: String = "delete_reminder"
@@ -56,6 +58,7 @@ class DeleteReminderTool(
 
         ScheduledTaskAlarmScheduler.cancel(context, taskId)
         fireAndCheckRepository.cancelByReminderId(taskId)
+        memoryWriter.onReminderCancelled(taskId)
         return ToolResult.Success(
             data = mapOf(
                 "success" to true,

@@ -1,6 +1,12 @@
 # User memory
 
-Durable facts about the user (name, preferences, routines) stored in Room (`user_memory.db`).
+> **Human-first guide (IT):** [`guides/MEMORIA.md`](guides/MEMORIA.md) — functional overview; [`guides/MEMORIA_TECNICA.md`](guides/MEMORIA_TECNICA.md) — cognitive agent wiring.
+
+Durable facts about the user (name, preferences, routines) stored in the unified index `memory_documents.db` (SSOT). Legacy `user_memory.db` remains on disk for migration only; all runtime reads and writes use unified. Runtime access: [`UnifiedMemoryFactory`](../app/src/main/java/com/example/mydeskrobot/memory/unified/UnifiedMemoryFactory.kt) (process-scoped singleton repository + projection sync).
+
+**Read path (voice):** unified index via [`UnifiedMemoryRepository`](../app/src/main/java/com/example/mydeskrobot/memory/unified/UnifiedMemoryRepository.kt). Single `recallForQuestion()` → `MEMORIA` block each voice turn (`UnifiedRecallMemoryContextProvider`).
+
+**Write path:** tools, extraction, settings editor, and consolidation write directly to unified (`memory_documents.db`). Heartbeat and contact resolvers read unified too.
 
 ## Channels
 
@@ -8,41 +14,53 @@ Durable facts about the user (name, preferences, routines) stored in Room (`user
 |---------|------|
 | **Automatic extraction** | Standby + interval; LLM scans `conversationLog` (`MemoryExtractionScheduler`) |
 | **LLM tools** | Explicit save/list/delete during dialogue |
-| **Prompt injection** | Context-aware profiles each turn (`MemoryPromptContextProviderImpl`) |
-| **Day context** | Promemoria oggi + todo/note aperti when planning intent (`DayContextPromptProviderImpl`) |
+| **Unified recall** | Single `recallForQuestion()` → `MEMORIA` block each voice turn (`UnifiedRecallMemoryContextProvider`) |
+| **Spatial identity** | `DOVE SONO` block on localize queries (`SpatialContextProvider`); separate from RAG |
 | **Voice shortcuts** | "cosa sai di me", "dimentica …", "reset memoria" (no LLM) |
 | **Settings editor** | Impostazioni → Memoria: edit or delete each row manually |
 
-## Contextual retrieval profiles
+## Unified recall (voice dialog)
 
-Each voice turn runs [`MemoryIntentDetector`](../app/src/main/java/com/example/mydeskrobot/reasoning/memory/MemoryIntentDetector.kt) on the user phrase (no extra LLM call). [`MemoryPromptContextProviderImpl`](../app/src/main/java/com/example/mydeskrobot/integration/memory/MemoryPromptContextProviderImpl.kt) injects a different memory block:
+Each voice turn: [`LlmMemoryRecallPlanner`](../app/src/main/java/com/example/mydeskrobot/integration/memory/LlmMemoryRecallPlanner.kt) (lightweight LLM, JSON only) produces a [`MemoryRecallPlan`](../app/src/main/java/com/example/mydeskrobot/reasoning/memory/MemoryRecallPlan.kt). [`UnifiedRecallMemoryContextProvider`](../app/src/main/java/com/example/mydeskrobot/integration/memory/UnifiedRecallMemoryContextProvider.kt) maps it to [`UnifiedMemoryRepository.recallForQuestion()`](../app/src/main/java/com/example/mydeskrobot/memory/unified/UnifiedMemoryRepository.kt) on index `memory_documents.db` and injects one **`MEMORIA`** block. Details: [`MEMORY_RECALL_PLANNER.md`](MEMORY_RECALL_PLANNER.md).
 
-| Profile | Trigger examples | Injected content |
-|---------|------------------|------------------|
-| **QUERY** | "come si chiama il mio cane", "ricordi", "controlla la memoria" | IDENTITY + expanded fuzzy search on phrase |
-| **VISION** | "fai una foto", "guarda", "cosa vedi" | FACT + ROUTINE entity catalog for labeling photos |
-| **PLAN** | "cosa devo fare oggi", "agenda", "domani", "riunioni" | ROUTINE memories + **CONTESTO GIORNO** (reminders, todos, notes) + **EPISODI PROSSIMI** (Log Day) |
-| **LEISURE** | "cosa posso guardare", "tempo libero" | PREFERENCE + phrase search |
-| **DEFAULT** | general chat | IDENTITY + fuzzy search (max 10) |
+| Plan field | Examples | Recall behaviour |
+|------------|----------|------------------|
+| **Temporal (day)** | `SINGLE_DAY` + `focus_day_key` | All `EPISODE` + `REMINDER` for that `dayKey` (scope-linked); budget reserves min 20 non-episode rows |
+| **Temporal (range)** | `WEEK`, `MONTH` | Recent episodes; `include_habit_summary` only when planner sets it |
+| **recall_focus** | USER_FACTS, EPISODIC, MESSAGES, … | Adjusts ranking pool and prefer flags (see planner doc) |
+| **search_queries** | 1–4 Italian phrases | Multi-query semantic merge (max score per document) |
+| **Localize** | `localize_spatial` | Spatial docs excluded from RAG; identity via **`DOVE SONO`** block |
+| **Vision refresh** | after `take_photo` in chain | Deterministic `visionCatalog()` — no planner LLM |
 
-Mixed intents merge blocks (e.g. photo + dog name → VISION catalog + QUERY search).
+**Recall budget** (`MemoryRecallBudget`): max **60** rows in `MEMORIA`. Single-day queries cap episodes at **40** and guarantee **20** slots for reminders, user facts, habit summary, etc. Default (no day focus) reserves **15** `USER_FACT` rows when above score threshold.
+**Semantic search (Phase 2):** ONNX embedder with automatic first-run download (~118 MB). Hybrid score = 0.7 cosine + 0.3 token; `minScore` 0.25 token-only / 0.40 hybrid. Details: [`MEMORY_EMBEDDING.md`](MEMORY_EMBEDDING.md). Without model → token fallback until download completes.
+
+No per-profile caps (`QUERY`/`PLAN`/`VISION` gates removed from read path). `MemoryRetrievalProfile.VISION` still used for mid-chain photo refresh only.
 
 ### Usage counter (`useCount`)
 
-Each time a memory row is **injected into the dialog prompt** (`MemoryPromptContextProviderImpl` → `markUsed`), `useCount` increments and `lastUsedAt` updates. Extraction and manual saves do **not** bump the counter.
+Each time a document is **injected into the dialog prompt** (`UnifiedRecallMemoryContextProvider` → `markUsed`), `useCount` increments and `lastUsedAt` updates.
 
 When the store exceeds the cap, `pruneIfNeeded` removes low-priority rows ordered by `confidence ASC`, then `useCount ASC`, then `lastUsedAt ASC` — rarely injected memories are pruned first.
+
+**Safety pinning (Level 1):** facts matching health/emergency keywords (`MemorySafetyPinDetector`: allergia, diabete, 118, …) get `confidence ≥ 0.95` and are **excluded from prune**. No schema field; re-checked at prune time. Voice “ricordalo sempre” is backlog (Level 2).
+
+### Cognitive projections (operational → unified index)
+
+Operational SSOT (alarms, lists, activity log, spatial) stays in legacy stores. Projections into `memory_documents.db` are **sync `suspend`** writes via [`UnifiedMemoryWriter`](../app/src/main/java/com/example/mydeskrobot/memory/unified/UnifiedMemoryWriter.kt), wrapped by [`MemoryProjectionGuard`](../app/src/main/java/com/example/mydeskrobot/memory/unified/MemoryProjectionGuard.kt) (verify + one retry + drift counter). See [`MEMORY_ACCESS.md`](MEMORY_ACCESS.md).
+
+Weekly [`MemoryProjectionBootstrap`](../app/src/main/java/com/example/mydeskrobot/memory/unified/MemoryProjectionBootstrap.kt) runs [`MemoryProjectionReconciler`](../app/src/main/java/com/example/mydeskrobot/memory/unified/MemoryProjectionReconciler.kt) to repair missing projections. See [`MEMORY_REVIEW_FOLLOWUP.md`](MEMORY_REVIEW_FOLLOWUP.md).
 
 **Consolidation** (`replaceUserFacingWithConsolidated`) creates fresh rows with `useCount = 0`; merging source counts is deferred.
 
 ### Vision mid-chain refresh
 
-In multi-step tool chains, when `take_photo` returns an image the system prompt is **refreshed** with the VISION profile before the next LLM call (`ToolChainOrchestrator.onBeforeLlmTurn`).
+In multi-step tool chains, when `take_photo` returns an image the system prompt is **refreshed** with VISION catalog + **`VERIFICA VISIVA ISTANTANEA`** before the next LLM call (`ToolChainOrchestrator.onBeforeLlmTurn`). Memorized spatial landmarks are **not** valid for describing the current frame.
 
 ### Voice vs vision
 
-- **Voice only** (no photo): entity questions use QUERY profile; LLM must answer from injected `value` fields or call `list_memories` with a topic `query` — not report `count` alone.
-- **Photo**: use `KNOWN ENTITIES FOR VISION` to name recognized objects (e.g. dog name from memory).
+- **Voice only** (no photo): answer from injected `MEMORIA` / `DOVE SONO` or call `list_memories` with topic `query`.
+- **Photo in chain**: describe only what is visible; memory spatial landmarks overridden.
 
 ## Tools
 
@@ -64,10 +82,10 @@ Impostazioni → Memoria: enable extraction, interval, **editable list** of all 
 
 ### Duplicate handling
 
-- **On save** (`upsert`): merges into an existing row when the value is semantically duplicate (same category), not only exact text match.
-- **Riorganizza ora**: runs Kotlin dedup (`reorganize`) then **LLM compaction** of all user-facing rows (`MemoryConsolidationService`) — merges fragments and cross-category near-duplicates into canonical `(CATEGORY) value` lines.
-- **Automatic**: after each memory extraction cycle in standby, compaction runs if content hash changed and row count > 3 (skips unchanged memory).
-- **Legacy dedup**: `reorganize()` still runs before compaction as a lightweight safety net.
+- **On save** (`upsertUserFacingFact` on unified): merges into an existing row when semantically duplicate (same category).
+- **Riorganizza ora**: Kotlin dedup + LLM compaction **in-place** — unchanged rows keep the same id and `useCount`; only merged duplicates are removed; `useCount` is summed onto the keeper.
+- **Prune**: only when the store exceeds the cap (`pruneIfNeeded`); removes lowest `useCount` rows — never during Riorganizza.
+- **Coverage guard**: if the LLM omits an input line, `MemoryConsolidationCoverage` re-appends it before apply.
 
 ## Categories
 
@@ -117,11 +135,12 @@ Prompt details: `llm_system_prompt.txt` section **STORAGE CHANNEL SEMANTICS**.
 
 ## Manual QA checklist
 
-1. "Come si chiama il mio cane?" (no photo) → name from memory or `list_memories`
+1. "Come si chiama il mio cane?" (no photo) → name from MEMORIA recall or `list_memories`
 2. "Controlla la memoria sul cane" → states facts, not only count
-3. "Fai una foto" → describes scene; uses entity names if in catalog
-4. "Cosa devo fare oggi" → cites CONTESTO GIORNO + EPISODI PROSSIMI (reminders + todos + Log Day)
-5. "Cosa posso guardare oggi" (MotoGP in PREFERENCE) → leisure suggestion, not agenda
-6. Multi-angle scan: after each `take_photo`, vision entities available in prompt
+3. "Fai una foto" → describes scene from image; uses entity names if in catalog
+4. "Cosa devo fare oggi/domani" → reminders, todos, episodes for resolved day in MEMORIA
+5. "Cosa ho fatto ieri" → all episodes for yesterday (including extractor), not capped slice
+6. "Dove siamo?" (no photo) → studio from DOVE SONO SSOT
+7. "Dove siamo?" + photo (phone face-up) → describes ceiling, not memorized landmarks
 
 See also: `app/src/main/assets/prompts/memory_extractor_prompt.txt`.

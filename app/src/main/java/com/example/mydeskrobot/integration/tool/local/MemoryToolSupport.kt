@@ -2,6 +2,7 @@ package com.example.mydeskrobot.integration.tool.local
 
 import com.example.mydeskrobot.memory.db.MemoryCategory
 import com.example.mydeskrobot.memory.db.MemoryItemEntity
+import com.example.mydeskrobot.memory.unified.db.MemoryDocumentEntity
 
 internal object MemoryToolSupport {
     /** Marks facts saved explicitly via LLM tool (not conversation log extraction). */
@@ -42,10 +43,22 @@ internal object MemoryToolSupport {
         return value.coerceAtLeast(1)
     }
 
-    fun entityToMap(entity: MemoryItemEntity): Map<String, Any?> {
+    fun legacyEntityToMap(entity: MemoryItemEntity): Map<String, Any?> {
         val base = mutableMapOf<String, Any?>(
             "id" to entity.id,
             "category" to entity.category.name,
+            "value" to entity.value,
+            "confidence" to entity.confidence,
+            "updated_at" to entity.updatedAt,
+        )
+        entity.expiresAt?.let { base["expires_at"] = it }
+        return base
+    }
+
+    fun documentToMap(entity: MemoryDocumentEntity): Map<String, Any?> {
+        val base = mutableMapOf<String, Any?>(
+            "id" to entity.id,
+            "category" to entity.category,
             "value" to entity.value,
             "confidence" to entity.confidence,
             "updated_at" to entity.updatedAt,

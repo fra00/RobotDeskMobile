@@ -7,16 +7,27 @@ import com.example.mydeskrobot.domain.time.RelativeDateNormalizer
 import com.example.mydeskrobot.memory.AutonomyUpsertResult
 import com.example.mydeskrobot.memory.UserMemoryRepository
 import com.example.mydeskrobot.memory.db.MemoryCategory
+import com.example.mydeskrobot.memory.unified.MemoryDocumentSource
+import com.example.mydeskrobot.memory.unified.UnifiedMemoryRepository
 import com.example.mydeskrobot.reasoning.model.ToolInvocation
 import com.example.mydeskrobot.reasoning.model.ToolResult
 import com.example.mydeskrobot.reasoning.tool.ToolDefinition
 import com.example.mydeskrobot.reasoning.tool.ToolParameter
 
-class SaveMemoryTool(
-    private val memoryRepository: UserMemoryRepository,
+class SaveMemoryTool private constructor(
+    private val unifiedMemoryRepository: UnifiedMemoryRepository?,
+    private val legacyTestRepository: UserMemoryRepository?,
 ) : Tool {
 
-    constructor(context: Context) : this(UserMemoryRepository.create(context))
+    constructor(unifiedMemoryRepository: UnifiedMemoryRepository) : this(unifiedMemoryRepository, null)
+
+    /** Legacy-only path for unit tests. */
+    constructor(legacyMemoryRepository: UserMemoryRepository) : this(null, legacyMemoryRepository)
+
+    constructor(context: Context) : this(
+        com.example.mydeskrobot.memory.unified.UnifiedMemoryFactory.createRepository(context),
+        null,
+    )
 
     override val name: String = "save_memory"
     override val locality: ToolLocality = ToolLocality.LOCAL
@@ -57,6 +68,10 @@ class SaveMemoryTool(
     }
 
     override suspend fun execute(invocation: ToolInvocation): ToolResult {
+        legacyTestRepository?.let { return executeLegacyOnly(invocation, it) }
+        val unified = unifiedMemoryRepository
+            ?: return ToolResult.Error(message = "Memoria non disponibile", code = "SAVE_FAILED")
+
         val rawValue = (invocation.params["value"] as? String)?.trim().orEmpty()
         if (rawValue.isBlank()) {
             return ToolResult.Error(
@@ -66,9 +81,7 @@ class SaveMemoryTool(
         }
 
         val value = RelativeDateNormalizer.normalize(rawValue)
-
-        val category = MemoryToolSupport.parseCategory(invocation.params["category"])
-            ?: MemoryCategory.FACT
+        val category = MemoryToolSupport.parseCategory(invocation.params["category"]) ?: MemoryCategory.FACT
         val confidence = MemoryToolSupport.parseConfidence(invocation.params["confidence"])
         val ttlDays = MemoryToolSupport.parseTtlDays(invocation.params["ttl_days"])
 
@@ -80,14 +93,15 @@ class SaveMemoryTool(
         }
 
         if (MemoryCategory.isRobotInternal(category)) {
-            val result = memoryRepository.upsertAutonomy(
-                category = category,
-                value = value,
-                confidence = confidence,
-                sourceMessageId = MemoryToolSupport.SOURCE_MESSAGE_LLM_TOOL,
-                ttlDays = ttlDays,
-            )
-            return when (result) {
+            return when (
+                val result = unified.upsertAutonomy(
+                    category = category,
+                    value = value,
+                    confidence = confidence,
+                    source = MemoryDocumentSource.TOOL,
+                    ttlDays = ttlDays,
+                )
+            ) {
                 is AutonomyUpsertResult.Success -> ToolResult.Success(
                     data = mapOf(
                         "success" to true,
@@ -107,18 +121,16 @@ class SaveMemoryTool(
             }
         }
 
-        val id = memoryRepository.upsert(
+        val id = unified.upsertUserFacingFact(
             category = category,
             value = value,
             confidence = confidence,
-            sourceMessageId = MemoryToolSupport.SOURCE_MESSAGE_LLM_TOOL,
+            source = MemoryDocumentSource.TOOL,
         )
         if (id < 0L) {
             return ToolResult.Error(message = "Impossibile salvare la memoria", code = "SAVE_FAILED")
         }
-
-        memoryRepository.pruneIfNeeded(DEFAULT_MAX_ITEMS)
-
+        unified.pruneIfNeeded(DEFAULT_MAX_ITEMS)
         return ToolResult.Success(
             data = mapOf(
                 "success" to true,
@@ -126,6 +138,49 @@ class SaveMemoryTool(
                 "category" to category.name,
                 "value" to value,
             ),
+        )
+    }
+
+    private suspend fun executeLegacyOnly(
+        invocation: ToolInvocation,
+        legacy: UserMemoryRepository,
+    ): ToolResult {
+        val rawValue = (invocation.params["value"] as? String)?.trim().orEmpty()
+        if (rawValue.isBlank()) {
+            return ToolResult.Error(message = "Parametro 'value' mancante o vuoto", code = "MISSING_PARAM")
+        }
+        val value = RelativeDateNormalizer.normalize(rawValue)
+        val category = MemoryToolSupport.parseCategory(invocation.params["category"]) ?: MemoryCategory.FACT
+        val confidence = MemoryToolSupport.parseConfidence(invocation.params["confidence"])
+        val ttlDays = MemoryToolSupport.parseTtlDays(invocation.params["ttl_days"])
+        if (MemoryCategory.isUserFacing(category) && ttlDays != null) {
+            return ToolResult.Error(message = "ttl_days applies only to OBSERVATION, INTENT, or PATTERN", code = "INVALID_PARAM")
+        }
+        if (MemoryCategory.isRobotInternal(category)) {
+            return when (
+                val result = legacy.upsertAutonomy(
+                    category = category,
+                    value = value,
+                    confidence = confidence,
+                    sourceMessageId = MemoryToolSupport.SOURCE_MESSAGE_LLM_TOOL,
+                    ttlDays = ttlDays,
+                )
+            ) {
+                is AutonomyUpsertResult.Success -> ToolResult.Success(
+                    data = mapOf("success" to true, "memory_id" to result.memoryId, "category" to category.name, "value" to value),
+                )
+                AutonomyUpsertResult.IntentCapReached -> ToolResult.Error(
+                    message = "Massimo ${UserMemoryRepository.MAX_ACTIVE_INTENTS} INTENT attivi",
+                    code = "INTENT_CAP_REACHED",
+                )
+                AutonomyUpsertResult.InvalidValue -> ToolResult.Error(message = "Impossibile salvare la memoria", code = "SAVE_FAILED")
+            }
+        }
+        val id = legacy.upsert(category, value, confidence, MemoryToolSupport.SOURCE_MESSAGE_LLM_TOOL)
+        if (id < 0L) return ToolResult.Error(message = "Impossibile salvare la memoria", code = "SAVE_FAILED")
+        legacy.pruneIfNeeded(DEFAULT_MAX_ITEMS)
+        return ToolResult.Success(
+            data = mapOf("success" to true, "memory_id" to id, "category" to category.name, "value" to value),
         )
     }
 

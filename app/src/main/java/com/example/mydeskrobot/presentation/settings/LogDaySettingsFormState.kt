@@ -30,6 +30,7 @@ data class ActivityLogItemUi(
     val episodeKindLabel: String? = null,
     val confidenceLabel: String? = null,
     val scheduledLabel: String? = null,
+    val isUnread: Boolean = false,
 )
 
 data class DayActivityGroupUi(

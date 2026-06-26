@@ -4,16 +4,25 @@ import android.content.Context
 import com.example.mydeskrobot.integration.tool.Tool
 import com.example.mydeskrobot.integration.tool.ToolLocality
 import com.example.mydeskrobot.memory.UserMemoryRepository
+import com.example.mydeskrobot.memory.unified.UnifiedMemoryRepository
 import com.example.mydeskrobot.reasoning.model.ToolInvocation
 import com.example.mydeskrobot.reasoning.model.ToolResult
 import com.example.mydeskrobot.reasoning.tool.ToolDefinition
 import com.example.mydeskrobot.reasoning.tool.ToolParameter
 
-class DeleteMemoryTool(
-    private val memoryRepository: UserMemoryRepository,
+class DeleteMemoryTool private constructor(
+    private val unifiedMemoryRepository: UnifiedMemoryRepository?,
+    private val legacyTestRepository: UserMemoryRepository?,
 ) : Tool {
 
-    constructor(context: Context) : this(UserMemoryRepository.create(context))
+    constructor(unifiedMemoryRepository: UnifiedMemoryRepository) : this(unifiedMemoryRepository, null)
+
+    constructor(legacyMemoryRepository: UserMemoryRepository) : this(null, legacyMemoryRepository)
+
+    constructor(context: Context) : this(
+        com.example.mydeskrobot.memory.unified.UnifiedMemoryFactory.createRepository(context),
+        null,
+    )
 
     override val name: String = "delete_memory"
     override val locality: ToolLocality = ToolLocality.LOCAL
@@ -42,11 +51,18 @@ class DeleteMemoryTool(
     }
 
     override suspend fun execute(invocation: ToolInvocation): ToolResult {
+        val unified = unifiedMemoryRepository
+        val legacy = legacyTestRepository
+
         val memoryId = (invocation.params["memory_id"] as? Number)?.toLong()
             ?: (invocation.params["id"] as? Number)?.toLong()
 
         if (memoryId != null) {
-            val deleted = memoryRepository.deleteById(memoryId)
+            val deleted = when {
+                unified != null -> unified.deleteById(memoryId)
+                legacy != null -> legacy.deleteById(memoryId)
+                else -> false
+            }
             if (!deleted) {
                 return ToolResult.Error(
                     message = "Memoria $memoryId non trovata",
@@ -71,7 +87,11 @@ class DeleteMemoryTool(
             )
         }
 
-        val result = memoryRepository.forgetByTopic(query)
+        val result = when {
+            unified != null -> unified.forgetByTopic(query)
+            legacy != null -> legacy.forgetByTopic(query)
+            else -> return ToolResult.Error(message = "Memoria non disponibile", code = "NOT_FOUND")
+        }
         if (result.deletedCount == 0) {
             return ToolResult.Error(
                 message = "Nessuna memoria trovata per \"$query\"",

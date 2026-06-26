@@ -5,6 +5,7 @@ import android.util.Log
 import com.example.mydeskrobot.data.check.FireAndCheckRepository
 import com.example.mydeskrobot.data.scheduled.ScheduledTaskAlarmScheduler
 import com.example.mydeskrobot.data.scheduled.ScheduledTaskRepository
+import com.example.mydeskrobot.memory.unified.UnifiedMemoryWriter
 import com.example.mydeskrobot.integration.tool.Tool
 import com.example.mydeskrobot.integration.tool.ToolLocality
 import com.example.mydeskrobot.reasoning.model.ToolInvocation
@@ -20,6 +21,7 @@ class ReminderTool(
     private val context: Context,
     private val repository: ScheduledTaskRepository = ScheduledTaskRepository.create(context),
     private val fireAndCheckRepository: FireAndCheckRepository = FireAndCheckRepository.create(context),
+    private val memoryWriter: UnifiedMemoryWriter,
 ) : Tool {
 
     override val name: String = "set_reminder"
@@ -105,6 +107,11 @@ class ReminderTool(
                 message = message,
                 triggerMillis = triggerMillis,
                 params = invocation.params,
+            )
+            memoryWriter.onReminderScheduled(
+                taskId = taskId,
+                message = message,
+                triggerAtMillis = triggerMillis,
             )
 
             ToolResult.Success(

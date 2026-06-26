@@ -1,0 +1,8 @@
+{
+  "temporal_scope": "NONE",
+  "focus_day_key": null,
+  "recall_focus": "SPATIAL",
+  "search_queries": ["stanza corrente studio", "luogo dove siamo"],
+  "include_habit_summary": false,
+  "localize_spatial": true
+}

@@ -33,6 +33,18 @@ class ConversationLogParserTest {
     }
 
     @Test
+    fun `parseEpisodicEntries includes system notification lines`() {
+        val log = """
+            Tu: ok
+            Sistema (WhatsApp): promo -50%
+            Robot: va bene
+        """.trimIndent()
+        val entries = ConversationLogParser.parseEpisodicEntries(log)
+        assertEquals(3, entries.size)
+        assertTrue(entries.any { it.role == "system" })
+    }
+
+    @Test
     fun `parseUserAssistantEntries excludes system`() {
         val log = """
             Tu: ok

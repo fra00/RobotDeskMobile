@@ -5,8 +5,8 @@ import com.example.mydeskrobot.data.scheduled.ScheduledTaskRepository
 import com.example.mydeskrobot.domain.awareness.UserAwarenessState
 import com.example.mydeskrobot.domain.memory.WorkingMemory
 import com.example.mydeskrobot.domain.mood.RobotMood
-import com.example.mydeskrobot.memory.UserMemoryRepository
 import com.example.mydeskrobot.memory.db.MemoryCategory
+import com.example.mydeskrobot.memory.unified.UnifiedMemoryRepository
 import com.example.mydeskrobot.reasoning.model.RobotInput
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -14,17 +14,10 @@ import java.util.Locale
 
 /**
  * Assembles the context payload for a heartbeat tick.
- * Collects data from:
- * - Last interaction timestamp
- * - Pending reminders (ScheduledTaskRepository)
- * - User routines (UserMemoryRepository, ROUTINE category)
- * - Current robot mood (MoodRepository)
- * - Working memory (today's interactions, topics, proactive speaks)
- * - User awareness state (Theory of Mind)
  */
 class HeartbeatContextBuilder(
     private val scheduledTaskRepository: ScheduledTaskRepository,
-    private val memoryRepository: UserMemoryRepository,
+    private val unifiedMemoryRepository: UnifiedMemoryRepository,
     private val lastInteractionProvider: () -> Long,
     private val currentMoodProvider: (suspend () -> RobotMood?)? = null,
     private val workingMemoryProvider: (suspend () -> WorkingMemory?)? = null,
@@ -45,11 +38,18 @@ class HeartbeatContextBuilder(
         }
 
         val pendingReminders = scheduledTaskRepository.listPending()
-        val routines = memoryRepository.getByCategory(MemoryCategory.ROUTINE, MAX_ROUTINES)
-        val routineStrings = routines.map { it.value }
-        val activeIntents = memoryRepository.getActiveIntents(MAX_INTENTS).map { it.value }
-        val recentObservations = memoryRepository.getRecentObservations(MAX_OBSERVATIONS).map { it.value }
-        val activePatterns = memoryRepository.getActivePatterns(MAX_PATTERNS).map { it.value }
+        val routineStrings = unifiedMemoryRepository
+            .getToolByCategory(MemoryCategory.ROUTINE, MAX_ROUTINES)
+            .map { it.value }
+        val activeIntents = unifiedMemoryRepository
+            .getToolByCategory(MemoryCategory.INTENT, MAX_INTENTS)
+            .map { it.value }
+        val recentObservations = unifiedMemoryRepository
+            .getRecentObservations(MAX_OBSERVATIONS)
+            .map { it.value }
+        val activePatterns = unifiedMemoryRepository
+            .getToolByCategory(MemoryCategory.PATTERN, MAX_PATTERNS)
+            .map { it.value }
 
         val dayOfWeek = formatDayOfWeek(calendar)
 

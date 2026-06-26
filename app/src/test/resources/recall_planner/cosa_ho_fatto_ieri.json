@@ -1,0 +1,8 @@
+{
+  "temporal_scope": "SINGLE_DAY",
+  "focus_day_key": "2026-06-18",
+  "recall_focus": "EPISODIC",
+  "search_queries": ["attività ieri", "cosa ho fatto episodi"],
+  "include_habit_summary": false,
+  "localize_spatial": false
+}

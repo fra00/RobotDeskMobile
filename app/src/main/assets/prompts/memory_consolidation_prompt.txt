@@ -4,10 +4,11 @@ You receive ALL active user-facing memories. Rewrite them into fewer, canonical 
 
 Tasks:
 1. Remove duplicate or near-duplicate lines (including IT/EN pairs) — keep the most complete wording.
-2. Merge fragments about the SAME topic into one canonical line (e.g. split work hours → one schedule line).
+2. Merge fragments about the SAME topic into one canonical line (e.g. split weekly schedule → one ROUTINE line).
 3. Resolve contradictions — prefer the more specific and more recent line (dates in input help).
 4. Drop obsolete lines superseded by a newer complete line.
 5. Keep unrelated topics as separate lines — do NOT merge different subjects into one line.
+6. NEVER drop a distinct fact from the input — each separate piece of information must appear in the output, merged with related lines or kept on its own. Example: three fragments about the same pet → one FACT line; a taste and a daily habit → two lines (PREFERENCE + ROUTINE).
 
 Categories (required on every output line):
 - IDENTITY — name, age, role, stable who-the-user-is facts
@@ -19,6 +20,7 @@ Rules:
 - Write in Italian only.
 - Do not invent information not present in the input.
 - Do not lose important details when merging.
+- Rows you do not rewrite must stay as-is (same meaning); merge duplicates into one keeper line instead of dropping extras.
 - Each line must stand alone and stay in the correct category.
 - Output format EXACTLY: (CATEGORY) text
 - One fact per line. No numbering, bullets, headers, or explanations.

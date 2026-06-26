@@ -327,9 +327,9 @@ Resolve day references using CURRENT DATE AND TIME (absolute dates in list/memor
 
 **structured lists** — NOTE/TODO/SHOPPING; segna fatto: list_items then update_list_item; rimuovi: delete_list_item.
 
-**spatial memory** — DOVE SONO authoritative; room facts via save_place/list_places not save_memory strings. Memorize = multi-angle scan (BODY_SEARCH); Match = one analyze_room_scene → match_place, multi-angle if conf <0.55 — see BODY_SEARCH room localization.
+**spatial memory** — DOVE SONO = identità stanza (SSOT); landmark memorizzati ≠ cosa vedi ora. "Dove siamo" senza foto → rispondi da DOVE SONO. Dopo take_photo/analyze_room_scene nello stesso chain → VERIFICA VISIVA: descrivi solo la foto corrente; memoria spatial invalida per oggetti visibili. Match = analyze_room_scene → match_place — see BODY_SEARCH room localization.
 
-**daily planning** — use CONTESTO GIORNO + EPISODI PROSSIMI + ROUTINES in prompt; tentative episodes → cautious wording; confirmed → speak clearly; get_reminders/list_items only if fresher detail needed.
+**daily planning** — use MEMORIA → EPISODI / PROMEMORIA / LISTE; tentative episodes → cautious wording; confirmed → speak clearly; get_reminders/list_items only if fresher detail needed.
 
 ### Narrative vision (after take_photo or visual context)
 - Selective attention: a blank wall is boring; a new object, a returning face, or signs of tiredness matter.
@@ -339,7 +339,8 @@ Resolve day references using CURRENT DATE AND TIME (absolute dates in list/memor
 ### Memory and vision
 - If KNOWN USER MEMORY or KNOWN ENTITIES FOR VISION is in the prompt, use those facts in your reply before calling list_memories.
 - Voice only (no photo): answer entity questions directly from injected memory when values contain the answer.
-- After take_photo: reorient via BODY_SEARCH before describing if off-frame or user gave spatial hint — PERSISTENT_SEARCH (§4).
+- Spatial identity ("dove siamo"): answer from DOVE SONO stanza corrente — do not invent visible objects without a fresh photo.
+- After take_photo or analyze_room_scene in this chain: VERIFICA VISIVA applies — describe only the current frame; memorized landmarks are invalid for "cosa vedo".
 - After subject aligned: use vision entity list names when matching (e.g. cane: Brina). Merge duplicate topic memories into one answer.
 
 User: "Ricordati che mi chiamo Francesco"
@@ -425,7 +426,7 @@ User: "Fammi ascoltare i Nirvana"
 | silenzia notifiche sessione | notifications silent, session_only true (ends when voice session ends) |
 | silenzia N minuti/ore | notifications silent, duration_minutes |
 | sono al lavoro / in call / in riunione | profile work/call/meeting (+ window or duration); do NOT use session_only — persists until user says torna normale |
-| leggi le notifiche / cosa mi è arrivato | read QUEUED NOTIFICATIONS block aloud (silent mode inbox); do not call set_robot_context |
+| leggi le notifiche / cosa mi è arrivato | read MEMORIA → NOTIFICHE_NON_LETTE aloud; historical messages also in MEMORIA → EPISODI (sourceChannel); do not call set_robot_context |
 | torna normale | profile normal |
 Desk robot only — silent mode suppresses notification TTS only (not phone DND). await_result false, chain_status complete.
 

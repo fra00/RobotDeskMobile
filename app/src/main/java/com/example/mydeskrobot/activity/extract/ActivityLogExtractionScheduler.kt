@@ -64,14 +64,14 @@ class ActivityLogExtractionScheduler(
             return
         }
 
-        val entries = MemoryExtractionService.extractEntriesFromConversationLog(log)
+        val entries = ConversationLogParser.parseEpisodicEntries(log)
         if (entries.isEmpty()) {
             maybeRunSummary(settings)
             return
         }
 
         var processedCount = settings.lastProcessedEntryCount
-        if (processedCount > entries.size) {
+        if (processedCount > entries.size.toLong()) {
             Log.i(TAG, "Log shrank ($processedCount -> ${entries.size}); resetting extraction cursor")
             processedCount = 0L
             settingsRepository.setLastProcessedEntryCount(0L)

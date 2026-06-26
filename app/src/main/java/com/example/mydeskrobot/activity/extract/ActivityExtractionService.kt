@@ -1,13 +1,14 @@
 package com.example.mydeskrobot.activity.extract
 
 import android.util.Log
-import com.example.mydeskrobot.data.activitylog.ActivityLogRepository
 import com.example.mydeskrobot.domain.activitylog.ActivitySource
 import com.example.mydeskrobot.domain.activitylog.EpisodeConfidence
 import com.example.mydeskrobot.domain.activitylog.EpisodeKind
+import com.example.mydeskrobot.memory.unified.MemoryDocumentSource
 import com.example.mydeskrobot.integration.llm.LlmHttpErrors
 import com.example.mydeskrobot.memory.extract.ChatLogEntry
 import com.example.mydeskrobot.memory.extract.MemoryExtractionService
+import com.example.mydeskrobot.memory.unified.UnifiedMemoryWriter
 import com.example.mydeskrobot.reasoning.llm.LlmClient
 import com.example.mydeskrobot.reasoning.model.ConversationMessage
 import com.squareup.moshi.Moshi
@@ -30,7 +31,7 @@ internal data class EpisodicEventPayload(
 
 class ActivityExtractionService(
     private val llmClient: LlmClient,
-    private val activityLogRepository: ActivityLogRepository,
+    private val memoryWriter: UnifiedMemoryWriter,
     private val extractorPrompt: String,
 ) {
     private val moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
@@ -74,36 +75,25 @@ class ActivityExtractionService(
             val eventKind = parseKind(item.kind)
             val confidence = parseConfidence(item.confidence)
             val scheduledDayKey = item.scheduled_day?.trim()?.takeIf { it.isNotBlank() }
-            val scheduledAtMs = ActivityLogRepository.parseScheduledAtMs(
+            val scheduledAtMs = com.example.mydeskrobot.data.activitylog.ActivityLogRepository.parseScheduledAtMs(
                 scheduledDayKey = scheduledDayKey,
                 scheduledTime = item.scheduled_time,
             )
-            val id = if (eventKind == EpisodeKind.PHYSICAL_NOW) {
-                activityLogRepository.appendEvent(
-                    label = label,
-                    rawPhrase = item.raw_phrase?.trim()?.takeIf { it.isNotBlank() },
-                    source = ActivitySource.EXTRACTOR,
-                    eventKind = eventKind,
-                    confidence = confidence,
-                    scheduledAtMs = scheduledAtMs,
-                    scheduledDayKey = scheduledDayKey,
-                    actor = item.actor,
-                    sourceChannel = item.source_channel,
-                )
-            } else {
-                activityLogRepository.upsertEpisodicEvent(
-                    label = label,
-                    rawPhrase = item.raw_phrase?.trim()?.takeIf { it.isNotBlank() },
-                    source = ActivitySource.EXTRACTOR,
-                    eventKind = eventKind,
-                    confidence = confidence,
-                    scheduledAtMs = scheduledAtMs,
-                    scheduledDayKey = scheduledDayKey,
-                    actor = item.actor,
-                    sourceChannel = item.source_channel,
-                )
+            val result = memoryWriter.saveEpisode(
+                label = label,
+                rawPhrase = item.raw_phrase?.trim()?.takeIf { it.isNotBlank() },
+                source = ActivitySource.EXTRACTOR,
+                eventKind = eventKind,
+                confidence = confidence,
+                scheduledAtMs = scheduledAtMs,
+                scheduledDayKey = scheduledDayKey,
+                actor = item.actor,
+                sourceChannel = item.source_channel,
+                memorySource = MemoryDocumentSource.EXTRACTOR,
+            )
+            if (result.eventId >= 0L) {
+                saved++
             }
-            if (id >= 0L) saved++
         }
         return saved
     }

@@ -4,4 +4,5 @@ enum class ActivitySource {
     EXTRACTOR,
     TOOL,
     VOICE,
+    NOTIFICATION,
 }

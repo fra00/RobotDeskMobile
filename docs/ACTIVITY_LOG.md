@@ -39,15 +39,19 @@ Episodic timeline of the user's day — physical activities, future plans, socia
 
 Do **not** store ephemeral activities in `save_memory`. Do **not** dump all notifications — organizer returns empty for spam/irrelevant content.
 
-## Context injection
+## Context injection (unified recall)
 
-| Profile | Block |
-|---------|-------|
-| **Voice (always)** | `ATTIVITÀ RECENTI` + `PROFILO ABITUDINI` — physical_now only |
-| **PLAN** | `CONTESTO GIORNO` (reminders/todos/notes) + **`EPISODI PROSSIMI`** from Log Day for resolved day (oggi/domani) |
-| **Heartbeat** | `habitProfileSummary` + recent physical activities |
+All episodic and planning context is retrieved via **unified recall** (`UnifiedRecallMemoryContextProvider`) — no separate Day/Activity providers.
 
-`PlanningDayResolver` maps "domani"/"dopodomani" in user phrase to `scheduledDayKey` filter.
+| User cue | Injected via |
+|----------|----------------|
+| **Temporal** (ieri/oggi/domani) | All `EPISODE` + `REMINDER` for resolved `dayKey` in `MEMORIA` |
+| **Planning** ("cosa devo fare domani") | Same — semantic + day scope |
+| **Habit** | `HABIT_SUMMARY` doc when recall scores it |
+
+`PlanningDayResolver` maps "domani"/"dopodomani" in user phrase to `dayKey` filter.
+
+Legacy operational DBs (`activity_log.db`, etc.) remain for write/tools; read path uses `memory_documents` projections. Episode projections include optional `rawPhrase` snippet in the indexed `value` (e.g. social message content) for unified recall.
 
 ## Settings UI
 

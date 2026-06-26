@@ -1,0 +1,8 @@
+{
+  "temporal_scope": "WEEK",
+  "focus_day_key": null,
+  "recall_focus": "EPISODIC",
+  "search_queries": ["tapis roulant allenamento", "attività fisica tapis"],
+  "include_habit_summary": false,
+  "localize_spatial": false
+}

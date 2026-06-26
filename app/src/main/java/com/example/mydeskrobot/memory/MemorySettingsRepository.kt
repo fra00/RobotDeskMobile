@@ -58,6 +58,44 @@ class MemorySettingsRepository(
         context.memoryDataStore.edit { it[KEY_LAST_CONSOLIDATED_HASH] = hash }
     }
 
+    suspend fun isUnifiedMemoryMigrated(): Boolean =
+        context.memoryDataStore.data.first()[KEY_UNIFIED_MEMORY_MIGRATED] ?: false
+
+    suspend fun setUnifiedMemoryMigrated(migrated: Boolean) {
+        context.memoryDataStore.edit { it[KEY_UNIFIED_MEMORY_MIGRATED] = migrated }
+    }
+
+    suspend fun isUnifiedProjectionsMigrated(): Boolean =
+        context.memoryDataStore.data.first()[KEY_UNIFIED_PROJECTIONS_MIGRATED] ?: false
+
+    suspend fun setUnifiedProjectionsMigrated(migrated: Boolean) {
+        context.memoryDataStore.edit { it[KEY_UNIFIED_PROJECTIONS_MIGRATED] = migrated }
+    }
+
+    suspend fun getProjectionDriftCount(): Long =
+        context.memoryDataStore.data.first()[KEY_PROJECTION_DRIFT_COUNT] ?: 0L
+
+    suspend fun getLastProjectionDriftAtMs(): Long =
+        context.memoryDataStore.data.first()[KEY_LAST_PROJECTION_DRIFT_AT_MS] ?: 0L
+
+    suspend fun getLastProjectionReconcileAtMs(): Long =
+        context.memoryDataStore.data.first()[KEY_LAST_PROJECTION_RECONCILE_AT_MS] ?: 0L
+
+    suspend fun recordProjectionDrift() {
+        val now = System.currentTimeMillis()
+        context.memoryDataStore.edit { prefs ->
+            val current = prefs[KEY_PROJECTION_DRIFT_COUNT] ?: 0L
+            prefs[KEY_PROJECTION_DRIFT_COUNT] = current + 1L
+            prefs[KEY_LAST_PROJECTION_DRIFT_AT_MS] = now
+        }
+    }
+
+    suspend fun setLastProjectionReconcileAtMs(value: Long) {
+        context.memoryDataStore.edit {
+            it[KEY_LAST_PROJECTION_RECONCILE_AT_MS] = maxOf(0L, value)
+        }
+    }
+
     suspend fun saveConsolidationBackup(items: List<MemoryItemEntity>) {
         val snapshot = MemoryConsolidationBackup(
             savedAtMs = System.currentTimeMillis(),
@@ -79,6 +117,11 @@ class MemorySettingsRepository(
         private val KEY_LAST_PROCESSED_ID = longPreferencesKey("last_processed_message_id")
         private val KEY_LAST_CONSOLIDATED_HASH = stringPreferencesKey("last_consolidated_content_hash")
         private val KEY_LAST_CONSOLIDATION_BACKUP = stringPreferencesKey("last_consolidation_backup_json")
+        private val KEY_UNIFIED_MEMORY_MIGRATED = booleanPreferencesKey("unified_memory_migrated")
+        private val KEY_UNIFIED_PROJECTIONS_MIGRATED = booleanPreferencesKey("unified_projections_migrated")
+        private val KEY_PROJECTION_DRIFT_COUNT = longPreferencesKey("projection_drift_count")
+        private val KEY_LAST_PROJECTION_DRIFT_AT_MS = longPreferencesKey("last_projection_drift_at_ms")
+        private val KEY_LAST_PROJECTION_RECONCILE_AT_MS = longPreferencesKey("last_projection_reconcile_at_ms")
 
         private val moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
         private val backupAdapter = moshi.adapter(MemoryConsolidationBackup::class.java)

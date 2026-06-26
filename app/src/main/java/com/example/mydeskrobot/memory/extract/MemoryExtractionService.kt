@@ -3,8 +3,9 @@ package com.example.mydeskrobot.memory.extract
 import android.util.Log
 import com.example.mydeskrobot.domain.time.RelativeDateNormalizer
 import com.example.mydeskrobot.integration.llm.LlmHttpErrors
-import com.example.mydeskrobot.memory.UserMemoryRepository
 import com.example.mydeskrobot.memory.db.MemoryCategory
+import com.example.mydeskrobot.memory.unified.MemoryDocumentSource
+import com.example.mydeskrobot.memory.unified.UnifiedMemoryRepository
 import com.example.mydeskrobot.reasoning.llm.LlmClient
 import com.example.mydeskrobot.reasoning.model.ConversationMessage
 import com.squareup.moshi.Moshi
@@ -29,7 +30,7 @@ internal data class MemoryFactPayload(
 
 class MemoryExtractionService(
     private val llmClient: LlmClient,
-    private val memoryRepository: UserMemoryRepository,
+    private val unifiedMemoryRepository: UnifiedMemoryRepository,
     private val extractorPrompt: String,
     private val maxMemoryItems: Int = 300,
 ) {
@@ -37,7 +38,7 @@ class MemoryExtractionService(
     private val adapter = moshi.adapter(MemoryExtractionPayload::class.java)
 
     /**
-     * @return number of facts persisted to Room
+     * @return number of facts persisted to unified index
      */
     suspend fun processDelta(
         newEntries: List<ChatLogEntry>,
@@ -84,16 +85,17 @@ class MemoryExtractionService(
             val value = RelativeDateNormalizer.normalize(rawValue)
             val category = parseCategory(fact.category) ?: MemoryCategory.FACT
             val confidence = (fact.confidence ?: 0.5f).coerceIn(0f, 1f)
-            memoryRepository.upsert(
+            val id = unifiedMemoryRepository.upsertUserFacingFact(
                 category = category,
                 value = value,
                 confidence = confidence,
+                source = MemoryDocumentSource.EXTRACTOR,
                 sourceMessageId = sourceMessageId,
             )
-            saved++
+            if (id >= 0L) saved++
         }
         if (saved > 0) {
-            memoryRepository.pruneIfNeeded(maxMemoryItems)
+            unifiedMemoryRepository.pruneIfNeeded(maxMemoryItems)
         }
         return saved
     }

@@ -28,4 +28,5 @@ data class ActivityLogEventEntity(
     val scheduledDayKey: String? = null,
     val actor: String? = null,
     val sourceChannel: String? = null,
+    val isUnread: Boolean = false,
 )

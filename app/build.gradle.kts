@@ -56,6 +56,11 @@ android {
             "SEARX_BASE_URL",
             "\"${localProperties.getProperty("SEARX_BASE_URL", "https://searx.be")}\"",
         )
+        buildConfigField(
+            "String",
+            "EMBEDDING_MODEL_DIR",
+            "\"${localProperties.getProperty("embedding.model.dir", "")}\"",
+        )
     }
 
     buildTypes {
@@ -77,6 +82,15 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+    }
+    androidResources {
+        noCompress += "onnx"
+    }
+    packaging {
+        resources {
+            pickFirsts += "META-INF/AL2.0"
+            pickFirsts += "META-INF/LGPL2.1"
+        }
     }
 }
 
@@ -108,7 +122,16 @@ dependencies {
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
     ksp(libs.androidx.room.compiler)
-    implementation(libs.vosk.android)
+    implementation(libs.vosk.android) {
+        exclude(group = "net.java.dev.jna", module = "jna")
+    }
+    implementation(libs.onnxruntime.android)
+    implementation(libs.djl.tokenizers) {
+        exclude(group = "net.java.dev.jna", module = "jna")
+    }
+    // vosk (AAR) and DJL (JAR) both transitively depend on JNA — pin Android artifact once.
+    implementation("net.java.dev.jna:jna:5.14.0@aar")
+    testImplementation(libs.onnxruntime)
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
     androidTestImplementation(libs.androidx.junit)

@@ -3,6 +3,7 @@ package com.example.mydeskrobot.integration.tool.local.spatial
 import com.example.mydeskrobot.data.spatial.SpatialContextManager
 import com.example.mydeskrobot.data.spatial.SpatialPlaceRepository
 import com.example.mydeskrobot.domain.spatial.SpatialResolution
+import com.example.mydeskrobot.memory.unified.UnifiedMemoryWriter
 import com.example.mydeskrobot.integration.tool.Tool
 import com.example.mydeskrobot.integration.tool.ToolLocality
 import com.example.mydeskrobot.reasoning.model.ToolInvocation
@@ -13,6 +14,7 @@ import com.example.mydeskrobot.reasoning.tool.ToolParameter
 class SetCurrentPlaceTool(
     private val placeRepository: SpatialPlaceRepository,
     private val spatialContextManager: () -> SpatialContextManager,
+    private val memoryWriter: UnifiedMemoryWriter,
 ) : Tool {
 
     override val name: String = "set_current_place"
@@ -45,6 +47,12 @@ class SetCurrentPlaceTool(
                 resolution = SpatialResolution.UNKNOWN,
                 landmarks = landmarks,
             )
+            memoryWriter.onCurrentPlaceSet(
+                placeId = null,
+                label = null,
+                roomType = null,
+                confidence = 0f,
+            )
             return ToolResult.Success(
                 data = mapOf(
                     "current_place" to null,
@@ -64,6 +72,12 @@ class SetCurrentPlaceTool(
             resolution = resolution,
             landmarks = landmarks.ifEmpty { place.landmarks },
             roomType = place.roomType,
+        )
+        memoryWriter.onCurrentPlaceSet(
+            placeId = place.id,
+            label = place.label,
+            roomType = place.roomType.name.lowercase(),
+            confidence = confidence,
         )
 
         return ToolResult.Success(

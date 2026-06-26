@@ -37,7 +37,6 @@ import com.example.mydeskrobot.integration.llm.LlmClientFactory
 import com.example.mydeskrobot.integration.llm.LlmHttpErrors
 import com.example.mydeskrobot.memory.ForgetByTopicResult
 import com.example.mydeskrobot.memory.MemorySettingsRepository
-import com.example.mydeskrobot.memory.UserMemoryRepository
 import com.example.mydeskrobot.activity.extract.ActivityExtractionService
 import com.example.mydeskrobot.activity.extract.ActivityLogExtractionScheduler
 import com.example.mydeskrobot.activity.summary.ActivityHabitSummarizer
@@ -50,6 +49,8 @@ import com.example.mydeskrobot.memory.consolidate.MemoryConsolidationResult
 import com.example.mydeskrobot.memory.consolidate.MemoryConsolidationService
 import com.example.mydeskrobot.memory.extract.MemoryExtractionScheduler
 import com.example.mydeskrobot.memory.extract.MemoryExtractionService
+import com.example.mydeskrobot.memory.unified.embedding.MemoryEmbeddingBootstrap
+import com.example.mydeskrobot.memory.unified.MemoryProjectionBootstrap
 import com.example.mydeskrobot.presentation.settings.BodySettingsFormState
 import com.example.mydeskrobot.presentation.settings.HeartbeatSettingsFormState
 import com.example.mydeskrobot.presentation.settings.LlmSettingsFormState
@@ -81,6 +82,7 @@ import com.example.mydeskrobot.data.scheduled.ScheduledTaskRepository
 import com.example.mydeskrobot.domain.pending.PendingInboxKind
 import com.example.mydeskrobot.data.context.RobotContextRepository
 import com.example.mydeskrobot.data.pending.UnannouncedNotificationRepository
+import com.example.mydeskrobot.memory.unified.UnifiedMemoryWriter
 import com.example.mydeskrobot.data.body.BodySettings
 import com.example.mydeskrobot.data.body.BodySettingsRepository
 import com.example.mydeskrobot.data.heartbeat.HeartbeatSettingsRepository
@@ -174,7 +176,46 @@ class ConversationViewModel(
     private var conversationLogBeforeCurrentTurn: String? = null
     /** True while hotword orchestrator is in active voice session (not standby-only). */
     private var voiceSessionActive = false
-    private val memoryRepository = UserMemoryRepository.create(appContext)
+    private val unifiedMemoryRepository by lazy {
+        com.example.mydeskrobot.memory.unified.UnifiedMemoryFactory.createRepository(appContext)
+    }
+    private val memoryConsolidationService by lazy {
+        MemoryConsolidationService(
+            llmClient = LlmClientFactory.create(runBlockingLoadSettings()),
+            unifiedMemoryRepository = unifiedMemoryRepository,
+            settingsRepository = memorySettingsRepository,
+            systemPrompt = LlmPromptLoader.loadMemoryConsolidationPrompt(appContext),
+        )
+    }
+
+    private val memoryExtractionScheduler by lazy {
+        val prompt = LlmPromptLoader.loadMemoryExtractorPrompt(appContext)
+        val extractionClient = LlmClientFactory.create(runBlockingLoadSettings())
+        val extractor = MemoryExtractionService(
+            llmClient = extractionClient,
+            unifiedMemoryRepository = unifiedMemoryRepository,
+            extractorPrompt = prompt,
+        )
+        MemoryExtractionScheduler(
+            scope = viewModelScope,
+            settingsRepository = memorySettingsRepository,
+            extractionService = extractor,
+            unifiedMemoryRepository = unifiedMemoryRepository,
+            getConversationLog = { _uiState.value.conversationLog },
+            isStandby = {
+                val state = _uiState.value
+                state.isHotwordListeningActive && state.phase is ConversationPhase.WaitingForHotword
+            },
+            onExtractingChanged = { extracting ->
+                _uiState.update { it.copy(isMemoryExtracting = extracting) }
+            },
+            onAfterCycle = { runMemoryConsolidationIfNeeded(force = false) },
+        )
+    }
+    private val memoryWriter by lazy {
+        com.example.mydeskrobot.memory.unified.UnifiedMemoryFactory.createWriter(appContext)
+    }
+    private val unreadEpisodesTick = MutableStateFlow(0)
     private val listItemRepository = com.example.mydeskrobot.data.lists.ListItemRepository.create(appContext)
     private val memorySettingsRepository = MemorySettingsRepository(appContext)
     private val activityLogRepository = ActivityLogRepository.create(appContext)
@@ -218,39 +259,6 @@ class ConversationViewModel(
     /** True while waiting for sì/no after [ReasoningResult.NeedsConfirmation]. */
     private var confirmationPending = false
     private var scheduledTaskIdForFireAndCheckCompletion: Long? = null
-    private val memoryConsolidationService by lazy {
-        MemoryConsolidationService(
-            llmClient = LlmClientFactory.create(runBlockingLoadSettings()),
-            memoryRepository = memoryRepository,
-            settingsRepository = memorySettingsRepository,
-            systemPrompt = LlmPromptLoader.loadMemoryConsolidationPrompt(appContext),
-        )
-    }
-
-    private val memoryExtractionScheduler by lazy {
-        val prompt = LlmPromptLoader.loadMemoryExtractorPrompt(appContext)
-        val extractionClient = LlmClientFactory.create(runBlockingLoadSettings())
-        val extractor = MemoryExtractionService(
-            llmClient = extractionClient,
-            memoryRepository = memoryRepository,
-            extractorPrompt = prompt,
-        )
-        MemoryExtractionScheduler(
-            scope = viewModelScope,
-            settingsRepository = memorySettingsRepository,
-            extractionService = extractor,
-            memoryRepository = memoryRepository,
-            getConversationLog = { _uiState.value.conversationLog },
-            isStandby = {
-                val state = _uiState.value
-                state.isHotwordListeningActive && state.phase is ConversationPhase.WaitingForHotword
-            },
-            onExtractingChanged = { extracting ->
-                _uiState.update { it.copy(isMemoryExtracting = extracting) }
-            },
-            onAfterCycle = { runMemoryConsolidationIfNeeded(force = false) },
-        )
-    }
 
     private val activityLogExtractionScheduler by lazy {
         val extractorPrompt = LlmPromptLoader.loadActivityExtractorPrompt(appContext)
@@ -258,7 +266,7 @@ class ConversationViewModel(
         val extractionClient = LlmClientFactory.create(runBlockingLoadSettings())
         val extractor = ActivityExtractionService(
             llmClient = extractionClient,
-            activityLogRepository = activityLogRepository,
+            memoryWriter = memoryWriter,
             extractorPrompt = extractorPrompt,
         )
         val summarizer = ActivityHabitSummarizer(
@@ -266,6 +274,7 @@ class ConversationViewModel(
             activityLogRepository = activityLogRepository,
             settingsRepository = activityLogSettingsRepository,
             summaryPrompt = summaryPrompt,
+            memoryWriter = memoryWriter,
         )
         ActivityLogExtractionScheduler(
             scope = viewModelScope,
@@ -287,12 +296,17 @@ class ConversationViewModel(
             activityLogRepository = activityLogRepository,
             settingsRepository = activityLogSettingsRepository,
             summaryPrompt = LlmPromptLoader.loadActivityHabitSummaryPrompt(appContext),
+            memoryWriter = memoryWriter,
         )
     }
 
     companion object {
         private const val TAG = "ConversationVM"
         private const val SURPRISED_FLASH_MS = 450L
+        private val NOTIFICATION_SENSITIVE_KEYWORDS = listOf(
+            "otp", "codice", "verifica", "password", "pin",
+            "banca", "bank", "carta", "credit", "debit",
+        )
         private const val INTERRUPT_SURPRISED_MS = 280L
         private const val ANGRY_RECOVERY_MS = 2_500L
         private const val NIGHT_MODE_RECHECK_MS = 60_000L
@@ -329,8 +343,26 @@ class ConversationViewModel(
         memoryExtractionScheduler.start()
         activityLogExtractionScheduler.start()
         viewModelScope.launch {
+            MemoryEmbeddingBootstrap.start(
+                context = appContext,
+                scope = viewModelScope,
+                unifiedMemoryRepository = unifiedMemoryRepository,
+            )
+        }
+        viewModelScope.launch {
+            MemoryProjectionBootstrap.start(
+                context = appContext,
+                scope = viewModelScope,
+                settingsRepository = memorySettingsRepository,
+                unifiedMemoryRepository = unifiedMemoryRepository,
+            )
+        }
+        viewModelScope.launch {
             activityLogRepository.pruneExpired()
             engineBodySettingsKey = bodySettingsKey(bodySettingsRepository.load())
+        }
+        viewModelScope.launch {
+            migrateLegacyUnannouncedNotifications()
         }
         viewModelScope.launch {
             robotContextRepository.observeEffectiveState().collect { state ->
@@ -347,10 +379,11 @@ class ConversationViewModel(
             combine(
                 scheduledTaskRepository.observePending(),
                 deferredInputQueue.items,
-                unannouncedNotificationRepository.notifications,
-            ) { reminders, deferred, unannounced ->
+                unreadEpisodesTick,
+            ) { reminders, deferred, _ ->
+                val unreadEpisodes = unifiedMemoryRepository.listUnreadNotificationEpisodes()
                 val merged = PendingInboxMapper.fromReminders(reminders) +
-                    PendingInboxMapper.fromUnannouncedNotifications(unannounced) +
+                    PendingInboxMapper.fromUnreadEpisodes(unreadEpisodes) +
                     PendingInboxMapper.fromDeferredItems(deferred)
                 merged.sortedBy { it.timeMillis }
             }.collect { merged ->
@@ -444,9 +477,9 @@ class ConversationViewModel(
     private suspend fun refreshPendingInbox() {
         val reminders = scheduledTaskRepository.listPending()
         val deferred = deferredInputQueue.snapshot()
-        val silenced = unannouncedNotificationRepository.getAll()
+        val unreadEpisodes = unifiedMemoryRepository.listUnreadNotificationEpisodes()
         val merged = PendingInboxMapper.fromReminders(reminders) +
-            PendingInboxMapper.fromUnannouncedNotifications(silenced) +
+            PendingInboxMapper.fromUnreadEpisodes(unreadEpisodes) +
             PendingInboxMapper.fromDeferredItems(deferred)
         val uiItems = merged.sortedBy { it.timeMillis }.map { item ->
             val kindLabel = when (item.kind) {
@@ -473,6 +506,12 @@ class ConversationViewModel(
             val dedupKey = PendingInboxMapper.parseDeferredDedupKey(id)
             if (dedupKey != null) {
                 deferredInputQueue.removeByDedupKey(dedupKey)
+                return@launch
+            }
+            val unreadRef = PendingInboxMapper.parseUnreadEpisodeExternalRef(id)
+            if (unreadRef != null) {
+                memoryWriter.markEpisodeRead(unreadRef)
+                bumpUnreadEpisodesTick()
                 return@launch
             }
             val unannouncedId = PendingInboxMapper.parseUnannouncedId(id)
@@ -540,7 +579,7 @@ class ConversationViewModel(
     }
 
     private suspend fun loadMemoryEditItems(): List<MemoryItemUi> =
-        memoryRepository.getUserFacingActive().map { it.toUi() }
+        unifiedMemoryRepository.getUserFacingActiveDocuments().map { it.toUi() }
 
     private fun dismissMemorySettings() {
         _settingsUiState.update { it.copy(showMemoryDialog = false, feedbackMessage = null) }
@@ -567,7 +606,7 @@ class ConversationViewModel(
 
     private fun resetMemoryManual() {
         viewModelScope.launch {
-            memoryRepository.resetUserFacingMemory()
+            unifiedMemoryRepository.resetUserFacingMemory()
             memorySettingsRepository.setLastProcessedEntryCount(0L)
             memorySettingsRepository.setLastConsolidatedContentHash("")
             _settingsUiState.update {
@@ -590,7 +629,7 @@ class ConversationViewModel(
                 )
             }
             try {
-                val deduped = memoryRepository.reorganize()
+                val deduped = unifiedMemoryRepository.reorganize()
                 val result = memoryConsolidationService.consolidateIfNeeded(force = true)
                 _settingsUiState.update {
                     it.copy(
@@ -660,7 +699,7 @@ class ConversationViewModel(
         MemoryConsolidationResult.SkippedNotConfigured ->
             appContext.getString(R.string.memory_consolidate_not_configured)
         MemoryConsolidationResult.SkippedAlreadyRunning ->
-            appContext.getString(R.string.memory_consolidate_unchanged)
+            appContext.getString(R.string.memory_consolidate_already_running)
     }
 
     private fun openSpatialSettings() {
@@ -868,6 +907,7 @@ class ConversationViewModel(
                         episodeKindLabel = episodeKindLabel(event.eventKind),
                         confidenceLabel = episodeConfidenceLabel(event.confidence),
                         scheduledLabel = formatScheduledLabel(event, scheduledDayFormat, timeFormat),
+                        isUnread = event.isUnread,
                     )
                 },
             )
@@ -904,6 +944,7 @@ class ConversationViewModel(
         ActivitySource.EXTRACTOR -> appContext.getString(R.string.log_day_source_extractor)
         ActivitySource.TOOL -> appContext.getString(R.string.log_day_source_tool)
         ActivitySource.VOICE -> appContext.getString(R.string.log_day_source_voice)
+        ActivitySource.NOTIFICATION -> appContext.getString(R.string.log_day_source_notification)
     }
 
     private fun updateMemoryItemDraft(id: Long, value: String) {
@@ -919,7 +960,7 @@ class ConversationViewModel(
 
     private fun saveMemoryItem(id: Long, value: String) {
         viewModelScope.launch {
-            val ok = memoryRepository.updateValue(id, value)
+            val ok = unifiedMemoryRepository.updateValue(id, value)
             _settingsUiState.update {
                 it.copy(
                     memoryEditItems = if (ok) loadMemoryEditItems() else it.memoryEditItems,
@@ -936,7 +977,7 @@ class ConversationViewModel(
 
     private fun deleteMemoryItem(id: Long) {
         viewModelScope.launch {
-            val ok = memoryRepository.deleteById(id)
+            val ok = unifiedMemoryRepository.deleteById(id)
             _settingsUiState.update {
                 it.copy(
                     memoryEditItems = if (ok) loadMemoryEditItems() else it.memoryEditItems,
@@ -1762,7 +1803,7 @@ class ConversationViewModel(
         viewModelScope.launch {
             when (command) {
                 "show" -> {
-                    val facts = memoryRepository.getUserFacingActive().take(8)
+                    val facts = unifiedMemoryRepository.getUserFacingActiveDocuments().take(8)
                     val reply = if (facts.isEmpty()) {
                         "Per ora non ho memorie personali salvate."
                     } else {
@@ -1774,7 +1815,7 @@ class ConversationViewModel(
                     speakMemoryCommandReply(phrase, reply)
                 }
                 "reset" -> {
-                    memoryRepository.resetUserFacingMemory()
+                    unifiedMemoryRepository.resetUserFacingMemory()
                     memorySettingsRepository.setLastProcessedEntryCount(0L)
                     speakMemoryCommandReply(phrase, "Ho cancellato la memoria personale. Gli obiettivi interni del robot restano attivi.")
                 }
@@ -1783,7 +1824,7 @@ class ConversationViewModel(
                     val result = if (text.isBlank()) {
                         ForgetByTopicResult(0, emptyList(), emptyList())
                     } else {
-                        memoryRepository.forgetByTopic(text)
+                        unifiedMemoryRepository.forgetByTopic(text)
                     }
                     val reply = when {
                         result.deletedCount == 0 ->
@@ -1830,21 +1871,23 @@ class ConversationViewModel(
     }
 
     private suspend fun speakUnannouncedNotificationsReply(userPhrase: String) {
-        val unannounced = unannouncedNotificationRepository.getAll()
+        val unreadEpisodes = unifiedMemoryRepository.listUnreadNotificationEpisodes()
         val deferredNotifications = deferredInputQueue.snapshot().mapNotNull { item ->
             (item.envelope.input as? RobotInput.Notification)?.let { notification ->
                 notification to item.envelope.dedupKey
             }
         }
 
-        if (unannounced.isEmpty() && deferredNotifications.isEmpty()) {
+        if (unreadEpisodes.isEmpty() && deferredNotifications.isEmpty()) {
             speakMemoryCommandReply(userPhrase, "Non hai notifiche da leggere.")
             return
         }
 
         val lines = buildList {
-            unannounced.forEach { notification ->
-                add("${notification.appLabel}: ${notification.displayBody()}")
+            unreadEpisodes.forEach { episode ->
+                val channel = episode.sourceChannel.orEmpty()
+                val body = episode.value
+                add(if (channel.isBlank()) body else "$channel: $body")
             }
             deferredNotifications.forEach { (notification, _) ->
                 val body = listOfNotNull(
@@ -1860,7 +1903,8 @@ class ConversationViewModel(
             else -> "Hai ${lines.size} notifiche: ${lines.joinToString(". ")}"
         }
 
-        unannouncedNotificationRepository.clearAll()
+        unreadEpisodes.mapNotNull { it.externalRef }.forEach { memoryWriter.markEpisodeRead(it) }
+        bumpUnreadEpisodesTick()
         deferredNotifications.forEach { (_, dedupKey) ->
             deferredInputQueue.removeByDedupKey(dedupKey)
         }
@@ -1869,8 +1913,8 @@ class ConversationViewModel(
     }
 
     private suspend fun markUnannouncedNotificationsRead(userPhrase: String, speakAck: Boolean) {
-        val count = unannouncedNotificationRepository.getAll().size
-        unannouncedNotificationRepository.clearAll()
+        val count = memoryWriter.markAllNotificationEpisodesRead()
+        bumpUnreadEpisodesTick()
         if (!speakAck) return
         val reply = if (count == 0) {
             "Non hai notifiche da segnare come lette."
@@ -2134,7 +2178,6 @@ class ConversationViewModel(
                         robotText = robotText,
                         emotion = LlmEmotionMapper.fromLlmValue(result.emotion),
                     )
-                    registerUnannouncedNotificationAfterSilentTurn(envelope, robotText)
                     clearSilentNotificationTurnState()
                     return
                 }
@@ -2173,7 +2216,6 @@ class ConversationViewModel(
                         robotText = text,
                         emotion = null,
                     )
-                    registerUnannouncedNotificationAfterSilentTurn(envelope, text)
                     clearSilentNotificationTurnState()
                     return
                 }
@@ -2342,20 +2384,44 @@ class ConversationViewModel(
         resumeListeningAfterAssistantTurn()
     }
 
-    private suspend fun registerUnannouncedNotificationAfterSilentTurn(
-        envelope: SystemInputEnvelope?,
-        robotSummary: String,
-    ) {
-        val notification = envelope?.input as? RobotInput.Notification ?: return
-        unannouncedNotificationRepository.register(
+    private fun bumpUnreadEpisodesTick() {
+        unreadEpisodesTick.value = unreadEpisodesTick.value + 1
+    }
+
+    private suspend fun migrateLegacyUnannouncedNotifications() {
+        val legacy = unannouncedNotificationRepository.getAll()
+        if (legacy.isEmpty()) return
+        legacy.forEach { item ->
+            memoryWriter.saveNotificationEpisode(
+                appLabel = item.appLabel,
+                title = item.title,
+                text = item.text,
+                dedupKey = item.dedupKey,
+                receivedAtMillis = item.receivedAtMillis,
+            )
+        }
+        unannouncedNotificationRepository.clearAll()
+        bumpUnreadEpisodesTick()
+    }
+
+    private suspend fun persistNotificationEpisode(envelope: SystemInputEnvelope) {
+        val notification = envelope.input as? RobotInput.Notification ?: return
+        val text = notification.text?.trim().orEmpty()
+        val title = notification.title?.trim().orEmpty()
+        val combined = "$title $text".lowercase()
+        if (NOTIFICATION_SENSITIVE_KEYWORDS.any { combined.contains(it) }) {
+            return
+        }
+        val saved = memoryWriter.saveNotificationEpisode(
             appLabel = notification.appLabel,
             title = notification.title,
             text = notification.text,
-            packageName = notification.packageName,
-            receivedAtMillis = notification.timestamp,
             dedupKey = envelope.dedupKey,
-            robotSummary = robotSummary.takeIf { it.isNotBlank() },
+            receivedAtMillis = notification.timestamp,
         )
+        if (saved != null) {
+            bumpUnreadEpisodesTick()
+        }
     }
 
     private fun clearSilentNotificationTurnState() {
@@ -2921,6 +2987,9 @@ class ConversationViewModel(
         }
         if (InputPolicyEngine.canProcessNow(envelope.input.priority, uiState)) {
             deferredInputQueue.markSeen(envelope.dedupKey)
+            if (envelope.input is RobotInput.Notification) {
+                viewModelScope.launch { persistNotificationEpisode(envelope) }
+            }
             sendSystemInputToLlm(envelope)
         } else {
             Log.i(TAG, "Deferring system input: ${envelope.input.sourceId}")

@@ -3,14 +3,14 @@ package com.example.mydeskrobot.integration.telephony
 import com.example.mydeskrobot.domain.telephony.ContactNameMatcher
 import com.example.mydeskrobot.domain.telephony.PhoneNumberExtractor
 import com.example.mydeskrobot.memory.MemoryTopicMatcher
-import com.example.mydeskrobot.memory.UserMemoryRepository
+import com.example.mydeskrobot.memory.unified.UnifiedMemoryRepository
 
 /**
  * Resolves a spoken contact name to a phone number via rubrica and stored memories.
  */
 class PhoneContactResolver(
     private val contactsResolver: AndroidContactsPhoneResolver,
-    private val memoryRepository: UserMemoryRepository,
+    private val unifiedMemoryRepository: UnifiedMemoryRepository,
 ) {
 
     suspend fun resolve(query: String): PhoneContactResolveResult {
@@ -41,9 +41,13 @@ class PhoneContactResolver(
     }
 
     private suspend fun searchMemory(query: String): List<ContactPhoneMatch> {
-        val items = memoryRepository.searchRelevant(query, limit = 12, includeRobotInternal = false)
+        val items = unifiedMemoryRepository.searchToolRelevant(
+            query = query,
+            limit = 12,
+            includeRobotInternal = false,
+        )
         val fallback = if (items.isEmpty()) {
-            memoryRepository.searchRelevantExpanded(query, limit = 8)
+            unifiedMemoryRepository.searchRelevantExpanded(query, limit = 8)
         } else {
             items
         }

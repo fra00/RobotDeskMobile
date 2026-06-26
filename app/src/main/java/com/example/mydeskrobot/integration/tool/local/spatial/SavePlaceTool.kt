@@ -1,6 +1,7 @@
 package com.example.mydeskrobot.integration.tool.local.spatial
 
 import com.example.mydeskrobot.data.spatial.SpatialPlaceRepository
+import com.example.mydeskrobot.memory.unified.UnifiedMemoryWriter
 import com.example.mydeskrobot.integration.tool.Tool
 import com.example.mydeskrobot.integration.tool.ToolLocality
 import com.example.mydeskrobot.reasoning.model.ToolInvocation
@@ -10,6 +11,7 @@ import com.example.mydeskrobot.reasoning.tool.ToolParameter
 
 class SavePlaceTool(
     private val placeRepository: SpatialPlaceRepository,
+    private val memoryWriter: UnifiedMemoryWriter,
 ) : Tool {
 
     override val name: String = "save_place"
@@ -58,6 +60,13 @@ class SavePlaceTool(
         )
 
         val saved = placeRepository.getById(id)
+        memoryWriter.onPlaceSaved(
+            placeId = id,
+            label = saved?.label ?: label,
+            landmarks = saved?.landmarks ?: landmarks,
+            roomType = (saved?.roomType ?: roomType).name.lowercase(),
+            description = saved?.description ?: description,
+        )
         return ToolResult.Success(
             data = mapOf(
                 "place_id" to id,

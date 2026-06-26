@@ -101,4 +101,7 @@ class FakeActivityLogDao(
     override suspend fun deleteProfile() {
         profile = null
     }
+
+    override suspend fun getById(id: Long): ActivityLogEventEntity? =
+        events.firstOrNull { it.id == id }
 }

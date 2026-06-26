@@ -28,3 +28,7 @@ WEATHER_API_KEY=
 # SearXNG — base URL per web_search (istanze su https://searx.space)
 # Default nell'app: https://searx.be
 SEARX_BASE_URL=https://searx.be
+
+# Embedding ONNX (Fase 0) — cartella con model.onnx + vocab.txt
+# Scarica con: .\scripts\download_embedding_model.ps1
+# embedding.model.dir=C\:\\Path\\To\\MyDeskRobot\\models\\embedding

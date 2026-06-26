@@ -6,7 +6,7 @@ import com.example.mydeskrobot.domain.telephony.PhoneNumberExtractor
 import com.example.mydeskrobot.integration.telephony.PhoneContactResolver
 import com.example.mydeskrobot.integration.telephony.PhoneContactResolveResult
 import com.example.mydeskrobot.memory.MemoryTopicMatcher
-import com.example.mydeskrobot.memory.UserMemoryRepository
+import com.example.mydeskrobot.memory.unified.UnifiedMemoryRepository
 
 /**
  * Resolves a spoken contact or group name to a WhatsApp send target (phone digits or group id).
@@ -14,7 +14,7 @@ import com.example.mydeskrobot.memory.UserMemoryRepository
 class WhatsAppTargetResolver(
     private val whatsAppContactResolver: AndroidWhatsAppContactResolver,
     private val phoneContactResolver: PhoneContactResolver,
-    private val memoryRepository: UserMemoryRepository,
+    private val unifiedMemoryRepository: UnifiedMemoryRepository,
 ) {
 
     suspend fun resolve(query: String, preferGroup: Boolean = false): WhatsAppTargetResolveResult {
@@ -70,9 +70,13 @@ class WhatsAppTargetResolver(
     }
 
     private suspend fun searchMemory(query: String, preferGroup: Boolean): List<WhatsAppTargetMatch> {
-        val items = memoryRepository.searchRelevant(query, limit = 12, includeRobotInternal = false)
+        val items = unifiedMemoryRepository.searchToolRelevant(
+            query = query,
+            limit = 12,
+            includeRobotInternal = false,
+        )
         val expanded = if (items.isEmpty()) {
-            memoryRepository.searchRelevantExpanded(query, limit = 8)
+            unifiedMemoryRepository.searchRelevantExpanded(query, limit = 8)
         } else {
             items
         }

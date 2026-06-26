@@ -15,7 +15,7 @@ import com.example.mydeskrobot.data.spatial.SpatialPlaceRepository
 import com.example.mydeskrobot.data.workingmemory.WorkingMemoryRepository
 import com.example.mydeskrobot.domain.input.SystemInputDispatcher
 import com.example.mydeskrobot.domain.input.SystemInputEvent
-import com.example.mydeskrobot.memory.UserMemoryRepository
+import com.example.mydeskrobot.memory.unified.UnifiedMemoryFactory
 import kotlinx.coroutines.runBlocking
 import java.util.Calendar
 
@@ -45,7 +45,7 @@ class HeartbeatAlarmReceiver : BroadcastReceiver() {
         }
 
         val scheduledTaskRepo = ScheduledTaskRepository.create(context)
-        val memoryRepo = UserMemoryRepository.create(context)
+        val unifiedMemoryRepo = UnifiedMemoryFactory.createRepository(context)
         val moodRepo = MoodRepository(context)
         val workingMemoryRepo = WorkingMemoryRepository(context)
         val userAwarenessRepo = UserAwarenessRepository(context)
@@ -54,13 +54,13 @@ class HeartbeatAlarmReceiver : BroadcastReceiver() {
         val spatialPlaceRepo = SpatialPlaceRepository.create(context)
 
         runBlocking {
-            memoryRepo.pruneExpired()
+            unifiedMemoryRepo.pruneExpired()
             activityLogRepo.pruneExpired()
         }
 
         val contextBuilder = HeartbeatContextBuilder(
             scheduledTaskRepository = scheduledTaskRepo,
-            memoryRepository = memoryRepo,
+            unifiedMemoryRepository = unifiedMemoryRepo,
             lastInteractionProvider = { settings.lastInteractionMillis },
             currentMoodProvider = { moodRepo.load() },
             workingMemoryProvider = { workingMemoryRepo.load() },

@@ -3,6 +3,7 @@ package com.example.mydeskrobot.activity.summary
 import android.util.Log
 import com.example.mydeskrobot.data.activitylog.ActivityLogRepository
 import com.example.mydeskrobot.data.activitylog.ActivityLogSettingsRepository
+import com.example.mydeskrobot.memory.unified.UnifiedMemoryWriter
 import com.example.mydeskrobot.integration.llm.LlmHttpErrors
 import com.example.mydeskrobot.reasoning.llm.LlmClient
 import com.example.mydeskrobot.reasoning.model.ConversationMessage
@@ -14,6 +15,7 @@ class ActivityHabitSummarizer(
     private val activityLogRepository: ActivityLogRepository,
     private val settingsRepository: ActivityLogSettingsRepository,
     private val summaryPrompt: String,
+    private val memoryWriter: UnifiedMemoryWriter,
 ) {
     suspend fun currentEventCount(): Int = activityLogRepository.countEventsInRetentionWindow()
 
@@ -43,6 +45,10 @@ class ActivityHabitSummarizer(
 
         val eventCount = activityLogRepository.countEventsInRetentionWindow()
         activityLogRepository.saveHabitSummary(summary, eventCount)
+        memoryWriter.onHabitSummarySaved(
+            summaryText = summary,
+            sourceEventCount = eventCount,
+        )
         settingsRepository.setLastSummaryAt(System.currentTimeMillis())
         settingsRepository.setLastSummaryEventCount(eventCount)
         Log.i(TAG, "Habit summary updated ($eventCount events)")
