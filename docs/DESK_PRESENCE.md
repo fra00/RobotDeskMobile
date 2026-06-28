@@ -9,7 +9,7 @@ Kotlin-only on-device presence detection before proactive LLM ticks.
 | `DeskPresenceMonitor` | CameraX ImageAnalysis + ML Kit face/pose while voice session active |
 | `DeskPresenceStateStore` | Process-wide latest `DeskOccupancy` |
 | `FaceGazeStateStore` | Latest face offset in frame (for attention centering, not continuous tracking) |
-| `UserAttentionCentering` | Closed-loop body centering on every user voice turn (scan if no face, pan flip if error worsens) |
+| `UserAttentionCentering` | Closed-loop body centering on every user voice turn while session active |
 | `AttentionTriggerMatcher` | Every user voice utterance (non-blank phrase) |
 | `DeskPresenceGate` | Pure rules: allows proactive only when `PRESENT` (or `UNCERTAIN` + recent interaction) |
 | `DetectPresenceTool` (LLM) | Fallback for nuanced checks when ML Kit is `UNCERTAIN` |
@@ -31,7 +31,7 @@ Device is expected **always on charger** — default 5 fps, accurate ML Kit mode
 
 ## Attention centering (conversational)
 
-On **every user voice turn** (**20s cooldown**):
+On **every user voice turn** during an active voice session (no cooldown between turns):
 
 1. If face in frame → closed-loop centering (min **2** moves, max 5); longer settle (**1 s**) + gaze wait (**1.8 s**) between steps
 2. **No scan / no return to 0** if the face was visible at turn start — hold last pose and speak

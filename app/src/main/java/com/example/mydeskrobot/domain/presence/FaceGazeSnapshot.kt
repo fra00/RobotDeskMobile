@@ -22,7 +22,6 @@ data class FaceGazeSnapshot(
 
 object AttentionCenteringPolicy {
     const val CENTER_TOLERANCE = 0.10f
-    const val MIN_INTERVAL_MS = 20_000L
     const val MAX_GAZE_AGE_MS = 2_500L
     const val MIN_CONFIDENCE = 0.45f
     const val MAX_LOOP_ITERATIONS = 5

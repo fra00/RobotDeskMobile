@@ -6,7 +6,9 @@ import com.example.mydeskrobot.data.presence.DeskPresenceSettings
 import com.example.mydeskrobot.data.presence.FaceGazeStateStore
 import com.example.mydeskrobot.domain.presence.AttentionCenteringPolicy
 import com.example.mydeskrobot.domain.presence.FaceGazeSnapshot
+import com.example.mydeskrobot.integration.body.AttentionBodyClient
 import com.example.mydeskrobot.integration.body.BodyApiClient
+import com.example.mydeskrobot.integration.body.asAttentionBodyClient
 import com.example.mydeskrobot.integration.body.BodyApiResult
 import com.example.mydeskrobot.integration.body.BodyJoint
 import com.example.mydeskrobot.integration.body.BodyMove
@@ -15,13 +17,18 @@ import kotlinx.coroutines.delay
 
 /**
  * Closed-loop centering toward the user before a conversational reply.
+ * Runs on each user voice turn while the session is active.
  * Scan + return to base_pan 0 only when there was no face at turn start.
  */
 class UserAttentionCentering(
     private val bodySettingsProvider: suspend () -> BodySettings,
     private val deskPresenceSettingsProvider: suspend () -> DeskPresenceSettings,
+    private val bodyClientProvider: (BodySettings) -> AttentionBodyClient? = { settings ->
+        BodyApiClient.createIfConfigured(settings)?.asAttentionBodyClient()
+    },
+    private val nowMillis: () -> Long = System::currentTimeMillis,
+    private val pause: suspend (Long) -> Unit = { delay(it) },
 ) {
-    private var lastCenteredAtMs = 0L
     private var panSign: Int = -1
 
     suspend fun tryCenterOnUser(): AttentionCenteringResult {
@@ -35,18 +42,13 @@ class UserAttentionCentering(
             return AttentionCenteringResult.SkippedPresenceDisabled
         }
 
-        val now = System.currentTimeMillis()
-        if (now - lastCenteredAtMs < AttentionCenteringPolicy.MIN_INTERVAL_MS) {
-            return AttentionCenteringResult.SkippedCooldown
-        }
-
-        val client = BodyApiClient.createIfConfigured(bodySettings)
+        val now = nowMillis()
+        val client = bodyClientProvider(bodySettings)
             ?: return AttentionCenteringResult.SkippedBodyDisabled
 
         val hadFaceAtStart = usableGaze(now) != null
         var gaze = usableGaze(now)
         if (gaze?.isCentered() == true) {
-            lastCenteredAtMs = now
             return AttentionCenteringResult.AlreadyCentered
         }
 
@@ -86,12 +88,11 @@ class UserAttentionCentering(
             AttentionCenteringPlanner.planVerticalMove(gaze, status)?.let { tilt ->
                 if (executeMove(client, tilt)) {
                     moveCount++
-                    delay(AttentionCenteringPolicy.SETTLE_AFTER_MOVE_MS)
+                    pause(AttentionCenteringPolicy.SETTLE_AFTER_MOVE_MS)
                 }
             }
         }
 
-        lastCenteredAtMs = System.currentTimeMillis()
         if (moveCount == 0) {
             return AttentionCenteringResult.AlreadyCentered
         }
@@ -101,7 +102,7 @@ class UserAttentionCentering(
     }
 
     private suspend fun scanForFace(
-        client: BodyApiClient,
+        client: AttentionBodyClient,
         startStatus: BodyStatus?,
     ): ScanResult {
         var status = startStatus
@@ -111,7 +112,7 @@ class UserAttentionCentering(
         moves += homed.moves
         status = homed.status ?: status
 
-        waitForUsableGazeAfter(System.currentTimeMillis())?.let { found ->
+        waitForUsableGazeAfter(nowMillis())?.let { found ->
             return ScanResult(found, status, moves)
         }
 
@@ -120,7 +121,7 @@ class UserAttentionCentering(
             moves += moved.moves
             status = moved.status ?: status
 
-            waitForUsableGazeAfter(System.currentTimeMillis())?.let { found ->
+            waitForUsableGazeAfter(nowMillis())?.let { found ->
                 return ScanResult(found, status, moves)
             }
         }
@@ -130,7 +131,7 @@ class UserAttentionCentering(
     }
 
     private suspend fun returnBasePanToNeutral(
-        client: BodyApiClient,
+        client: AttentionBodyClient,
         startStatus: BodyStatus?,
     ): MoveResult {
         val currentPan = startStatus?.joints?.get(BodyJoint.BASE_PAN.apiName)?.position
@@ -143,7 +144,7 @@ class UserAttentionCentering(
     }
 
     private suspend fun moveBasePan(
-        client: BodyApiClient,
+        client: AttentionBodyClient,
         startStatus: BodyStatus?,
         targetPan: Int,
     ): MoveResult {
@@ -157,13 +158,13 @@ class UserAttentionCentering(
             return MoveResult(status, 0)
         }
 
-        delay(AttentionCenteringPolicy.SETTLE_AFTER_MOVE_MS)
+        pause(AttentionCenteringPolicy.SETTLE_AFTER_MOVE_MS)
         status = fetchStatus(client) ?: status
         return MoveResult(status, 1)
     }
 
     private suspend fun centerHorizontally(
-        client: BodyApiClient,
+        client: AttentionBodyClient,
         initialGaze: FaceGazeSnapshot,
         startStatus: BodyStatus?,
     ): LoopResult {
@@ -184,16 +185,16 @@ class UserAttentionCentering(
             }
             moves++
 
-            delay(AttentionCenteringPolicy.SETTLE_AFTER_MOVE_MS)
-            val afterMoveMs = System.currentTimeMillis()
+            pause(AttentionCenteringPolicy.SETTLE_AFTER_MOVE_MS)
+            val afterMoveMs = nowMillis()
             var newGaze = waitForUsableGazeAfter(afterMoveMs)
             if (newGaze == null) {
-                delay(AttentionCenteringPolicy.GAZE_RETRY_EXTRA_WAIT_MS)
+                pause(AttentionCenteringPolicy.GAZE_RETRY_EXTRA_WAIT_MS)
                 newGaze = waitForUsableGazeAfter(afterMoveMs)
             }
             if (newGaze == null && moves < AttentionCenteringPolicy.MIN_CENTERING_MOVES) {
                 Log.w(TAG, "Gaze not ready after move $moves — waiting another frame cycle")
-                delay(AttentionCenteringPolicy.SETTLE_AFTER_MOVE_MS)
+                pause(AttentionCenteringPolicy.SETTLE_AFTER_MOVE_MS)
                 newGaze = waitForUsableGazeAfter(afterMoveMs)
             }
             if (newGaze == null) {
@@ -219,8 +220,8 @@ class UserAttentionCentering(
                         return LoopResult(newGaze, status, moves, faceLost = false)
                     }
                     moves++
-                    delay(AttentionCenteringPolicy.SETTLE_AFTER_MOVE_MS)
-                    val afterFlipMs = System.currentTimeMillis()
+                    pause(AttentionCenteringPolicy.SETTLE_AFTER_MOVE_MS)
+                    val afterFlipMs = nowMillis()
                     val afterFlipGaze = waitForUsableGazeAfter(afterFlipMs)
                         ?: waitForUsableGazeAfter(afterFlipMs, extraWait = true)
                     if (afterFlipGaze == null) {
@@ -256,10 +257,10 @@ class UserAttentionCentering(
         extraWait: Boolean = false,
     ): FaceGazeSnapshot? {
         if (extraWait) {
-            delay(AttentionCenteringPolicy.GAZE_RETRY_EXTRA_WAIT_MS)
+            pause(AttentionCenteringPolicy.GAZE_RETRY_EXTRA_WAIT_MS)
         }
-        val deadline = System.currentTimeMillis() + AttentionCenteringPolicy.GAZE_WAIT_TIMEOUT_MS
-        while (System.currentTimeMillis() < deadline) {
+        val deadline = nowMillis() + AttentionCenteringPolicy.GAZE_WAIT_TIMEOUT_MS
+        while (nowMillis() < deadline) {
             val gaze = FaceGazeStateStore.current()
             if (gaze != null &&
                 gaze.capturedAt >= notBeforeMs - 50L &&
@@ -267,12 +268,12 @@ class UserAttentionCentering(
             ) {
                 return gaze
             }
-            delay(AttentionCenteringPolicy.GAZE_POLL_MS)
+            pause(AttentionCenteringPolicy.GAZE_POLL_MS)
         }
         return null
     }
 
-    private suspend fun fetchStatus(client: BodyApiClient): BodyStatus? =
+    private suspend fun fetchStatus(client: AttentionBodyClient): BodyStatus? =
         when (val result = client.getStatus()) {
             is BodyApiResult.Success -> result.data
             is BodyApiResult.Error -> {
@@ -281,7 +282,7 @@ class UserAttentionCentering(
             }
         }
 
-    private suspend fun executeMove(client: BodyApiClient, move: BodyMove.Joint): Boolean {
+    private suspend fun executeMove(client: AttentionBodyClient, move: BodyMove.Joint): Boolean {
         return when (
             val result = client.moveJoint(
                 joint = move.joint,
@@ -324,7 +325,6 @@ class UserAttentionCentering(
 sealed interface AttentionCenteringResult {
     data object SkippedBodyDisabled : AttentionCenteringResult
     data object SkippedPresenceDisabled : AttentionCenteringResult
-    data object SkippedCooldown : AttentionCenteringResult
     data object AlreadyCentered : AttentionCenteringResult
     data class Centered(val moveCount: Int) : AttentionCenteringResult
     data class PartialFailure(val message: String) : AttentionCenteringResult
