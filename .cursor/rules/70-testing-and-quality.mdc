@@ -8,9 +8,11 @@ alwaysApply: false
 
 ## Piramide test
 
-1. **Unit test** (`test/`) — ViewModel, mapper, parsing risposta LLM, logica emozione.
+1. **Unit test** (`test/`) — ~110 file (giugno 2026). Domain, parser, policy, memoria, tool locali.
 2. **Instrumented** (`androidTest/`) — solo flussi che richiedono Context reale (TTS init, permessi) — pochi e mirati.
-3. **Compose UI test** — `RobotEyes` per emozioni chiave e transizioni stato (opzionale v1).
+3. **Compose UI test** — `RobotEyes` per emozioni chiave (opzionale v1).
+
+**SSOT lacune coverage:** `docs/TODO.md` sezione *Test coverage*.
 
 ## Cosa testare (utile)
 

@@ -47,6 +47,11 @@ import com.example.mydeskrobot.presentation.settings.SettingsUiState
 import com.example.mydeskrobot.ui.components.BodySettingsDialog
 import com.example.mydeskrobot.ui.components.ConversationHistoryDialog
 import com.example.mydeskrobot.ui.components.ReasoningLogDialog
+import com.example.mydeskrobot.ui.components.AttentionDomainDeleteConfirmDialog
+import com.example.mydeskrobot.ui.components.AttentionDomainEditorDialog
+import com.example.mydeskrobot.ui.components.AttentionDomainsSettingsDialog
+import com.example.mydeskrobot.ui.components.DeskPresenceIndicator
+import com.example.mydeskrobot.ui.components.DeskPresenceSettingsDialog
 import com.example.mydeskrobot.ui.components.HeartbeatSettingsDialog
 import com.example.mydeskrobot.ui.components.LlmSettingsDialog
 import com.example.mydeskrobot.ui.components.MicButton
@@ -203,11 +208,20 @@ fun RobotScreen(
                 .padding(layout.cornerPadding),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            StandbyStatusIndicator(
-                phase = uiState.phase,
-                isHotwordListeningActive = uiState.isHotwordListeningActive,
-                emotion = uiState.emotion,
-            )
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                StandbyStatusIndicator(
+                    phase = uiState.phase,
+                    isHotwordListeningActive = uiState.isHotwordListeningActive,
+                    emotion = uiState.emotion,
+                )
+                DeskPresenceIndicator(
+                    occupancyState = uiState.deskOccupancyState,
+                    monitorEnabled = uiState.deskPresenceMonitorEnabled,
+                )
+            }
             if (uiState.robotContextProfile != RobotProfile.NORMAL) {
                 Spacer(modifier = Modifier.height(4.dp))
                 RobotContextProfileIndicator(profile = uiState.robotContextProfile)
@@ -391,11 +405,17 @@ fun RobotScreen(
             onOpenVoskModelSettings = { onEvent(ConversationUiEvent.OnOpenVoskModelSettings) },
             onOpenNotificationSettings = { onEvent(ConversationUiEvent.OnOpenNotificationSettings) },
             onOpenHeartbeatSettings = { onEvent(ConversationUiEvent.OnOpenHeartbeatSettings) },
+            onOpenAttentionDomainsSettings = {
+                onEvent(ConversationUiEvent.OnOpenAttentionDomainsSettings(returnToMain = true))
+            },
+            onOpenDeskPresenceSettings = { onEvent(ConversationUiEvent.OnOpenDeskPresenceSettings) },
             isVoskModelReady = settingsUiState.voskModelState is com.example.mydeskrobot.data.speech.VoskModelManager.ModelState.Ready,
             sttProviderName = sttProviderName,
             notificationsEnabled = settingsUiState.notificationsEnabled,
             isNotificationAccessGranted = settingsUiState.notificationAccessGranted,
             heartbeatEnabled = settingsUiState.heartbeatForm.enabled,
+            attentionDomainsSummary = settingsUiState.attentionDomainsSummary,
+            deskPresenceEnabled = settingsUiState.deskPresenceForm.enabled,
             onNotificationsEnabledChange = { onEvent(ConversationUiEvent.OnNotificationEnabledChange(it)) },
             onSaveNotifications = { onEvent(ConversationUiEvent.OnSaveNotificationSettings) },
         )
@@ -529,8 +549,54 @@ fun RobotScreen(
         HeartbeatSettingsDialog(
             form = settingsUiState.heartbeatForm,
             onFormChange = { onEvent(ConversationUiEvent.OnHeartbeatFormChange(it)) },
+            onManageDomains = {
+                onEvent(ConversationUiEvent.OnOpenAttentionDomainsSettings(returnToMain = false))
+            },
             onSave = { onEvent(ConversationUiEvent.OnSaveHeartbeatSettings) },
             onDismiss = { onEvent(ConversationUiEvent.OnDismissHeartbeatSettings) },
+        )
+    }
+
+    if (settingsUiState.showDeskPresenceDialog) {
+        DeskPresenceSettingsDialog(
+            form = settingsUiState.deskPresenceForm,
+            onFormChange = { onEvent(ConversationUiEvent.OnDeskPresenceFormChange(it)) },
+            onSave = { onEvent(ConversationUiEvent.OnSaveDeskPresenceSettings) },
+            onDismiss = { onEvent(ConversationUiEvent.OnDismissDeskPresenceSettings) },
+        )
+    }
+
+    if (settingsUiState.showAttentionDomainsDialog) {
+        AttentionDomainsSettingsDialog(
+            domains = settingsUiState.attentionDomains,
+            onToggle = { id, enabled -> onEvent(ConversationUiEvent.OnToggleAttentionDomain(id, enabled)) },
+            onAddDomain = { onEvent(ConversationUiEvent.OnAddAttentionDomain) },
+            onEditDomain = { id -> onEvent(ConversationUiEvent.OnEditAttentionDomain(id)) },
+            onDeleteDomain = { id -> onEvent(ConversationUiEvent.OnDeleteAttentionDomain(id)) },
+            onDismiss = { onEvent(ConversationUiEvent.OnSaveAttentionDomainsSettings) },
+        )
+    }
+
+    if (settingsUiState.showAttentionDomainEditor) {
+        AttentionDomainEditorDialog(
+            form = settingsUiState.attentionDomainEditorForm,
+            isEditing = settingsUiState.attentionDomainEditorForm.editingId != null,
+            errorMessage = settingsUiState.attentionDomainEditorError,
+            onFormChange = { onEvent(ConversationUiEvent.OnAttentionDomainEditorFormChange(it)) },
+            onSave = { onEvent(ConversationUiEvent.OnSaveAttentionDomainEditor) },
+            onDismiss = { onEvent(ConversationUiEvent.OnDismissAttentionDomainEditor) },
+        )
+    }
+
+    settingsUiState.attentionDomainDeleteConfirmId?.let { deleteId ->
+        val domainName = settingsUiState.attentionDomains
+            .find { it.id == deleteId }
+            ?.displayName
+            .orEmpty()
+        AttentionDomainDeleteConfirmDialog(
+            domainName = domainName,
+            onConfirm = { onEvent(ConversationUiEvent.OnConfirmDeleteAttentionDomain) },
+            onDismiss = { onEvent(ConversationUiEvent.OnDismissDeleteAttentionDomain) },
         )
     }
 }

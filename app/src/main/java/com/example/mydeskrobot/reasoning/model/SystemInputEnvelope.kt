@@ -175,6 +175,22 @@ data class SystemInputEnvelope(
                 if (heartbeat.knownPlaces.isNotEmpty()) {
                     append("Luoghi noti: ${heartbeat.knownPlaces.joinToString(", ")}\n")
                 }
+                if (heartbeat.activeDomainId != null) {
+                    append("DOMINIO ATTIVO: ${heartbeat.activeDomainName ?: heartbeat.activeDomainId}\n")
+                }
+                if (heartbeat.recentInterventionsOnDomain.isNotEmpty()) {
+                    append("Interventi recenti su questo dominio:\n")
+                    heartbeat.recentInterventionsOnDomain.forEach { line ->
+                        append("- $line\n")
+                    }
+                }
+                heartbeat.deskOccupancyState?.let {
+                    append("Presenza scrivania (ML Kit): $it\n")
+                }
+                if (!heartbeat.environmentFreshnessBlock.isNullOrBlank()) {
+                    append(heartbeat.environmentFreshnessBlock.trim())
+                    append('\n')
+                }
             }.trimEnd()
 
             val dedupKey = "heartbeat:${heartbeat.timestamp / 60000}"

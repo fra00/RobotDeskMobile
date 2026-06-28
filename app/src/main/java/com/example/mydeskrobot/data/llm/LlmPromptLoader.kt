@@ -16,6 +16,7 @@ object LlmPromptLoader {
     const val ROOM_LANDMARKS_PROMPT_ASSET_PATH = "prompts/room_landmarks_prompt.txt"
     const val BODY_CAPABILITIES_PROMPT_ASSET_PATH = "prompts/body_capabilities_prompt.txt"
     const val HEARTBEAT_PLAYBOOK_PROMPT_ASSET_PATH = "prompts/heartbeat_playbook_prompt.txt"
+    const val HEARTBEAT_CRITIC_PROMPT_ASSET_PATH = "prompts/heartbeat_critic_prompt.txt"
     const val MEMORY_CONSOLIDATION_PROMPT_ASSET_PATH = "prompts/memory_consolidation_prompt.txt"
     const val MEMORY_RECALL_PLANNER_PROMPT_ASSET_PATH = "prompts/memory_recall_planner_prompt.txt"
     const val EPISODIC_EXTRACTOR_PROMPT_ASSET_PATH = "prompts/episodic_extractor_prompt.txt"
@@ -79,6 +80,14 @@ object LlmPromptLoader {
         return text
     }
 
+    fun loadHeartbeatCriticPrompt(context: Context): String {
+        val text = loadTextAsset(context, HEARTBEAT_CRITIC_PROMPT_ASSET_PATH)
+        require(text.isNotBlank()) {
+            "Heartbeat critic prompt asset is empty: $HEARTBEAT_CRITIC_PROMPT_ASSET_PATH"
+        }
+        return text
+    }
+
     fun loadActivityExtractorPrompt(context: Context): String {
         val text = loadTextAsset(context, ACTIVITY_EXTRACTOR_PROMPT_ASSET_PATH)
         require(text.isNotBlank()) {
@@ -110,6 +119,9 @@ object LlmPromptLoader {
         }
         return text
     }
+
+    fun loadOptionalAsset(context: Context, path: String): String =
+        runCatching { loadTextAsset(context, path) }.getOrDefault("")
 
     private fun loadTextAsset(context: Context, path: String): String =
         context.assets.open(path).use { input ->

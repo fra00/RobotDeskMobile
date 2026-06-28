@@ -2,20 +2,24 @@ package com.example.mydeskrobot.integration.body
 
 import android.util.Log
 import com.example.mydeskrobot.data.body.BodySettings
+import com.example.mydeskrobot.domain.model.RobotEmotion
 import com.example.mydeskrobot.domain.mood.RobotMood
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 
 /**
- * Executes mood-driven body presets when [RobotMood] changes (SSOT alongside eyes and LLM prompt).
+ * Executes mood-driven and ephemeral body presets (SSOT alongside eyes and LLM prompt).
  */
 class BodyExpressionController(
     private val scope: CoroutineScope,
     private val settingsProvider: suspend () -> BodySettings,
 ) {
+    private val executor = BodyChoreographyExecutor()
     private var expressionJob: Job? = null
+    private var speakingJob: Job? = null
 
     fun onMoodTransition(
         previous: RobotMood,
@@ -23,96 +27,125 @@ class BodyExpressionController(
         context: BodyExpressionContext,
     ) {
         if (previous == current) return
-        if (!context.allowsExpression(current.reason)) return
+        if (!context.allowsMoodExpression(current.reason)) return
 
-        val moves = BodyExpressionMapper.resolve(previous, current)
-        if (moves.isEmpty()) return
+        val choreography = BodyExpressionMapper.resolve(previous, current) ?: return
+        runChoreography(choreography, "Mood ${current.baseEmotion} (${current.reason})")
+    }
 
+    fun onEphemeralExpression(
+        emotion: RobotEmotion,
+        intensity: Float,
+        context: BodyExpressionContext,
+    ) {
+        if (!context.allowsEphemeralGesture()) return
+
+        val choreography = EmotionGestureMapper.resolve(emotion, intensity) ?: return
+        runChoreography(choreography, "Ephemeral $emotion")
+    }
+
+    fun restoreHeadNeutralUnlessSleeping(baseEmotion: RobotEmotion) {
+        if (baseEmotion == RobotEmotion.SLEEPING) return
         expressionJob?.cancel()
         expressionJob = scope.launch {
             val client = BodyApiClient.createIfConfigured(settingsProvider()) ?: return@launch
-            for (move in moves) {
-                val delayAfterMs = when (move) {
-                    is BodyMove.Joint -> move.delayAfterMs
-                    is BodyMove.Home -> move.delayAfterMs
-                    is BodyMove.SleepPose -> 0L
-                }
-                when (move) {
-                    is BodyMove.SleepPose -> {
-                        if (!executeSleepPose(client)) return@launch
-                    }
-                    is BodyMove.Joint -> {
-                        val result = client.moveJoint(
-                            joint = move.joint,
-                            delta = move.delta,
-                            position = move.position,
-                            speed = move.speed,
-                        )
-                        if (result is BodyApiResult.Error) {
-                            Log.w(TAG, "Mood body expression failed: ${result.message}")
-                            return@launch
-                        }
-                    }
-                    is BodyMove.Home -> {
-                        val result = client.home(speed = move.speed)
-                        if (result is BodyApiResult.Error) {
-                            Log.w(TAG, "Mood body expression failed: ${result.message}")
-                            return@launch
-                        }
-                    }
-                }
-                if (delayAfterMs > 0L) {
-                    delay(delayAfterMs)
-                }
+            executor.restoreHeadNeutral(client)
+            Log.d(TAG, "Head restored to neutral after ephemeral expiry")
+        }
+    }
+
+    fun executeMicroTick(
+        choreography: BodyChoreography,
+        context: BodyExpressionContext,
+    ) {
+        if (!context.allowsMicroTick()) return
+        runChoreography(choreography, "Heartbeat micro tick")
+    }
+
+    /**
+     * Subtle head micro-movements while TTS is playing (conversational body language).
+     * Waits for any in-flight emotion gesture, then loops until [isStillSpeaking] is false or stopped.
+     */
+    fun startSpeakingMicroMoves(
+        context: BodyExpressionContext,
+        isStillSpeaking: () -> Boolean,
+    ) {
+        if (!context.allowsSpeakingMicroMoves()) return
+        speakingJob?.cancel()
+        speakingJob = scope.launch {
+            val client = BodyApiClient.createIfConfigured(settingsProvider()) ?: return@launch
+            expressionJob?.join()
+            if (!isStillSpeaking()) return@launch
+            if (!HeadNeutralizer.neutralizeHead(client)) {
+                Log.w(TAG, "Speaking micro-moves: head neutralize failed, continuing")
             }
-            Log.d(TAG, "Mood body expression done: ${current.baseEmotion} (${current.reason})")
+            var step = 0
+            while (isActive && isStillSpeaking()) {
+                val tilt = SpeakingMicroMoves.headTiltAt(step)
+                when (
+                    val tiltResult = client.moveJoint(
+                        joint = BodyJoint.HEAD_TILT,
+                        position = tilt,
+                        speed = SpeakingMicroMoves.SPEED,
+                    )
+                ) {
+                    is BodyApiResult.Error -> {
+                        Log.w(TAG, "Speaking micro-move tilt failed: ${tiltResult.message}")
+                        return@launch
+                    }
+                    is BodyApiResult.Success -> Unit
+                }
+                delay(SpeakingMicroMoves.MOVE_HOLD_MS)
+                if (!isStillSpeaking()) break
+
+                val roll = SpeakingMicroMoves.headRollAt(step)
+                if (roll != null) {
+                    when (
+                        val rollResult = client.moveJoint(
+                            joint = BodyJoint.HEAD_ROLL,
+                            position = roll,
+                            speed = SpeakingMicroMoves.SPEED,
+                        )
+                    ) {
+                        is BodyApiResult.Error -> {
+                            Log.w(TAG, "Speaking micro-move roll failed: ${rollResult.message}")
+                            return@launch
+                        }
+                        is BodyApiResult.Success -> Unit
+                    }
+                    delay(SpeakingMicroMoves.MOVE_HOLD_MS)
+                }
+                step++
+            }
+            Log.d(TAG, "Speaking micro-moves loop ended")
+        }
+    }
+
+    fun stopSpeakingMicroMoves(baseEmotion: RobotEmotion) {
+        speakingJob?.cancel()
+        speakingJob = null
+        if (baseEmotion == RobotEmotion.SLEEPING) return
+        scope.launch {
+            val client = BodyApiClient.createIfConfigured(settingsProvider()) ?: return@launch
+            executor.restoreHeadNeutral(client)
+            Log.d(TAG, "Head restored to neutral after speaking")
         }
     }
 
     fun cancel() {
         expressionJob?.cancel()
         expressionJob = null
+        speakingJob?.cancel()
+        speakingJob = null
     }
 
-    private suspend fun executeSleepPose(client: BodyApiClient): Boolean {
-        val status = when (val result = client.getStatus()) {
-            is BodyApiResult.Success -> result.data
-            is BodyApiResult.Error -> {
-                Log.w(TAG, "Sleep pose: status unavailable (${result.message}), applying home+tilt")
-                null
-            }
+    private fun runChoreography(choreography: BodyChoreography, logLabel: String) {
+        if (choreography.steps.isEmpty()) return
+        expressionJob?.cancel()
+        expressionJob = scope.launch {
+            val client = BodyApiClient.createIfConfigured(settingsProvider()) ?: return@launch
+            executor.execute(client, choreography, logLabel)
         }
-
-        if (status == null || !BodySleepPose.isNearCenter(status)) {
-            when (val home = client.home(speed = BodySleepPose.HOME_SPEED)) {
-                is BodyApiResult.Error -> {
-                    Log.w(TAG, "Sleep pose home failed: ${home.message}")
-                    return false
-                }
-                is BodyApiResult.Success -> delay(BodySleepPose.DELAY_AFTER_HOME_MS)
-            }
-        }
-
-        val tiltStatus = when (val result = client.getStatus()) {
-            is BodyApiResult.Success -> result.data
-            is BodyApiResult.Error -> status
-        }
-        if (tiltStatus == null || !BodySleepPose.isHeadAtSleepTilt(tiltStatus)) {
-            when (
-                val tilt = client.moveJoint(
-                    joint = BodyJoint.HEAD_TILT,
-                    position = BodySleepPose.SLEEP_HEAD_TILT_DEG,
-                    speed = BodySleepPose.TILT_SPEED,
-                )
-            ) {
-                is BodyApiResult.Error -> {
-                    Log.w(TAG, "Sleep pose head tilt failed: ${tilt.message}")
-                    return false
-                }
-                is BodyApiResult.Success -> Unit
-            }
-        }
-        return true
     }
 
     companion object {

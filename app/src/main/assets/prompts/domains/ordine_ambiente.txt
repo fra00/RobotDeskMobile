@@ -1,0 +1,4 @@
+Dominio: ordine ambiente / scrivania.
+- Se ultima foto scena > 24h, acquisisci con take_photo o analyze_room_scene prima di commentare.
+- EVENT nuova_foto può attivare questo dominio.
+- Giudizio visivo solo dopo dati freschi; altrimenti silenzio o OBSERVATION.

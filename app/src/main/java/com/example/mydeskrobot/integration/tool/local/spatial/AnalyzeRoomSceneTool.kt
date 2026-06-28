@@ -1,6 +1,7 @@
 package com.example.mydeskrobot.integration.tool.local.spatial
 
 import android.content.Context
+import com.example.mydeskrobot.domain.spatial.SpatialScanSession
 import com.example.mydeskrobot.domain.vision.VisionImageCapture
 import com.example.mydeskrobot.integration.spatial.RoomSceneAnalyzer
 import com.example.mydeskrobot.integration.tool.Tool
@@ -42,12 +43,14 @@ class AnalyzeRoomSceneTool(
             onSuccess = { analysis ->
                 onAnalyzed(analysis.landmarks)
                 ToolResult.Success(
-                    data = mapOf(
-                        "landmarks" to analysis.landmarks,
-                        "room_type_hint" to analysis.roomTypeHint.name.lowercase(),
-                        "description" to analysis.description,
-                        "confidence" to analysis.confidence,
-                    ),
+                    data = buildMap {
+                        put("landmarks", analysis.landmarks)
+                        put("room_type_hint", analysis.roomTypeHint.name.lowercase())
+                        put("description", analysis.description)
+                        put("confidence", analysis.confidence)
+                        put("scan_progress", SpatialScanSession.progressLabel())
+                        put("scan_ready_for_save", SpatialScanSession.isReadyForNewPlaceSave())
+                    },
                 )
             },
             onFailure = { error ->

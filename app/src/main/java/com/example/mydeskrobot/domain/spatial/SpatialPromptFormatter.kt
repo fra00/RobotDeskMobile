@@ -32,7 +32,7 @@ object SpatialPromptFormatter {
             appendLine("- Per \"dove siamo\": rispondi dalla stanza corrente sopra; non descrivere oggetti visibili senza foto fresca.")
         } else {
             appendLine("- Regola match: una foto + match_place; se confidenza alta (≥0.55) basta, se bassa/media → scan multi-angolo (se corpo disponibile).")
-            appendLine("- Regola memorizza: stanza nuova o save_place → scan multi-angolo obbligatorio (se corpo disponibile), poi save_place.")
+            appendLine("- Regola memorizza: stanza nuova o save_place → scan multi-angolo obbligatorio (se corpo disponibile: 3 analyze_room_scene dopo move_body_joint), poi save_place.")
         }
         appendLine("- Presenza utente è separata (detect_presence); stanza ≠ presenza.")
     }.trim()

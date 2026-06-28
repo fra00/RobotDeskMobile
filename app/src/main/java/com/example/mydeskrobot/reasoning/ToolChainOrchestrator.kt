@@ -34,6 +34,7 @@ class ToolChainOrchestrator(
     private val maxChainSteps: Int = 10,
     private val timeoutMs: Long = 60_000,
     private val onBeforeLlmTurn: (suspend (hasPendingImage: Boolean, stepIndex: Int) -> Unit)? = null,
+    private val onBodyHardwareBusyChanged: (Boolean) -> Unit = {},
     private val reasoningLogObserver: ReasoningLogObserver = NoOpReasoningLogObserver,
 ) {
     fun updateSystemPrompt(value: String) {
@@ -376,7 +377,7 @@ class ToolChainOrchestrator(
     ): List<Pair<ToolInvocation, ToolResult>> {
         return coroutineScope {
             tools.map { tool ->
-                async { tool to toolExecutor.execute(tool) }
+                async { tool to executeTool(tool) }
             }.awaitAll()
         }
     }
@@ -384,7 +385,17 @@ class ToolChainOrchestrator(
     private suspend fun executeSequential(
         tools: List<ToolInvocation>,
     ): List<Pair<ToolInvocation, ToolResult>> {
-        return tools.map { tool -> tool to toolExecutor.execute(tool) }
+        return tools.map { tool -> tool to executeTool(tool) }
+    }
+
+    private suspend fun executeTool(tool: ToolInvocation): ToolResult {
+        val isBodyTool = tool.name in BODY_TOOL_NAMES
+        if (isBodyTool) onBodyHardwareBusyChanged(true)
+        return try {
+            toolExecutor.execute(tool)
+        } finally {
+            if (isBodyTool) onBodyHardwareBusyChanged(false)
+        }
     }
     
     /**
@@ -426,6 +437,15 @@ class ToolChainOrchestrator(
         }
     }
     
+    companion object {
+        private val BODY_TOOL_NAMES = setOf(
+            "move_body_joint",
+            "move_body_joints",
+            "body_home",
+            "body_status",
+        )
+    }
+
     private fun logLlmStep(step: Int, parsed: ParsedLlmResponse) {
         val chainLabel = when (val action = parsed.action) {
             is LlmAction.ToolCall -> action.chainStatus.name.lowercase(Locale.ROOT)

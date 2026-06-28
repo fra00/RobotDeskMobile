@@ -4,6 +4,8 @@ import com.example.mydeskrobot.domain.model.RobotEmotion
 import com.example.mydeskrobot.domain.mood.MoodReason
 import com.example.mydeskrobot.domain.mood.RobotMood
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -21,15 +23,15 @@ class BodyExpressionMapperTest {
             forceEmotion = RobotEmotion.ANGRY,
             forceIntensity = 0.65f,
         )
-        val moves = BodyExpressionMapper.resolve(neutral, current)
-        assertEquals(1, moves.size)
-        val joint = moves[0] as BodyMove.Joint
+        val choreography = BodyExpressionMapper.resolve(neutral, current)
+        assertNotNull(choreography)
+        val joint = choreography!!.steps[0] as BodyMove.Joint
         assertEquals(BodyJoint.DISPLAY_PAN, joint.joint)
-        assertEquals(-12, joint.delta)
+        assertEquals(-12, joint.position)
     }
 
     @Test
-    fun eyePoke_confused_headRoll() {
+    fun eyePoke_confused_headRollClosed() {
         val current = RobotMood.fromValence(
             valence = -0.05f,
             since = now,
@@ -37,10 +39,13 @@ class BodyExpressionMapperTest {
             forceEmotion = RobotEmotion.CONFUSED,
             forceIntensity = 0.4f,
         )
-        val moves = BodyExpressionMapper.resolve(neutral, current)
-        assertEquals(1, moves.size)
-        val joint = moves[0] as BodyMove.Joint
-        assertEquals(BodyJoint.HEAD_ROLL, joint.joint)
+        val choreography = BodyExpressionMapper.resolve(neutral, current)
+        assertNotNull(choreography)
+        assertEquals(2, choreography!!.steps.size)
+        val peak = choreography.steps[0] as BodyMove.Joint
+        val reset = choreography.steps[1] as BodyMove.Joint
+        assertEquals(BodyJoint.HEAD_ROLL, peak.joint)
+        assertEquals(0, reset.position)
     }
 
     @Test
@@ -57,12 +62,12 @@ class BodyExpressionMapperTest {
             since = now,
             reason = MoodReason.USER_APOLOGY,
         )
-        val moves = BodyExpressionMapper.resolve(previous, current)
-        assertTrue(moves[0] is BodyMove.Home)
+        val choreography = BodyExpressionMapper.resolve(previous, current)
+        assertTrue(choreography!!.steps[0] is BodyMove.Home)
     }
 
     @Test
-    fun idleLong_bored_microFidget() {
+    fun idleLong_bored_microFidgetReturnsToNeutral() {
         val current = RobotMood.fromValence(
             valence = -0.18f,
             since = now,
@@ -70,10 +75,37 @@ class BodyExpressionMapperTest {
             forceEmotion = RobotEmotion.BORED,
             forceIntensity = 0.3f,
         )
-        val moves = BodyExpressionMapper.resolve(neutral, current)
-        assertEquals(1, moves.size)
-        val joint = moves[0] as BodyMove.Joint
-        assertEquals(BodyJoint.DISPLAY_PAN, joint.joint)
+        val choreography = BodyExpressionMapper.resolve(neutral, current)
+        assertNotNull(choreography)
+        assertEquals(2, choreography!!.steps.size)
+        val reset = choreography.steps[1] as BodyMove.Joint
+        assertEquals(0, reset.position)
+    }
+
+    @Test
+    fun resolveMicroTick_lookAroundWhenBored() {
+        val mood = RobotMood.fromValence(
+            valence = -0.2f,
+            since = 1_000L,
+            reason = MoodReason.IDLE_LONG,
+            forceEmotion = RobotEmotion.BORED,
+            forceIntensity = 0.4f,
+        )
+        val choreography = BodyExpressionMapper.resolveMicroTick(mood, idleMinutes = 20)
+        assertNotNull(choreography)
+        assertEquals(3, choreography!!.steps.size)
+    }
+
+    @Test
+    fun resolveMicroTick_tooSoon_returnsNull() {
+        val mood = RobotMood.fromValence(
+            valence = -0.2f,
+            since = 1_000L,
+            reason = MoodReason.IDLE_LONG,
+            forceEmotion = RobotEmotion.BORED,
+            forceIntensity = 0.4f,
+        )
+        assertNull(BodyExpressionMapper.resolveMicroTick(mood, idleMinutes = 5))
     }
 
     @Test
@@ -85,8 +117,8 @@ class BodyExpressionMapperTest {
             forceEmotion = RobotEmotion.SLEEPING,
             forceIntensity = 1.0f,
         )
-        val moves = BodyExpressionMapper.resolve(neutral, current)
-        assertEquals(BodyMove.SleepPose, moves.single())
+        val choreography = BodyExpressionMapper.resolve(neutral, current)
+        assertEquals(BodyMove.SleepPose, choreography!!.steps.single())
     }
 
     @Test
@@ -103,7 +135,23 @@ class BodyExpressionMapperTest {
             since = now,
             reason = null,
         )
-        val moves = BodyExpressionMapper.resolve(previous, current)
-        assertTrue(moves.single() is BodyMove.Home)
+        val choreography = BodyExpressionMapper.resolve(previous, current)
+        assertTrue(choreography!!.steps.single() is BodyMove.Home)
+    }
+
+    @Test
+    fun moodEmotionChange_toSad_returnsGesture() {
+        val previous = RobotMood.NEUTRAL.copy(since = 0L)
+        val current = RobotMood.fromValence(
+            valence = -0.35f,
+            since = now,
+            reason = MoodReason.NEGATIVE_INTERACTION,
+            forceEmotion = RobotEmotion.SAD,
+            forceIntensity = 0.55f,
+        )
+        val choreography = BodyExpressionMapper.resolve(previous, current)
+        assertNotNull(choreography)
+        val first = choreography!!.steps.first() as BodyMove.Joint
+        assertEquals(BodyJoint.HEAD_TILT, first.joint)
     }
 }

@@ -27,6 +27,7 @@ import kotlin.math.roundToInt
 fun HeartbeatSettingsDialog(
     form: HeartbeatSettingsFormState,
     onFormChange: (HeartbeatSettingsFormState) -> Unit,
+    onManageDomains: () -> Unit,
     onSave: () -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -127,6 +128,12 @@ fun HeartbeatSettingsDialog(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                TextButton(onClick = onManageDomains) {
+                    Text(stringResource(R.string.heartbeat_manage_domains))
+                }
             }
         },
         confirmButton = {

@@ -22,8 +22,14 @@ class ToolRouter(
         val tool = toolMap[invocation.name]
         if (tool == null) {
             Log.w(TAG, "Tool sconosciuto: ${invocation.name}. Disponibili: ${toolMap.keys}")
+            val message = when (invocation.name) {
+                "move_body_joint", "move_body_joints", "body_home", "body_status" ->
+                    "Corpo fisico non attivo. Apri Impostazioni → Corpo robot, abilita il corpo, " +
+                        "inserisci l'URL (es. http://192.168.x.x) e tocca Salva."
+                else -> "Tool sconosciuto: ${invocation.name}"
+            }
             return ToolResult.Error(
-                message = "Tool sconosciuto: ${invocation.name}",
+                message = message,
                 code = "UNKNOWN_TOOL",
                 recoverable = false,
             )

@@ -3,6 +3,7 @@ package com.example.mydeskrobot.presentation.conversation
 import com.example.mydeskrobot.domain.interaction.EyePokeSide
 import com.example.mydeskrobot.domain.llm.LlmProvider
 import com.example.mydeskrobot.presentation.settings.BodySettingsFormState
+import com.example.mydeskrobot.presentation.settings.DeskPresenceSettingsFormState
 import com.example.mydeskrobot.presentation.settings.HeartbeatSettingsFormState
 import com.example.mydeskrobot.presentation.settings.LlmSettingsFormState
 import com.example.mydeskrobot.presentation.settings.LogDaySettingsFormState
@@ -134,6 +135,42 @@ sealed interface ConversationUiEvent {
     data class OnHeartbeatFormChange(val form: HeartbeatSettingsFormState) : ConversationUiEvent
 
     data object OnSaveHeartbeatSettings : ConversationUiEvent
+
+    data object OnOpenDeskPresenceSettings : ConversationUiEvent
+
+    data object OnDismissDeskPresenceSettings : ConversationUiEvent
+
+    data class OnDeskPresenceFormChange(val form: DeskPresenceSettingsFormState) : ConversationUiEvent
+
+    data object OnSaveDeskPresenceSettings : ConversationUiEvent
+
+    data class OnOpenAttentionDomainsSettings(
+        val returnToMain: Boolean = false,
+    ) : ConversationUiEvent
+
+    data object OnDismissAttentionDomainsSettings : ConversationUiEvent
+
+    data class OnToggleAttentionDomain(val domainId: String, val enabled: Boolean) : ConversationUiEvent
+
+    data object OnSaveAttentionDomainsSettings : ConversationUiEvent
+
+    data object OnAddAttentionDomain : ConversationUiEvent
+
+    data class OnEditAttentionDomain(val domainId: String) : ConversationUiEvent
+
+    data class OnDeleteAttentionDomain(val domainId: String) : ConversationUiEvent
+
+    data object OnConfirmDeleteAttentionDomain : ConversationUiEvent
+
+    data object OnDismissDeleteAttentionDomain : ConversationUiEvent
+
+    data class OnAttentionDomainEditorFormChange(
+        val form: com.example.mydeskrobot.presentation.settings.AttentionDomainEditorFormState,
+    ) : ConversationUiEvent
+
+    data object OnSaveAttentionDomainEditor : ConversationUiEvent
+
+    data object OnDismissAttentionDomainEditor : ConversationUiEvent
 
     data object OnClearReasoningLog : ConversationUiEvent
 }

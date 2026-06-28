@@ -72,6 +72,90 @@ Le linee guida dettagliate sono in **`.cursor/rules/*.mdc`**:
 
 Indice guide: `docs/guides/README.md`.
 
+## Panoramica sistema (sintesi documentazione)
+
+**Identità:** non assistente generico ma **compagno di scrivania** — memoria locale trasparente, corpo fisico opzionale (ESP32), proattività situazionale, silenzio come output valido.
+
+**Evoluzione:** da Q&A vocale → **agente cognitivo** con memoria unificata RAG, input paralleli (notifiche, promemoria), heartbeat autonomo e corpo ESP32.
+
+### Mappa documenti
+
+| File | Argomento | Note |
+|------|-----------|------|
+| `docs/TOOL_ARCHITECTURE.md` | Design tool, JSON, catene, 3 layer | SSOT architettura tool |
+| `docs/INPUT_ARCHITECTURE.md` | Bus input, notifiche, policy DEFERRED/BLOCKING | Gate: microfono attivo |
+| `docs/STT_ARCHITECTURE.md` | Pipeline STT unificata (Android/Vosk) | Pausa durante TTS |
+| `docs/SCHEDULED_TASKS.md` | Promemoria vocali | AlarmManager + voce |
+| `docs/MEMORY.md` | Memoria utente, categorie, recall | |
+| `docs/MEMORY_ACCESS.md` | Write/read unificato, `memory_documents.db` | SSOT dialogo |
+| `docs/MEMORY_RECALL_PLANNER.md` | Piano JSON recall per turno vocale | **No fallback Kotlin** se fallisce |
+| `docs/MEMORY_EMBEDDING.md` | RAG semantico ONNX | Hybrid 0.7 cosine + 0.3 token |
+| `docs/MEMORY_REVIEW_FOLLOWUP.md` | Projection guard, budget, safety pin L1 | |
+| `docs/ACTIVITY_LOG.md` | Log Day episodico (7 giorni) | PHYSICAL_NOW, PLAN, SOCIAL_THREAD |
+| `docs/SPATIAL_MEMORY.md` | Stanze, landmark visivi, auto-localizzazione | |
+| `docs/ROBOT_CONTEXT.md` | Profili lavoro/call, silenzio notifiche | |
+| `docs/DESK_PRESENCE.md` | ML Kit presenza scrivania + attention centering corpo | |
+| `docs/BODY_INTEGRATION.md` | ESP32 myDeskBody HTTP REST | Tool HARDWARE |
+| `docs/PROMPT_PHILOSOPHY.md` | Capability + vincoli, non playbook rigido | SSOT labels prompt |
+| `docs/AGENT_REASONING.md` | Tool diretto vs catena, persistent search | `ChainSpeechPolicy` |
+| `docs/ROBOT_EXPRESSIONS.md` | Token `emotion` → occhi | |
+| `docs/nextPromptv1.md` | Persona cognitiva v1.6 | Runtime: `llm_system_prompt.txt` |
+| `docs/LLM_SETTINGS.md` | LM Studio / Gemini | |
+| `docs/WEB_SEARCH.md` | SearXNG + `fetch_url` | |
+| `docs/VISION.md` | Flusso visione (legacy `imageRequired`) | Preferire tool chain |
+| `docs/TODO.md` | Backlog H3–H6 e utility | **SSOT roadmap aperta** |
+| `docs/guides/MEMORIA.md` | Panoramica memoria (IT, umano) | |
+| `docs/guides/MEMORIA_TECNICA.md` | Flussi recall/write (IT, dev) | |
+| `docs/Drafts/AUTONOMOUS_AGENT_VISION.md` | Visione OODA, 6 pilastri autonomia | Draft — vedi avvertenze sotto |
+| `docs/Drafts/SPEAKER_IDENTIFICATION.md` | Speaker ID embedding, privacy, `enroll_speaker` | Draft — §9 dubbi aperti, non implementato |
+| `docs/Drafts/AgentEvolution-GapAnalysis.md` | Gap vs draft Claude | **Obsoleto** (maggio 2026) |
+| `docs/Drafts/STT-Analysis.md` | Bug STT latenza storico | **Obsoleto** — fix in STT_ARCHITECTURE |
+| `docs/Drafts/UNIFIED_MEMORY_RAG_PLAN.md` | Piano RAG unificato | **Obsoleto** — Fase 0–2 done |
+
+### Memoria (due livelli)
+
+| Livello | Ruolo |
+|---------|--------|
+| **Store operativi** | `activity_log.db`, `scheduled_tasks`, `list_items`, `spatial_places` |
+| **Indice cognitivo SSOT** | `memory_documents.db` — unico accesso dialogo |
+
+**Recall vocale:** frase utente → `LlmMemoryRecallPlanner` (JSON) → `recallForQuestion()` → blocco MEMORIA (max 60 righe) → LLM dialogo.
+
+**Write path:** `UnifiedMemoryWriter` + proiezione obbligatoria; `MemoryProjectionGuard` + reconcile settimanale.
+
+**Categorie:** IDENTITY/PREFERENCE/ROUTINE/FACT (permanenti, visibili utente) · OBSERVATION/INTENT/PATTERN (TTL heartbeat, solo robot) · EPISODE/REMINDER/LIST_ITEM/SPATIAL (recall + UI parziale).
+
+**Storage semantics:** fatto duraturo → `save_memory` · task → `add_list_item` TODO · nota → `add_list_item` NOTE · spesa → `add_list_item` SHOPPING · allarme orario → `set_reminder`.
+
+### Autonomia e roadmap
+
+**Loop OODA:** OBSERVE (heartbeat) → ORIENT (`HeartbeatContextBuilder`) → DECIDE (LLM + `speak_confidence`) → ACT (TTS/tool/occhi/silenzio) → REFLECT (`weekly_reflection`).
+
+| Fase | Contenuto | Stato (`docs/TODO.md`) |
+|------|-----------|------------------------|
+| H1 | Heartbeat base (scheduler, playbook, domini, critic, micro-tick) | ✅ Completato |
+| H2 | `speak_confidence`, soglia invasività | ✅ Completato |
+| H3 | State machine emozioni (`MoodManager` + corpo ESP32) | 🟡 Parziale — checklist QA manuale |
+| H4 | Working memory giornaliera | 🟡 Parziale — prompt anti-ripetizione + ignoro utente |
+| H5 | Self-reflection settimanale | 🟡 Parziale — gate mic E2E + consolidamento PATTERN |
+| H6 | Theory of mind (awareness utente) | 🟡 Parziale — feedback loop proattività |
+
+**Scala invasività:** 0 silenzio (80–95%) → 1 solo occhi → 2 voce breve → 3 tool info → 4 tool che modifica → 5 azione senza chiedere (whitelist).
+
+**Regole non negoziabili:** DEFERRED, notte soppressa, robot context SILENT, cooldown 20 min tra proactive speak, cap **3 proactive speak/giorno** (`ProactiveGatePolicy`), mic off = niente tick LLM.
+
+### Stato implementazione
+
+**Fatto:** architettura 3 layer, tool JSON + catene, STT unificato, input notifiche, memoria unificata RAG, recall planner LLM, activity log, spatial memory, robot context, web/meteo/Spotify, body ESP32 + espressione corpo (mood/ephemeral/speaking), desk presence ML Kit + attention centering, heartbeat H1–H2, domini attenzione + critic pass, liste strutturate.
+
+**Backlog:** chiusura H3–H6 (vedi `docs/TODO.md`), news/traduttore/domotica, memory pin Level 2, tool note dedicato, speaker ID (draft).
+
+### Avvertenze documentazione
+
+- **`docs/TODO.md`** è SSOT per roadmap aperta; `docs/Drafts/AUTONOMOUS_AGENT_VISION.md` segna H1–H6 come fatti — **disallineamento noto**, fidarsi di `TODO.md` per ciò che resta da fare.
+- **Draft obsoleti:** non usare `AgentEvolution-GapAnalysis.md`, `STT-Analysis.md`, `UNIFIED_MEMORY_RAG_PLAN.md` come SSOT — citano componenti rimossi o fix già applicati.
+- **WhatsApp/telefono:** tool in tabella sotto, nessuna spec dedicata in `docs/` — comportamento da `AGENTS.md` + codice.
+
 ## Prima di implementare
 
 1. Leggere `00` e `10`.
@@ -94,8 +178,14 @@ Indice guide: `docs/guides/README.md`.
 14. **Per persona cognitiva e policy autonome (spec concettuale + mapping JSON)** → `docs/nextPromptv1.md` (runtime: `llm_system_prompt.txt` + `body_capabilities_prompt.txt`).
 15. **Umore a due livelli (SSOT)** → `MoodManager`: **valenza persistente** (±1, solo eventi codificati) in `STATO ROBOT`; **emotion** LLM = espressione effimera (occhi/TTS, TTL ~30s, non modifica valenza).
 16. **Per memoria spaziale / auto-localizzazione stanza** → `docs/SPATIAL_MEMORY.md`.
-17. Scope minimo: una capability per volta.
-18. Non committare segreti; usare `local.properties.example`.
+17. **Per speaker identification (embedding vocale, privacy, enrollment)** → `docs/Drafts/SPEAKER_IDENTIFICATION.md` (draft).
+18. Scope minimo: una capability per volta.
+19. Non committare segreti; usare `local.properties.example`.
+20. **Test coverage e lacune** → `docs/TODO.md` sezione *Test coverage*.
+
+## Test (sintesi)
+
+~110 unit test in `app/src/test`. Forte su domain/parser/memoria; debole su `ConversationViewModel`, `HeartbeatOrchestrator`, integrazione presenza/corpo runtime. Dettaglio: `docs/TODO.md`.
 
 ## Tool disponibili
 

@@ -53,6 +53,7 @@ import com.example.mydeskrobot.integration.body.BodyPromptProviderImpl
 import com.example.mydeskrobot.integration.input.heartbeat.HeartbeatPlaybookProviderImpl
 import com.example.mydeskrobot.integration.tool.hardware.BodyHomeTool
 import com.example.mydeskrobot.integration.tool.hardware.BodyStatusTool
+import com.example.mydeskrobot.domain.spatial.SpatialScanSession
 import com.example.mydeskrobot.integration.tool.hardware.MoveBodyJointTool
 import com.example.mydeskrobot.integration.tool.hardware.MoveBodyJointsTool
 import com.example.mydeskrobot.memory.unified.UnifiedMemoryFactory
@@ -91,6 +92,7 @@ object ReasoningModule {
         spatialBindings: SpatialRuntimeBindings? = null,
         additionalTools: List<Tool> = emptyList(),
         reasoningLogObserver: ReasoningLogObserver = NoOpReasoningLogObserver,
+        onBodyHardwareBusyChanged: (Boolean) -> Unit = {},
     ): ReasoningEngine {
         val basePrompt = LlmPromptLoader.loadSystemPrompt(context)
         
@@ -150,11 +152,13 @@ object ReasoningModule {
             add(FetchUrlTool())
 
             val bodySettings = runBlocking { BodySettingsRepository(context).load() }
-            BodyApiClient.createIfConfigured(bodySettings)?.let { bodyClient ->
-                add(MoveBodyJointTool(bodyClient))
-                add(MoveBodyJointsTool(bodyClient))
-                add(BodyHomeTool(bodyClient))
-                add(BodyStatusTool(bodyClient))
+            val bodyClient = BodyApiClient.createIfConfigured(bodySettings)
+            SpatialScanSession.configure(bodyAvailable = bodyClient != null)
+            bodyClient?.let { client ->
+                add(MoveBodyJointTool(client))
+                add(MoveBodyJointsTool(client))
+                add(BodyHomeTool(client))
+                add(BodyStatusTool(client))
             }
 
             spatialBindings?.let { spatial ->
@@ -165,7 +169,8 @@ object ReasoningModule {
                         llmClient = llmClient,
                         context = context,
                         onAnalyzed = { landmarks ->
-                            spatial.manager?.updateLastScan(landmarks)
+                            SpatialScanSession.recordScan(landmarks)
+                            spatial.manager?.updateLastScan(SpatialScanSession.mergedLandmarks())
                         },
                     ),
                 )
@@ -199,6 +204,7 @@ object ReasoningModule {
             settingsRepository = BodySettingsRepository(context),
         )
         val heartbeatPlaybookProvider = HeartbeatPlaybookProviderImpl(context)
+        val heartbeatCriticPrompt = LlmPromptLoader.loadHeartbeatCriticPrompt(context)
 
         spatialBindings?.contextProvider?.unifiedMemoryRepository = unifiedMemoryRepository
 
@@ -211,10 +217,12 @@ object ReasoningModule {
             spatialContextProvider = spatialBindings?.contextProvider,
             bodyCapabilitiesProvider = bodyCapabilitiesProvider,
             heartbeatPlaybookProvider = heartbeatPlaybookProvider,
+            heartbeatCriticPrompt = heartbeatCriticPrompt,
             robotContextProvider = robotContextProvider,
             moodContextProvider = moodContextProvider,
             maxChainSteps = 10,
             reasoningLogObserver = reasoningLogObserver,
+            onBodyHardwareBusyChanged = onBodyHardwareBusyChanged,
         )
     }
     

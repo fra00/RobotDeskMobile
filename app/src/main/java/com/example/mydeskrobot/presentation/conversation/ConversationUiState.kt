@@ -35,6 +35,10 @@ data class ConversationUiState(
     val eyeSquishLeft: Boolean = false,
     /** User poked right eye — force closed until cleared. */
     val eyeSquishRight: Boolean = false,
+    /** Latest ML Kit desk occupancy (when presence monitor enabled). */
+    val deskOccupancyState: com.example.mydeskrobot.domain.presence.DeskOccupancyState =
+        com.example.mydeskrobot.domain.presence.DeskOccupancyState.UNKNOWN,
+    val deskPresenceMonitorEnabled: Boolean = false,
 ) {
     val displayText: String
         get() = buildString {

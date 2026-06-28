@@ -33,7 +33,13 @@ Questi input vengono elaborati dal `ReasoningEngine` allo stesso modo delle fras
 
 ### Voce dopo una notifica (standby)
 
-Se il microfono è in **standby** (nessuna sessione vocale attiva), dopo l’annuncio TTS della notifica il robot **apre automaticamente** una sessione vocale: puoi rispondere a voce senza ripetere la hot word. Se eri già in conversazione attiva, la sessione continua come prima.
+**Comportamento attuale (giugno 2026):** dopo l’annuncio TTS della notifica il robot chiama `resumeListeningAfterAssistantTurn()` → torna al loop hotword in **standby** (`WaitingForHotword`). **Non** apre automaticamente una sessione vocale attiva.
+
+Per rispondere a voce senza hot word oggi serve: **tap sullo sfondo** (chiama `HotwordController.activateVoiceSession()`) oppure ripetere la wake phrase.
+
+`activateVoiceSession()` è implementato in `HotwordListeningService` (commento: “after notification TTS in standby”) ma **non è ancora collegato** al flusso post-TTS notifica — backlog opzionale in `docs/TODO.md`.
+
+Se eri già in conversazione attiva (`ActiveListening`), la sessione continua come prima.
 
 ### Differenza Input vs Tool
 
@@ -140,6 +146,19 @@ enum class InputPriority {
 │              └───────────────────────┘                               │
 └──────────────────────────────────────────────────────────────────────┘
 ```
+
+---
+
+## 3.1 Due percorsi verso il ViewModel (nota architetturale)
+
+La maggior parte degli input esterni **non passa** da `InputRouter`:
+
+| Percorso | Chi lo usa | Flusso |
+|----------|------------|--------|
+| **`SystemInputDispatcher`** (diretto) | `RobotNotificationListenerService`, `HeartbeatOrchestrator`, `ReminderAlarmReceiver`, reflection da VM | `emit(InputReceived)` → `ConversationViewModel.onSystemInputReceived` |
+| **`InputRouter`** | Registrato in VM con `HeartbeatInputSource`, ma l’heartbeat **non** chiama `inputRouter.onInput()` | Usato soprattutto per `drainDeferred()` sulla coda condivisa |
+
+`DeferredInputQueue` è condivisa tra VM e router. Non è un bug: è evoluzione incrementale. Unificare su un solo ingresso è debito documentato in `docs/TODO.md`.
 
 ---
 

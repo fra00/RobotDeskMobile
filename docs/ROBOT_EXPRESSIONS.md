@@ -6,20 +6,20 @@ Rendering uses [`EyeExpressionMapper`](app/src/main/java/com/example/mydeskrobot
 
 ## LLM-controlled tokens
 
-| Token | UI | Typical trigger |
-|-------|-----|-----------------|
-| `neutral` | Open calm eyes, subtle brow | Default, "apri gli occhi" |
-| `happy` | Smile sclera, arched brow, bounce | Praise, "sii felice" |
-| `sad` | Droopy sclera, sad brow | Bad news, empathy |
-| `angry` | Inward V-brow, inward pupils, shake | Irritation / eye poke |
-| `surprised` | Wide eyes, high brow, pop scale | Unexpected news |
-| `confused` | Asymmetric eyes, pupil drift | Did not understand |
-| `thinking` | Look up, pupils up | Tools, "aspetta" |
-| `bored` | Half-closed, slow droop | "Che noia" / idle mood |
-| `sleeping` | Eyes closed, no pupil/brow | "Chiudi gli occhi" |
-| `drowsy` | Heavy lids | Night / sleepy |
-| `wink` | One eye closed | "Occhiolino" |
-| `loving` | Soft smile + bounce | Affection |
+| Token | UI eyes | Body gesture (ESP32) | Typical trigger |
+|-------|---------|----------------------|-----------------|
+| `neutral` | Open calm eyes | Head/display center on ephemeral expiry | Default |
+| `happy` | Smile, bounce | Brief nod (`head_tilt`) | Praise, "sii felice" |
+| `sad` | Droopy sclera | Head down then return | Bad news, "sei triste" |
+| `angry` | V-brow, shake | Turn display away | Eye poke |
+| `surprised` | Wide eyes, pop | Quick look-around | Unexpected news |
+| `confused` | Pupil drift | Brief head roll | Unclear request |
+| `thinking` | Look up | — (app phase blocks auto gesture) | Tools |
+| `bored` | Half-closed | Micro pan (heartbeat) | Idle / "che noia" |
+| `sleeping` | Eyes closed | Sleep pose head ~−10° | Night / "dormi" |
+| `drowsy` | Heavy lids | — | Night |
+| `wink` | One eye closed | — | "Occhiolino" |
+| `loving` | Soft smile | Brief nod | Affection |
 
 ## App-controlled (do not send from LLM)
 
@@ -53,4 +53,4 @@ Five behavioral personas from `docs/nextPromptv1.md` map to existing LLM tokens 
 | BORED | `bored` | Long idle (`MoodEngine`) |
 | SLEEPY | `drowsy` / `sleeping` | Night mode |
 
-`STATO ROBOT` (injected) overrides generic examples. Body moves for personas: `body_capabilities_prompt.txt` when ESP32 is configured.
+`STATO ROBOT` (injected) overrides generic examples. Body gestures: `EmotionGestureMapper` + `docs/BODY_INTEGRATION.md` when ESP32 is configured.

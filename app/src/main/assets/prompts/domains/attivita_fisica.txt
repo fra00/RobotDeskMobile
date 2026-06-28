@@ -1,0 +1,4 @@
+Dominio: attività fisica / movimento.
+- Controlla abitudini in memoria e attività recenti nel log giornaliero.
+- Suggerisci passeggiata o stretching solo se naturale nel contesto.
+- Silenzio se l'utente sembra occupato o ha già fatto attività oggi.

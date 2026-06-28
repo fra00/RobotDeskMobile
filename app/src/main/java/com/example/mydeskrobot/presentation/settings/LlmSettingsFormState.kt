@@ -1,6 +1,10 @@
 package com.example.mydeskrobot.presentation.settings
 
+import com.example.mydeskrobot.domain.heartbeat.AttentionDomainState
+import com.example.mydeskrobot.domain.heartbeat.DomainSensitivity
+import com.example.mydeskrobot.domain.heartbeat.DomainTrigger
 import com.example.mydeskrobot.data.heartbeat.HeartbeatSettings
+import com.example.mydeskrobot.data.presence.DeskPresenceSettings
 import com.example.mydeskrobot.data.speech.VoskModelManager
 import com.example.mydeskrobot.domain.llm.LlmProvider
 import com.example.mydeskrobot.domain.llm.LlmSettings
@@ -43,12 +47,22 @@ data class SettingsUiState(
     val showSttDialog: Boolean = false,
     val showNotificationDialog: Boolean = false,
     val showHeartbeatDialog: Boolean = false,
+    val showDeskPresenceDialog: Boolean = false,
+    val showAttentionDomainsDialog: Boolean = false,
+    val showAttentionDomainEditor: Boolean = false,
+    val attentionDomainEditorForm: AttentionDomainEditorFormState = AttentionDomainEditorFormState(),
+    val attentionDomainEditorError: String? = null,
+    val attentionDomainDeleteConfirmId: String? = null,
+    val attentionDomainsReturnToMain: Boolean = false,
+    val attentionDomainsSummary: String = "",
     val showSpatialDialog: Boolean = false,
     val form: LlmSettingsFormState = LlmSettingsFormState(),
     val memoryForm: MemorySettingsFormState = MemorySettingsFormState(),
     val logDayForm: LogDaySettingsFormState = LogDaySettingsFormState(),
     val logDayGroups: List<DayActivityGroupUi> = emptyList(),
     val heartbeatForm: HeartbeatSettingsFormState = HeartbeatSettingsFormState(),
+    val deskPresenceForm: DeskPresenceSettingsFormState = DeskPresenceSettingsFormState(),
+    val attentionDomains: List<AttentionDomainUiState> = emptyList(),
     val voskModelState: VoskModelManager.ModelState = VoskModelManager.ModelState.NotDownloaded,
     val sttProvider: SttProvider = SttProvider.ANDROID,
     val notificationsEnabled: Boolean = false,
@@ -101,3 +115,106 @@ fun HeartbeatSettings.toFormState(): HeartbeatSettingsFormState = HeartbeatSetti
     endHour = endHour,
     proactiveThreshold = proactiveThreshold,
 )
+
+data class DeskPresenceSettingsFormState(
+    val enabled: Boolean = true,
+    val analysisFps: Int = 5,
+    val faceConfidenceThreshold: Float = 0.6f,
+)
+
+fun DeskPresenceSettings.toFormState(): DeskPresenceSettingsFormState = DeskPresenceSettingsFormState(
+    enabled = enabled,
+    analysisFps = analysisFps,
+    faceConfidenceThreshold = faceConfidenceThreshold,
+)
+
+data class AttentionDomainUiState(
+    val id: String,
+    val displayName: String,
+    val enabled: Boolean,
+    val subtitle: String,
+    val isBuiltIn: Boolean = true,
+)
+
+enum class AttentionDomainTriggerType {
+    DAILY,
+    WEEKLY,
+    EVENT_PHOTO,
+    EVENT_ROOM,
+}
+
+enum class AttentionDomainSensitivityOption {
+    LOW,
+    MEDIUM,
+    HIGH,
+}
+
+data class AttentionDomainEditorFormState(
+    val editingId: String? = null,
+    val displayName: String = "",
+    val description: String = "",
+    val triggerType: AttentionDomainTriggerType = AttentionDomainTriggerType.DAILY,
+    val triggerHour: Int = 12,
+    val triggerDayOfWeek: Int = java.util.Calendar.MONDAY,
+    val sensitivity: AttentionDomainSensitivityOption = AttentionDomainSensitivityOption.MEDIUM,
+    val requiresPresenceCheck: Boolean = false,
+    val canUseCamera: Boolean = false,
+    val enabled: Boolean = true,
+)
+
+fun AttentionDomainState.toEditorForm(): AttentionDomainEditorFormState {
+    val triggerType = when (val t = trigger) {
+        is DomainTrigger.TimeDaily -> AttentionDomainTriggerType.DAILY
+        is DomainTrigger.TimeWeekly -> AttentionDomainTriggerType.WEEKLY
+        is DomainTrigger.Event -> when (t.eventId) {
+            "nuova_foto" -> AttentionDomainTriggerType.EVENT_PHOTO
+            "cambio_stanza" -> AttentionDomainTriggerType.EVENT_ROOM
+            else -> AttentionDomainTriggerType.EVENT_PHOTO
+        }
+    }
+    val sensitivityOption = when (sensitivity) {
+        DomainSensitivity.LOW -> AttentionDomainSensitivityOption.LOW
+        DomainSensitivity.MEDIUM -> AttentionDomainSensitivityOption.MEDIUM
+        DomainSensitivity.HIGH -> AttentionDomainSensitivityOption.HIGH
+    }
+    return AttentionDomainEditorFormState(
+        editingId = id,
+        displayName = displayName,
+        description = userPrompt.orEmpty(),
+        triggerType = triggerType,
+        triggerHour = (trigger as? DomainTrigger.TimeDaily)?.hour ?: 12,
+        triggerDayOfWeek = (trigger as? DomainTrigger.TimeWeekly)?.dayOfWeek ?: java.util.Calendar.MONDAY,
+        sensitivity = sensitivityOption,
+        requiresPresenceCheck = requiresPresenceCheck,
+        canUseCamera = canUseCamera,
+        enabled = enabled,
+    )
+}
+
+fun AttentionDomainEditorFormState.toDomainState(
+    resolvedId: String,
+): AttentionDomainState {
+    val trigger = when (triggerType) {
+        AttentionDomainTriggerType.DAILY -> DomainTrigger.TimeDaily(hour = triggerHour)
+        AttentionDomainTriggerType.WEEKLY -> DomainTrigger.TimeWeekly(dayOfWeek = triggerDayOfWeek)
+        AttentionDomainTriggerType.EVENT_PHOTO -> DomainTrigger.Event(eventId = "nuova_foto")
+        AttentionDomainTriggerType.EVENT_ROOM -> DomainTrigger.Event(eventId = "cambio_stanza")
+    }
+    val sensitivityEnum = when (sensitivity) {
+        AttentionDomainSensitivityOption.LOW -> DomainSensitivity.LOW
+        AttentionDomainSensitivityOption.MEDIUM -> DomainSensitivity.MEDIUM
+        AttentionDomainSensitivityOption.HIGH -> DomainSensitivity.HIGH
+    }
+    return AttentionDomainState(
+        id = resolvedId,
+        displayName = displayName.trim(),
+        enabled = enabled,
+        isBuiltIn = false,
+        userPrompt = description.trim(),
+        trigger = trigger,
+        sensitivity = sensitivityEnum,
+        lastCheckedAt = null,
+        requiresPresenceCheck = requiresPresenceCheck,
+        canUseCamera = canUseCamera,
+    )
+}

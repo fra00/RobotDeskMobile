@@ -16,6 +16,7 @@ import com.example.mydeskrobot.domain.model.BoredIdleConfig
 import com.example.mydeskrobot.domain.time.NightModeConfig
 import com.example.mydeskrobot.domain.speech.WakePhraseMatcher
 import com.example.mydeskrobot.domain.vision.VisionImageCapture
+import com.example.mydeskrobot.integration.body.BodyHardwareBusyGate
 import com.example.mydeskrobot.integration.ReasoningModule
 import com.example.mydeskrobot.integration.mood.DelegatingMoodContextProvider
 import com.example.mydeskrobot.data.spatial.SpatialContextRepository
@@ -191,6 +192,7 @@ class ConversationViewModelFactory(
             contextProvider = DelegatingSpatialContextProvider(),
         )
         val reasoningLogBuffer = ReasoningLogBuffer()
+        val bodyHardwareBusyGate = BodyHardwareBusyGate()
         val reasoningEngine = ReasoningModule.createReasoningEngine(
             context = appContext,
             visionImageCapture = visionImageCapture,
@@ -198,6 +200,7 @@ class ConversationViewModelFactory(
             moodContextProvider = moodContextProvider,
             spatialBindings = spatialBindings,
             reasoningLogObserver = reasoningLogBuffer,
+            onBodyHardwareBusyChanged = { bodyHardwareBusyGate.isBusy = it },
         )
 
         return ConversationViewModel(
@@ -217,6 +220,7 @@ class ConversationViewModelFactory(
             moodContextProvider = moodContextProvider,
             spatialBindings = spatialBindings,
             reasoningLogBuffer = reasoningLogBuffer,
+            bodyHardwareBusyGate = bodyHardwareBusyGate,
         ) as T
     }
 

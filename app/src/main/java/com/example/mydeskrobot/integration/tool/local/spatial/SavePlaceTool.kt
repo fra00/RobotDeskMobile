@@ -1,6 +1,7 @@
 package com.example.mydeskrobot.integration.tool.local.spatial
 
 import com.example.mydeskrobot.data.spatial.SpatialPlaceRepository
+import com.example.mydeskrobot.domain.spatial.SpatialScanSession
 import com.example.mydeskrobot.memory.unified.UnifiedMemoryWriter
 import com.example.mydeskrobot.integration.tool.Tool
 import com.example.mydeskrobot.integration.tool.ToolLocality
@@ -19,7 +20,8 @@ class SavePlaceTool(
 
     override fun getDefinition(): ToolDefinition = ToolDefinition(
         name = name,
-        description = "Create or update a memorized room/place from landmarks and optional label.",
+        description = "Create or update a memorized room/place from landmarks and optional label. " +
+            "New places require multi-angle analyze_room_scene first (3 with body, 1 without).",
         parameters = listOf(
             ToolParameter("label", "string", "Room name in Italian (e.g. studio, camera)", required = true),
             ToolParameter("landmarks", "array", "Landmark list from vision", required = true),
@@ -37,14 +39,25 @@ class SavePlaceTool(
         if (label.isBlank()) {
             return ToolResult.Error(message = "Parametro label mancante", code = "MISSING_PARAM")
         }
-        val landmarks = SpatialToolSupport.parseLandmarks(invocation.params)
+
+        val placeId = SpatialToolSupport.parseOptionalLong(invocation.params, "place_id")
+        val isNewPlace = placeId == null
+        if (isNewPlace && !SpatialScanSession.isReadyForNewPlaceSave()) {
+            return ToolResult.Error(
+                message = SpatialScanSession.scanIncompleteMessage(),
+                code = "SPATIAL_SCAN_INCOMPLETE",
+                recoverable = true,
+            )
+        }
+
+        val paramLandmarks = SpatialToolSupport.parseLandmarks(invocation.params)
+        val landmarks = (SpatialScanSession.mergedLandmarks() + paramLandmarks).distinct()
         if (landmarks.isEmpty()) {
             return ToolResult.Error(message = "Parametro landmarks mancante", code = "MISSING_PARAM")
         }
 
         val description = (invocation.params["description"] as? String).orEmpty()
         val roomType = SpatialToolSupport.parseRoomType(invocation.params)
-        val placeId = SpatialToolSupport.parseOptionalLong(invocation.params, "place_id")
         val aliases = when (val raw = invocation.params["aliases"]) {
             is List<*> -> raw.filterIsInstance<String>()
             else -> emptyList()
@@ -67,6 +80,9 @@ class SavePlaceTool(
             roomType = (saved?.roomType ?: roomType).name.lowercase(),
             description = saved?.description ?: description,
         )
+        if (isNewPlace) {
+            SpatialScanSession.reset()
+        }
         return ToolResult.Success(
             data = mapOf(
                 "place_id" to id,

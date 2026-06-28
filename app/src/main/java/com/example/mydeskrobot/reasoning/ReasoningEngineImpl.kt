@@ -1,5 +1,6 @@
 package com.example.mydeskrobot.reasoning
 
+import com.example.mydeskrobot.integration.input.heartbeat.HeartbeatCriticParser
 import com.example.mydeskrobot.reasoning.llm.LlmClient
 import com.example.mydeskrobot.reasoning.memory.FreshVisionVerifyPrompt
 import com.example.mydeskrobot.reasoning.memory.MemoryRecallPlan
@@ -8,6 +9,8 @@ import com.example.mydeskrobot.reasoning.memory.MemoryRetrievalProfile
 import com.example.mydeskrobot.reasoning.memory.RecallPlanException
 import com.example.mydeskrobot.reasoning.memory.RecallPlanFailure
 import com.example.mydeskrobot.reasoning.memory.userMessage
+import com.example.mydeskrobot.reasoning.model.CriticResult
+import com.example.mydeskrobot.reasoning.model.ConversationMessage
 import com.example.mydeskrobot.reasoning.model.IntermediateResponse
 import com.example.mydeskrobot.reasoning.model.ReasoningResult
 import com.example.mydeskrobot.reasoning.model.RobotInput
@@ -36,12 +39,29 @@ class ReasoningEngineImpl(
     private val robotContextProvider: RobotContextProvider? = null,
     private val moodContextProvider: MoodContextProvider? = null,
     private val heartbeatPlaybookProvider: HeartbeatPlaybookProvider? = null,
+    private val heartbeatCriticPrompt: String? = null,
     maxChainSteps: Int = 10,
     private val reasoningLogObserver: ReasoningLogObserver = NoOpReasoningLogObserver,
+    private val onBodyHardwareBusyChanged: (Boolean) -> Unit = {},
 ) : ReasoningEngine {
 
     companion object {
         private const val DATETIME_PLACEHOLDER = "{{CURRENT_DATETIME}}"
+
+        private val BODY_TOOL_NAMES = setOf(
+            "move_body_joint",
+            "move_body_joints",
+            "body_home",
+            "body_status",
+        )
+
+        private const val BODY_UNAVAILABLE_SECTION = """
+PHYSICAL BODY — NOT CONNECTED
+- move_body_joint, move_body_joints, body_home, body_status are NOT in AVAILABLE TOOLS.
+- Do NOT call these tools. Ignore few-shot JSON in the base prompt that references them.
+- If the user asks to move the head or body, reply briefly in Italian: the ESP32 body is not active — open Impostazioni → Corpo robot, enable it, set the base URL, tap Salva (or Prova connessione then Salva).
+- When connected: head_tilt negative delta lowers the head, positive raises it.
+"""
     }
     
     private val responseParser = LlmResponseParser()
@@ -60,6 +80,7 @@ class ReasoningEngineImpl(
                     refreshSystemPromptForVision(orchestrator.getOriginalUserText())
                 }
             },
+            onBodyHardwareBusyChanged = onBodyHardwareBusyChanged,
             reasoningLogObserver = reasoningLogObserver,
         )
     }
@@ -111,6 +132,42 @@ class ReasoningEngineImpl(
         }
         refreshSystemPromptForSystemInput(envelope.input)
         return orchestrator.processSystemInput(envelope, onIntermediateResponse)
+    }
+
+    override suspend fun processCriticPass(
+        proposal: String,
+        domainId: String,
+        domainName: String?,
+        recentInterventions: List<String>,
+    ): CriticResult {
+        val criticPrompt = heartbeatCriticPrompt
+        if (criticPrompt.isNullOrBlank() || proposal.isBlank()) {
+            return CriticResult.Approve(proposal)
+        }
+
+        val userMessage = buildString {
+            appendLine("DOMINIO: ${domainName ?: domainId}")
+            appendLine("PROPOSTA VOCALE:")
+            appendLine(proposal)
+            if (recentInterventions.isNotEmpty()) {
+                appendLine("INTERVENTI RECENTI SUL DOMINIO:")
+                recentInterventions.forEach { appendLine("- $it") }
+            }
+        }
+
+        val llmResult = llmClient.chat(
+            messages = listOf(ConversationMessage.User(userMessage)),
+            systemPrompt = criticPrompt,
+        )
+
+        val content = llmResult.getOrElse { error ->
+            return CriticResult.Failed(
+                message = error.message ?: "Critic LLM error",
+                fallbackText = proposal,
+            )
+        }.content
+
+        return HeartbeatCriticParser.parse(content, proposal)
     }
     
     override fun reset() {
@@ -177,7 +234,7 @@ class ReasoningEngineImpl(
         val recallPlan = recallPlanResult.getOrNull()
 
         val toolPrompt = buildFullSystemPrompt()
-        val bodyContext = bodyCapabilitiesProvider?.buildContextSection().orEmpty()
+        val bodyContext = resolveBodyContextSection()
         val heartbeatContext = heartbeatPlaybookProvider
             ?.buildContextSection(systemInput)
             .orEmpty()
@@ -228,6 +285,15 @@ class ReasoningEngineImpl(
                 }
             },
         )
+    }
+
+    private suspend fun resolveBodyContextSection(): String {
+        val bodyToolsAvailable = BODY_TOOL_NAMES.any { toolExecutor.isToolAvailable(it) }
+        return if (bodyToolsAvailable) {
+            bodyCapabilitiesProvider?.buildContextSection().orEmpty()
+        } else {
+            BODY_UNAVAILABLE_SECTION
+        }
     }
 
     private suspend fun resolveRecallPlan(

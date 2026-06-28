@@ -98,6 +98,35 @@ class InputRouter(
     }
 
     /**
+     * Route a pre-built envelope (e.g. replay from deferred queue).
+     */
+    fun routeEnvelope(envelope: com.example.mydeskrobot.reasoning.model.SystemInputEnvelope) {
+        val uiState = getUiState()
+
+        if (!InputPolicyEngine.canAcceptInput(uiState)) {
+            Log.d(TAG, "Mic not active, dropping routed envelope")
+            return
+        }
+
+        if (InputPolicyEngine.shouldSuppressForNightMode(uiState, envelope.input.priority)) {
+            Log.d(TAG, "Night mode, suppressing routed envelope")
+            return
+        }
+
+        if (deferredQueue.wasRecentlySeen(envelope.dedupKey)) {
+            Log.d(TAG, "Duplicate routed envelope, dedupKey=${envelope.dedupKey}")
+            return
+        }
+
+        if (InputPolicyEngine.canProcessNow(envelope.input.priority, uiState)) {
+            deferredQueue.markSeen(envelope.dedupKey)
+            SystemInputDispatcher.emit(SystemInputEvent.InputReceived(envelope))
+        } else {
+            deferredQueue.enqueue(envelope)
+        }
+    }
+
+    /**
      * Drain deferred inputs when the robot becomes idle.
      * Called by ViewModel after completing a turn.
      * @return List of envelopes to process

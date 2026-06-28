@@ -11,6 +11,7 @@ import com.example.mydeskrobot.domain.hotword.HotwordEvent
 import com.example.mydeskrobot.domain.hotword.HotwordEventDispatcher
 import com.example.mydeskrobot.domain.hotword.SessionEndReason
 import com.example.mydeskrobot.domain.input.SystemInputDispatcher
+import com.example.mydeskrobot.domain.input.HeartbeatMicroTick
 import com.example.mydeskrobot.domain.input.SystemInputEvent
 import com.example.mydeskrobot.domain.memory.ConversationTopicExtractor
 import com.example.mydeskrobot.domain.model.BoredIdleConfig
@@ -29,6 +30,7 @@ import com.example.mydeskrobot.domain.speech.EchoSpeechFilter
 import com.example.mydeskrobot.domain.speech.MarkdownStripper
 import com.example.mydeskrobot.domain.speech.VoiceConfirmationDecision
 import com.example.mydeskrobot.domain.speech.VoiceConfirmationMatcher
+import com.example.mydeskrobot.domain.speech.VoiceDebugCommandMatcher
 import com.example.mydeskrobot.domain.llm.LlmEmotionMapper
 import com.example.mydeskrobot.domain.llm.LlmSettings
 import com.example.mydeskrobot.domain.llm.LlmSettingsRepository
@@ -52,6 +54,7 @@ import com.example.mydeskrobot.memory.extract.MemoryExtractionService
 import com.example.mydeskrobot.memory.unified.embedding.MemoryEmbeddingBootstrap
 import com.example.mydeskrobot.memory.unified.MemoryProjectionBootstrap
 import com.example.mydeskrobot.presentation.settings.BodySettingsFormState
+import com.example.mydeskrobot.presentation.settings.DeskPresenceSettingsFormState
 import com.example.mydeskrobot.presentation.settings.HeartbeatSettingsFormState
 import com.example.mydeskrobot.presentation.settings.LlmSettingsFormState
 import com.example.mydeskrobot.presentation.settings.ListItemUi
@@ -66,6 +69,11 @@ import com.example.mydeskrobot.presentation.settings.toUi
 import com.example.mydeskrobot.presentation.settings.SpatialPlaceUi
 import com.example.mydeskrobot.presentation.settings.SettingsUiState
 import com.example.mydeskrobot.presentation.settings.toDomain
+import com.example.mydeskrobot.presentation.settings.AttentionDomainEditorFormState
+import com.example.mydeskrobot.presentation.settings.AttentionDomainUiState
+import com.example.mydeskrobot.presentation.settings.toDomainState
+import com.example.mydeskrobot.presentation.settings.toEditorForm
+import com.example.mydeskrobot.domain.heartbeat.AttentionDomainValidator
 import com.example.mydeskrobot.presentation.settings.toFormState
 import com.example.mydeskrobot.reasoning.ReasoningEngine
 import com.example.mydeskrobot.reasoning.model.ConversationMessage
@@ -75,6 +83,9 @@ import com.example.mydeskrobot.reasoning.model.RobotInput
 import com.example.mydeskrobot.reasoning.model.RobotProfile
 import com.example.mydeskrobot.reasoning.model.SystemInputEnvelope
 import com.example.mydeskrobot.integration.input.DeferredInputQueue
+import com.example.mydeskrobot.integration.input.InputRouter
+import com.example.mydeskrobot.integration.input.heartbeat.HeartbeatInputSource
+import com.example.mydeskrobot.reasoning.model.CriticResult
 import com.example.mydeskrobot.integration.input.InputPolicyEngine
 import com.example.mydeskrobot.data.check.FireAndCheckRepository
 import com.example.mydeskrobot.data.scheduled.ScheduledTaskAlarmScheduler
@@ -82,6 +93,7 @@ import com.example.mydeskrobot.data.scheduled.ScheduledTaskRepository
 import com.example.mydeskrobot.domain.pending.PendingInboxKind
 import com.example.mydeskrobot.data.context.RobotContextRepository
 import com.example.mydeskrobot.data.pending.UnannouncedNotificationRepository
+import com.example.mydeskrobot.memory.unified.UnifiedMemoryRepository
 import com.example.mydeskrobot.memory.unified.UnifiedMemoryWriter
 import com.example.mydeskrobot.data.body.BodySettings
 import com.example.mydeskrobot.data.body.BodySettingsRepository
@@ -90,6 +102,8 @@ import com.example.mydeskrobot.integration.body.BodyApiClient
 import com.example.mydeskrobot.integration.body.BodyApiResult
 import com.example.mydeskrobot.integration.body.BodyExpressionContext
 import com.example.mydeskrobot.integration.body.BodyExpressionController
+import com.example.mydeskrobot.integration.body.BodyExpressionMapper
+import com.example.mydeskrobot.integration.body.BodyHardwareBusyGate
 import com.example.mydeskrobot.integration.body.BodyUrl
 import com.example.mydeskrobot.data.input.InputSettingsRepository
 import com.example.mydeskrobot.data.mood.MoodRepository
@@ -100,6 +114,7 @@ import com.example.mydeskrobot.domain.awareness.UserStateTracker
 import com.example.mydeskrobot.domain.context.RobotContextPolicy
 import com.example.mydeskrobot.domain.interaction.EyePokeSide
 import com.example.mydeskrobot.domain.interaction.EyePokeTracker
+import com.example.mydeskrobot.domain.mood.EphemeralExpression
 import com.example.mydeskrobot.domain.mood.MoodManager
 import com.example.mydeskrobot.domain.mood.MoodTrigger
 import com.example.mydeskrobot.domain.mood.RobotMood
@@ -108,8 +123,23 @@ import com.example.mydeskrobot.domain.mood.UserInteractionToneDetector
 import com.example.mydeskrobot.integration.mood.DelegatingMoodContextProvider
 import com.example.mydeskrobot.integration.spatial.SpatialRuntimeBindings
 import com.example.mydeskrobot.domain.spatial.SpatialIntentDetector
+import com.example.mydeskrobot.domain.spatial.SpatialScanSession
 import com.example.mydeskrobot.domain.reflection.WeeklyStats
+import com.example.mydeskrobot.integration.input.heartbeat.VoiceHeartbeatTriggerResult
+import com.example.mydeskrobot.integration.input.heartbeat.HeartbeatModule
 import com.example.mydeskrobot.integration.input.heartbeat.HeartbeatScheduler
+import com.example.mydeskrobot.integration.presence.DeskPresenceMonitor
+import com.example.mydeskrobot.integration.presence.UserAttentionCentering
+import com.example.mydeskrobot.data.presence.DeskPresenceSettingsRepository
+import com.example.mydeskrobot.data.presence.DeskPresenceStateStore
+import com.example.mydeskrobot.data.hotword.VoiceSessionState
+import com.example.mydeskrobot.data.heartbeat.AttentionDomainRepository
+import com.example.mydeskrobot.data.heartbeat.ProactiveInterventionRepository
+import com.example.mydeskrobot.domain.presence.AttentionTriggerMatcher
+import com.example.mydeskrobot.domain.presence.DeskPresenceGate
+import com.example.mydeskrobot.domain.heartbeat.DomainSensitivity
+import com.example.mydeskrobot.domain.heartbeat.DomainTrigger
+import com.example.mydeskrobot.integration.input.heartbeat.ProactiveTracker
 import com.example.mydeskrobot.R
 import com.example.mydeskrobot.data.speech.SttSettingsRepository
 import com.example.mydeskrobot.data.speech.VoskModelManager
@@ -142,6 +172,7 @@ class ConversationViewModel(
     private val moodContextProvider: DelegatingMoodContextProvider,
     private val spatialBindings: SpatialRuntimeBindings,
     private val reasoningLogBuffer: ReasoningLogBuffer,
+    private val bodyHardwareBusyGate: BodyHardwareBusyGate,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(
@@ -229,15 +260,53 @@ class ConversationViewModel(
     private val fireAndCheckRepository = FireAndCheckRepository.create(appContext)
     private val scheduledTaskRepository = ScheduledTaskRepository.create(appContext)
     private val heartbeatSettingsRepository = HeartbeatSettingsRepository(appContext)
+    private val deskPresenceSettingsRepository = DeskPresenceSettingsRepository(appContext)
+    private val attentionDomainRepository = AttentionDomainRepository(appContext)
+    private val proactiveInterventionRepository = ProactiveInterventionRepository(appContext)
+    private val heartbeatOrchestrator by lazy { HeartbeatModule.createOrchestrator(appContext) }
+    private val deskPresenceMonitor by lazy {
+        DeskPresenceMonitor(appContext, deskPresenceSettingsRepository, viewModelScope)
+    }
+    private val userAttentionCentering by lazy {
+        UserAttentionCentering(
+            bodySettingsProvider = { bodySettingsRepository.load() },
+            deskPresenceSettingsProvider = { deskPresenceSettingsRepository.load() },
+        )
+    }
+    private val proactiveTracker by lazy {
+        ProactiveTracker(
+            workingMemoryRepository = workingMemoryRepository,
+            weeklyStatsRepository = weeklyStatsRepository,
+            interventionRepository = proactiveInterventionRepository,
+            moodManager = moodManager,
+            scope = viewModelScope,
+        )
+    }
     private val bodySettingsRepository = BodySettingsRepository(appContext)
     /** Tracks body settings baked into [reasoningEngine]; refreshed before each LLM turn. */
     private var engineBodySettingsKey: String? = null
     /** True when the current system-input turn must skip TTS (silent notification mode). */
     private var suppressTtsForCurrentTurn = false
     private var pendingSilentNotificationEnvelope: SystemInputEnvelope? = null
+    /** Notification dedup key to mark read after successful TTS (normal notification mode). */
+    private var pendingAnnouncedNotificationDedupKey: String? = null
 
     /** True when the current LLM turn was triggered by a heartbeat input. */
     private var currentInputIsHeartbeat = false
+    /** Active heartbeat domain context for critic pass and tracking. */
+    private var currentHeartbeatDomainId: String? = null
+    private var currentHeartbeatDomainName: String? = null
+    private var currentHeartbeatDomainSensitivity: DomainSensitivity? = null
+    private var currentHeartbeatInterventions: List<String> = emptyList()
+    private var lastObservedPlaceId: Long? = null
+
+    private val inputRouter by lazy {
+        InputRouter(
+            sources = listOf(HeartbeatInputSource()),
+            deferredQueue = deferredInputQueue,
+            getUiState = { _uiState.value },
+        )
+    }
     private val moodRepository = MoodRepository(appContext)
     private val moodManager = MoodManager(moodRepository, scope = viewModelScope)
     private val spatialContextManager by lazy { spatialBindings.bindManager(viewModelScope) }
@@ -249,12 +318,8 @@ class ConversationViewModel(
     private val workingMemoryRepository = WorkingMemoryRepository(appContext)
     private val weeklyStatsRepository = WeeklyStatsRepository(appContext)
     private val userAwarenessRepository = UserAwarenessRepository(appContext)
-    /** Timestamp of last proactive speak, for tracking response. */
-    private var lastProactiveSpeakTime: Long? = null
     /** Last user phrase for working-memory topic extraction after a completed turn. */
     private var lastUserPhraseForTopic: String? = null
-    /** Topic of last proactive speak, for attribution. */
-    private var lastProactiveTopic: String? = null
 
     /** True while waiting for sì/no after [ReasoningResult.NeedsConfirmation]. */
     private var confirmationPending = false
@@ -320,6 +385,15 @@ class ConversationViewModel(
         moodContextProvider.snapshotProvider = { moodManager.currentMood.value }
         viewModelScope.launch {
             spatialContextManager.initialize()
+            spatialContextManager.snapshot.collect { snapshot ->
+                val placeId = snapshot.currentPlaceId
+                if (placeId != null && lastObservedPlaceId != null && placeId != lastObservedPlaceId) {
+                    heartbeatOrchestrator.onDomainEvent("cambio_stanza")
+                }
+                if (placeId != null) {
+                    lastObservedPlaceId = placeId
+                }
+            }
         }
         viewModelScope.launch {
             HotwordEventDispatcher.events.collect { event ->
@@ -337,7 +411,13 @@ class ConversationViewModel(
             SystemInputDispatcher.events.collect { event ->
                 when (event) {
                     is SystemInputEvent.InputReceived -> onSystemInputReceived(event.envelope)
+                    is SystemInputEvent.MicroTick -> onMicroTickReceived(event.tick)
                 }
+            }
+        }
+        viewModelScope.launch {
+            DeskPresenceStateStore.occupancy.collect { occupancy ->
+                _uiState.update { it.copy(deskOccupancyState = occupancy.state) }
             }
         }
         memoryExtractionScheduler.start()
@@ -465,6 +545,23 @@ class ConversationViewModel(
             ConversationUiEvent.OnDismissHeartbeatSettings -> dismissHeartbeatSettings()
             is ConversationUiEvent.OnHeartbeatFormChange -> updateHeartbeatForm(event.form)
             ConversationUiEvent.OnSaveHeartbeatSettings -> saveHeartbeatSettings()
+            ConversationUiEvent.OnOpenDeskPresenceSettings -> openDeskPresenceSettings()
+            ConversationUiEvent.OnDismissDeskPresenceSettings -> dismissDeskPresenceSettings()
+            is ConversationUiEvent.OnDeskPresenceFormChange -> updateDeskPresenceForm(event.form)
+            ConversationUiEvent.OnSaveDeskPresenceSettings -> saveDeskPresenceSettings()
+            is ConversationUiEvent.OnOpenAttentionDomainsSettings ->
+                openAttentionDomainsSettings(event.returnToMain)
+            ConversationUiEvent.OnDismissAttentionDomainsSettings -> dismissAttentionDomainsSettings()
+            is ConversationUiEvent.OnToggleAttentionDomain -> toggleAttentionDomain(event.domainId, event.enabled)
+            ConversationUiEvent.OnSaveAttentionDomainsSettings -> saveAttentionDomainsSettings()
+            ConversationUiEvent.OnAddAttentionDomain -> openAddAttentionDomain()
+            is ConversationUiEvent.OnEditAttentionDomain -> openEditAttentionDomain(event.domainId)
+            is ConversationUiEvent.OnDeleteAttentionDomain -> requestDeleteAttentionDomain(event.domainId)
+            ConversationUiEvent.OnConfirmDeleteAttentionDomain -> confirmDeleteAttentionDomain()
+            ConversationUiEvent.OnDismissDeleteAttentionDomain -> dismissDeleteAttentionDomain()
+            is ConversationUiEvent.OnAttentionDomainEditorFormChange -> updateAttentionDomainEditorForm(event.form)
+            ConversationUiEvent.OnSaveAttentionDomainEditor -> saveAttentionDomainEditor()
+            ConversationUiEvent.OnDismissAttentionDomainEditor -> dismissAttentionDomainEditor()
             ConversationUiEvent.OnOpenBodySettings -> openBodySettings()
             ConversationUiEvent.OnDismissBodySettings -> dismissBodySettings()
             is ConversationUiEvent.OnBodyFormChange -> updateBodyForm(event.form)
@@ -528,15 +625,22 @@ class ConversationViewModel(
             val accessGranted = inputSettingsRepository.isNotificationAccessGranted()
             val allowedPackages = inputSettingsRepository.getAllowedPackages()
             refreshVoskModelState()
-            _settingsUiState.update { 
+            val domains = attentionDomainRepository.listStates()
+            val enabledDomains = domains.count { it.enabled }
+            _settingsUiState.update {
                 it.copy(
-                    showMainDialog = true, 
+                    showMainDialog = true,
                     feedbackMessage = null,
                     sttProvider = currentProvider,
                     notificationsEnabled = notificationsEnabled,
                     notificationAccessGranted = accessGranted,
                     notificationAllowedPackages = allowedPackages,
-                ) 
+                    attentionDomainsSummary = appContext.getString(
+                        R.string.attention_domains_summary,
+                        enabledDomains,
+                        domains.size,
+                    ),
+                )
             }
         }
     }
@@ -1311,6 +1415,11 @@ class ConversationViewModel(
                         appContext.getString(R.string.body_status_moving_no)
                     }
                     val updatedUrl = BodyUrl.normalize(status.urlIp.orEmpty()).ifBlank { normalizedUrl }
+                    if (form.enabled) {
+                        bodySettingsRepository.save(enabled = true, baseUrl = updatedUrl)
+                        val llmSettings = llmSettingsRepository.load()
+                        reloadReasoningEngine(llmSettings)
+                    }
                     _settingsUiState.update { state ->
                         state.copy(
                             bodyForm = state.bodyForm.copy(baseUrl = updatedUrl),
@@ -1405,6 +1514,271 @@ class ConversationViewModel(
                     showHeartbeatDialog = false,
                     showMainDialog = true,
                     feedbackMessage = appContext.getString(R.string.heartbeat_settings_saved),
+                    feedbackIsError = false,
+                )
+            }
+        }
+    }
+
+    private fun openDeskPresenceSettings() {
+        viewModelScope.launch {
+            val settings = deskPresenceSettingsRepository.load()
+            _settingsUiState.update {
+                it.copy(
+                    showMainDialog = false,
+                    showDeskPresenceDialog = true,
+                    deskPresenceForm = settings.toFormState(),
+                    feedbackMessage = null,
+                )
+            }
+        }
+    }
+
+    private fun dismissDeskPresenceSettings() {
+        _settingsUiState.update {
+            it.copy(showDeskPresenceDialog = false, showMainDialog = true)
+        }
+    }
+
+    private fun updateDeskPresenceForm(form: DeskPresenceSettingsFormState) {
+        _settingsUiState.update { it.copy(deskPresenceForm = form, feedbackMessage = null) }
+    }
+
+    private fun saveDeskPresenceSettings() {
+        val form = _settingsUiState.value.deskPresenceForm
+        viewModelScope.launch {
+            deskPresenceSettingsRepository.update(
+                enabled = form.enabled,
+                analysisFps = form.analysisFps,
+                faceConfidenceThreshold = form.faceConfidenceThreshold,
+            )
+            if (form.enabled && _uiState.value.isHotwordListeningActive) {
+                deskPresenceMonitor.stop()
+                deskPresenceMonitor.start()
+            } else {
+                deskPresenceMonitor.stop()
+            }
+            _uiState.update { it.copy(deskPresenceMonitorEnabled = form.enabled) }
+            _settingsUiState.update {
+                it.copy(
+                    showDeskPresenceDialog = false,
+                    showMainDialog = true,
+                    feedbackMessage = appContext.getString(R.string.desk_presence_settings_saved),
+                    feedbackIsError = false,
+                )
+            }
+        }
+    }
+
+    private fun openAttentionDomainsSettings(returnToMain: Boolean) {
+        viewModelScope.launch {
+            refreshAttentionDomainsList()
+            _settingsUiState.update {
+                it.copy(
+                    showMainDialog = false,
+                    showHeartbeatDialog = false,
+                    showAttentionDomainsDialog = true,
+                    attentionDomainsReturnToMain = returnToMain,
+                )
+            }
+        }
+    }
+
+    private suspend fun refreshAttentionDomainsList() {
+        val toggles = _settingsUiState.value.attentionDomains.associate { it.id to it.enabled }
+        val domains = attentionDomainRepository.listStates().map { domain ->
+            AttentionDomainUiState(
+                id = domain.id,
+                displayName = domain.displayName,
+                enabled = toggles[domain.id] ?: domain.enabled,
+                subtitle = attentionDomainSubtitle(domain.sensitivity, domain.trigger),
+                isBuiltIn = domain.isBuiltIn,
+            )
+        }
+        _settingsUiState.update { it.copy(attentionDomains = domains) }
+    }
+
+    private fun dismissAttentionDomainsSettings() {
+        closeAttentionDomainsDialog()
+    }
+
+    private fun closeAttentionDomainsDialog() {
+        val returnToMain = _settingsUiState.value.attentionDomainsReturnToMain
+        _settingsUiState.update {
+            it.copy(
+                showAttentionDomainsDialog = false,
+                showMainDialog = returnToMain,
+                showHeartbeatDialog = !returnToMain,
+                attentionDomainsReturnToMain = false,
+            )
+        }
+    }
+
+    private fun toggleAttentionDomain(domainId: String, enabled: Boolean) {
+        _settingsUiState.update { state ->
+            state.copy(
+                attentionDomains = state.attentionDomains.map { domain ->
+                    if (domain.id == domainId) domain.copy(enabled = enabled) else domain
+                },
+            )
+        }
+    }
+
+    private fun saveAttentionDomainsSettings() {
+        viewModelScope.launch {
+            val current = attentionDomainRepository.listStates()
+            val toggles = _settingsUiState.value.attentionDomains.associate { it.id to it.enabled }
+            val updated = current.map { state ->
+                toggles[state.id]?.let { state.copy(enabled = it) } ?: state
+            }
+            attentionDomainRepository.saveStates(updated)
+            heartbeatOrchestrator.onDomainsChanged()
+            val domains = attentionDomainRepository.listStates()
+            val enabledDomains = domains.count { it.enabled }
+            _settingsUiState.update {
+                it.copy(
+                    showAttentionDomainsDialog = false,
+                    showMainDialog = it.attentionDomainsReturnToMain,
+                    showHeartbeatDialog = !it.attentionDomainsReturnToMain,
+                    attentionDomainsReturnToMain = false,
+                    attentionDomainsSummary = appContext.getString(
+                        R.string.attention_domains_summary,
+                        enabledDomains,
+                        domains.size,
+                    ),
+                )
+            }
+        }
+    }
+
+    private fun attentionDomainSubtitle(
+        sensitivity: DomainSensitivity,
+        trigger: DomainTrigger,
+    ): String {
+        val sensitivityLabel = when (sensitivity) {
+            DomainSensitivity.HIGH -> appContext.getString(R.string.attention_domain_sensitivity_high)
+            DomainSensitivity.MEDIUM -> appContext.getString(R.string.attention_domain_sensitivity_medium)
+            DomainSensitivity.LOW -> appContext.getString(R.string.attention_domain_sensitivity_low)
+        }
+        val triggerLabel = when (trigger) {
+            is DomainTrigger.TimeDaily -> "giornaliero"
+            is DomainTrigger.TimeWeekly -> "settimanale"
+            is DomainTrigger.Event -> "evento: ${trigger.eventId}"
+        }
+        return "$sensitivityLabel · $triggerLabel"
+    }
+
+    private fun openAddAttentionDomain() {
+        _settingsUiState.update {
+            it.copy(
+                showAttentionDomainEditor = true,
+                attentionDomainEditorForm = AttentionDomainEditorFormState(),
+                attentionDomainEditorError = null,
+            )
+        }
+    }
+
+    private fun openEditAttentionDomain(domainId: String) {
+        viewModelScope.launch {
+            val domain = attentionDomainRepository.listStates().find { it.id == domainId } ?: return@launch
+            if (domain.isBuiltIn) return@launch
+            _settingsUiState.update {
+                it.copy(
+                    showAttentionDomainEditor = true,
+                    attentionDomainEditorForm = domain.toEditorForm(),
+                    attentionDomainEditorError = null,
+                )
+            }
+        }
+    }
+
+    private fun updateAttentionDomainEditorForm(form: AttentionDomainEditorFormState) {
+        _settingsUiState.update {
+            it.copy(attentionDomainEditorForm = form, attentionDomainEditorError = null)
+        }
+    }
+
+    private fun dismissAttentionDomainEditor() {
+        _settingsUiState.update {
+            it.copy(
+                showAttentionDomainEditor = false,
+                attentionDomainEditorForm = AttentionDomainEditorFormState(),
+                attentionDomainEditorError = null,
+            )
+        }
+    }
+
+    private fun saveAttentionDomainEditor() {
+        viewModelScope.launch {
+            val form = _settingsUiState.value.attentionDomainEditorForm
+            val existingIds = attentionDomainRepository.listStates().map { it.id }.toSet()
+            val errorKey = AttentionDomainValidator.validateCustom(
+                displayName = form.displayName,
+                description = form.description,
+                existingIds = existingIds,
+                editingId = form.editingId,
+            )
+            if (errorKey != null) {
+                _settingsUiState.update {
+                    it.copy(attentionDomainEditorError = validationErrorMessage(errorKey))
+                }
+                return@launch
+            }
+            val resolvedId = form.editingId
+                ?: AttentionDomainValidator.slugId(form.displayName)
+            val newState = form.toDomainState(resolvedId)
+            val current = attentionDomainRepository.listStates()
+            val updated = if (form.editingId != null) {
+                current.map { if (it.id == resolvedId) newState else it }
+            } else {
+                current + newState
+            }
+            attentionDomainRepository.saveStates(updated)
+            heartbeatOrchestrator.onDomainsChanged()
+            refreshAttentionDomainsList()
+            _settingsUiState.update {
+                it.copy(
+                    showAttentionDomainEditor = false,
+                    attentionDomainEditorForm = AttentionDomainEditorFormState(),
+                    attentionDomainEditorError = null,
+                    feedbackMessage = appContext.getString(R.string.attention_domain_saved),
+                    feedbackIsError = false,
+                )
+            }
+        }
+    }
+
+    private fun validationErrorMessage(key: String): String = when (key) {
+        "name_required" -> appContext.getString(R.string.attention_domain_error_name_required)
+        "description_too_short" -> appContext.getString(R.string.attention_domain_error_description_short)
+        "id_conflict" -> appContext.getString(R.string.attention_domain_error_id_conflict)
+        else -> key
+    }
+
+    private fun requestDeleteAttentionDomain(domainId: String) {
+        _settingsUiState.update { it.copy(attentionDomainDeleteConfirmId = domainId) }
+    }
+
+    private fun dismissDeleteAttentionDomain() {
+        _settingsUiState.update { it.copy(attentionDomainDeleteConfirmId = null) }
+    }
+
+    private fun confirmDeleteAttentionDomain() {
+        viewModelScope.launch {
+            val domainId = _settingsUiState.value.attentionDomainDeleteConfirmId ?: return@launch
+            val domain = attentionDomainRepository.listStates().find { it.id == domainId }
+            if (domain == null || domain.isBuiltIn) {
+                dismissDeleteAttentionDomain()
+                return@launch
+            }
+            val updated = attentionDomainRepository.listStates().filter { it.id != domainId }
+            attentionDomainRepository.saveStates(updated)
+            heartbeatOrchestrator.onDomainsChanged()
+            refreshAttentionDomainsList()
+            _settingsUiState.update {
+                it.copy(
+                    attentionDomainDeleteConfirmId = null,
+                    feedbackMessage = appContext.getString(R.string.attention_domain_deleted),
                     feedbackIsError = false,
                 )
             }
@@ -1515,6 +1889,7 @@ class ConversationViewModel(
             moodContextProvider = moodContextProvider,
             spatialBindings = spatialBindings,
             reasoningLogObserver = reasoningLogBuffer,
+            onBodyHardwareBusyChanged = { bodyHardwareBusyGate.isBusy = it },
         )
         engineBodySettingsKey = bodySettingsKey(runBlocking { bodySettingsRepository.load() })
         return true
@@ -1619,6 +1994,16 @@ class ConversationViewModel(
         memoryExtractionScheduler.start()
         activityLogExtractionScheduler.start()
         startHeartbeatIfEnabled()
+        VoiceSessionState.setActive(true)
+        viewModelScope.launch {
+            val deskSettings = deskPresenceSettingsRepository.load()
+            if (deskSettings.enabled) {
+                deskPresenceMonitor.start()
+            } else {
+                deskPresenceMonitor.stop()
+            }
+            _uiState.update { it.copy(deskPresenceMonitorEnabled = deskSettings.enabled) }
+        }
     }
 
     private fun startHeartbeatIfEnabled() {
@@ -1643,6 +2028,8 @@ class ConversationViewModel(
         ttsRepository.stop()
         HotwordServiceStarter.stop(appContext)
         HeartbeatScheduler.cancel(appContext)
+        VoiceSessionState.setActive(false)
+        deskPresenceMonitor.stop()
         _uiState.update {
             it.copy(
                 phase = ConversationPhase.Idle,
@@ -1652,6 +2039,8 @@ class ConversationViewModel(
                 currentUtterance = "",
                 eyeSquishLeft = false,
                 eyeSquishRight = false,
+                deskPresenceMonitorEnabled = false,
+                deskOccupancyState = com.example.mydeskrobot.domain.presence.DeskOccupancyState.UNKNOWN,
             )
         }
         memoryExtractionScheduler.stop()
@@ -1774,6 +2163,11 @@ class ConversationViewModel(
             return
         }
 
+        if (handleDebugVoiceCommand(trimmed)) {
+            clearCurrentUtteranceDisplay()
+            return
+        }
+
         if (isAssistantTurnInProgress() || visionPipelineActive) {
             Log.d(TAG, "onUtteranceReadyForLlm: queued (assistant turn in progress)")
             queueUtteranceForLlm(trimmed)
@@ -1870,6 +2264,54 @@ class ConversationViewModel(
         return true
     }
 
+    private fun handleDebugVoiceCommand(phrase: String): Boolean {
+        if (!VoiceDebugCommandMatcher.matchesForceHeartbeat(phrase)) return false
+
+        viewModelScope.launch {
+            when (val result = heartbeatOrchestrator.triggerVoiceHeartbeat()) {
+                is VoiceHeartbeatTriggerResult.Dispatched -> {
+                    Log.i(TAG, "Heartbeat triggered by voice, domain=${result.domainName}")
+                }
+                is VoiceHeartbeatTriggerResult.GateBlocked -> {
+                    speakEphemeralReply(voiceHeartbeatGateMessage(result.reason))
+                }
+                VoiceHeartbeatTriggerResult.NoEnabledDomains -> {
+                    speakEphemeralReply(
+                        "Nessun dominio di attenzione abilitato. Abilitalo nelle impostazioni proattività.",
+                    )
+                }
+            }
+        }
+        return true
+    }
+
+    private fun voiceHeartbeatGateMessage(reason: String): String = when (reason) {
+        "heartbeat disabled" -> "La proattività è disattivata. Abilitala nelle impostazioni."
+        "desk absent (ML Kit)" -> "Heartbeat non avviato: nessuna presenza rilevata alla scrivania."
+        "outside active window" -> "Heartbeat non avviato: fuori dalla finestra oraria della proattività."
+        "night mode" -> "Heartbeat non avviato: modalità notte attiva."
+        "robot context silent" -> "Heartbeat non avviato: contesto silenzioso attivo."
+        "daily proactive cap" -> "Heartbeat non avviato: raggiunto il limite giornaliero di interventi."
+        "proactive cooldown" -> "Heartbeat non avviato: in cooldown tra un intervento e l'altro."
+        "mic session inactive" -> "Heartbeat non avviato: sessione vocale non attiva."
+        else -> "Heartbeat non avviato: $reason"
+    }
+
+    private suspend fun speakEphemeralReply(robotReply: String) {
+        if (!_uiState.value.isHotwordListeningActive) return
+        HotwordController.beginAssistantTurn()
+        _uiState.update {
+            it.copy(
+                phase = ConversationPhase.Thinking,
+                emotion = RobotEmotion.THINKING,
+                statusMessage = messages.thinkingStatus(),
+                currentUtterance = "",
+            )
+        }
+        lastAssistantResponse = robotReply
+        speakResponse(robotReply, RobotEmotion.NEUTRAL)
+    }
+
     private suspend fun speakUnannouncedNotificationsReply(userPhrase: String) {
         val unreadEpisodes = unifiedMemoryRepository.listUnreadNotificationEpisodes()
         val deferredNotifications = deferredInputQueue.snapshot().mapNotNull { item ->
@@ -1957,6 +2399,7 @@ class ConversationViewModel(
     }
 
     private fun sendPhraseToLlm(phrase: String) {
+        SpatialScanSession.reset()
         if (confirmationPending) {
             when (VoiceConfirmationMatcher.parse(phrase)) {
                 VoiceConfirmationDecision.YES -> {
@@ -1996,7 +2439,7 @@ class ConversationViewModel(
         viewModelScope.launch { workingMemoryRepository.recordInteraction() }
         viewModelScope.launch {
             weeklyStatsRepository.recordInteraction()
-            checkProactiveSpeakResponse()
+            proactiveTracker.checkProactiveResponse(phrase)
         }
         viewModelScope.launch {
             userAwarenessRepository.update { current ->
@@ -2022,6 +2465,10 @@ class ConversationViewModel(
             try {
                 if (turnId != llmTurnGeneration) return@launch
                 refreshReasoningEngineIfBodySettingsChanged()
+
+                if (AttentionTriggerMatcher.shouldCenterOnUser(phrase)) {
+                    userAttentionCentering.tryCenterOnUser()
+                }
 
                 val result = reasoningEngine.processUserInput(
                     userText = phrase,
@@ -2051,6 +2498,9 @@ class ConversationViewModel(
      */
     private suspend fun handleIntermediateResponse(intermediate: IntermediateResponse) {
         if (intermediate.isToolExecuting) {
+            if (intermediate.toolName == "take_photo" || intermediate.toolName == "analyze_room_scene") {
+                heartbeatOrchestrator.onDomainEvent("nuova_foto")
+            }
             val toolStatus = toolStatusMessage(intermediate.toolName)
             val toolPhase = toolPhaseFor(intermediate.toolName)
             _uiState.update {
@@ -2097,12 +2547,14 @@ class ConversationViewModel(
 
         val textForTts = MarkdownStripper.strip(text)
         try {
+            startSpeakingBodyLanguage()
             ttsRepository.speak(textForTts).onFailure { error ->
                 if (error !is TtsInterruptedException) {
                     // Don't switch to recoverable anger here: the chain will continue.
                 }
             }
         } finally {
+            stopSpeakingBodyLanguage()
             // Keep STT paused for upcoming tool execution / next LLM turn.
             HotwordController.beginAssistantTurn()
         }
@@ -2143,13 +2595,42 @@ class ConversationViewModel(
     private suspend fun handleReasoningResult(result: ReasoningResult) {
         when (result) {
             is ReasoningResult.Success -> {
-                if (shouldSuppressHeartbeat(result)) {
+                var finalText = result.finalText
+                var emotion = result.emotion
+
+                if (currentInputIsHeartbeat) {
+                    val criticOutcome = applyCriticPassIfNeeded(finalText)
+                    when (criticOutcome) {
+                        CriticPassOutcome.Blocked -> {
+                            val domainId = currentHeartbeatDomainId ?: "heartbeat"
+                            clearHeartbeatDomainContext()
+                            currentInputIsHeartbeat = false
+                            viewModelScope.launch {
+                                proactiveTracker.recordSuppressed(domainId, "critic block")
+                            }
+                            finalizeTurnWithoutSpeech(LlmEmotionMapper.fromLlmValue(emotion))
+                            return
+                        }
+                        is CriticPassOutcome.Modified -> finalText = criticOutcome.text
+                        CriticPassOutcome.Unchanged -> Unit
+                    }
+                }
+
+                if (shouldSuppressHeartbeat(result.copy(finalText = finalText))) {
                     Log.i(TAG, "Heartbeat suppressed: confidence ${result.speakConfidence} below threshold")
+                    val domainId = currentHeartbeatDomainId ?: "heartbeat"
+                    clearHeartbeatDomainContext()
                     currentInputIsHeartbeat = false
-                    finalizeTurnWithoutSpeech(LlmEmotionMapper.fromLlmValue(result.emotion))
+                    viewModelScope.launch {
+                        proactiveTracker.recordSuppressed(domainId, "low speak_confidence")
+                    }
+                    finalizeTurnWithoutSpeech(LlmEmotionMapper.fromLlmValue(emotion))
                     return
                 }
                 val wasHeartbeat = currentInputIsHeartbeat
+                val domainId = currentHeartbeatDomainId
+                val domainName = currentHeartbeatDomainName
+                clearHeartbeatDomainContext()
                 currentInputIsHeartbeat = false
 
                 if (!wasHeartbeat) {
@@ -2182,19 +2663,25 @@ class ConversationViewModel(
                     return
                 }
 
-                if (result.finalText.isBlank()) {
-                    finalizeTurnWithoutSpeech(LlmEmotionMapper.fromLlmValue(result.emotion))
+                if (finalText.isBlank()) {
+                    if (wasHeartbeat && domainId != null) {
+                        viewModelScope.launch { proactiveTracker.recordSilent(domainId) }
+                    }
+                    finalizeTurnWithoutSpeech(LlmEmotionMapper.fromLlmValue(emotion))
                 } else {
                     if (wasHeartbeat) {
+                        val topic = extractTopicFromText(finalText)
                         viewModelScope.launch {
-                            workingMemoryRepository.recordProactiveSpeak()
-                            weeklyStatsRepository.recordProactiveSpeak()
+                            proactiveTracker.recordSpeak(
+                                domainId = domainId ?: "heartbeat",
+                                text = finalText,
+                                topic = topic ?: domainName.orEmpty(),
+                            )
                         }
-                        markProactiveSpeakForTracking(extractTopicFromText(result.finalText))
                     }
                     val reply = LlmAssistantReply(
-                        text = result.finalText,
-                        emotion = LlmEmotionMapper.fromLlmValue(result.emotion),
+                        text = finalText,
+                        emotion = LlmEmotionMapper.fromLlmValue(emotion),
                         imageRequired = false,
                     )
                     deliverAssistantReply(reply)
@@ -2309,6 +2796,7 @@ class ConversationViewModel(
             return
         }
 
+        pendingAnnouncedNotificationDedupKey = null
         conversationLogBeforeCurrentTurn = null
         lastLlmEmotion = emotion ?: lastLlmEmotion
         moodManager.setEphemeralExpression(lastLlmEmotion)
@@ -2329,6 +2817,7 @@ class ConversationViewModel(
         }
 
         clearVisionPipeline()
+        pendingAnnouncedNotificationDedupKey = null
         revertConversationLogIfTurnAborted()
         HotwordController.endAssistantTurn(postTtsCooldownMs, lastAssistantResponse)
         val listeningPhase = listeningPhaseAfterAssistantTurn()
@@ -2427,6 +2916,14 @@ class ConversationViewModel(
     private fun clearSilentNotificationTurnState() {
         suppressTtsForCurrentTurn = false
         pendingSilentNotificationEnvelope = null
+        pendingAnnouncedNotificationDedupKey = null
+    }
+
+    private suspend fun markPendingAnnouncedNotificationRead() {
+        val dedupKey = pendingAnnouncedNotificationDedupKey ?: return
+        pendingAnnouncedNotificationDedupKey = null
+        memoryWriter.markEpisodeRead(UnifiedMemoryRepository.notificationExternalRef(dedupKey))
+        bumpUnreadEpisodesTick()
     }
 
     private suspend fun deliverAssistantReply(
@@ -2494,21 +2991,39 @@ class ConversationViewModel(
 
         val textForTts = MarkdownStripper.strip(text)
 
-        ttsRepository.speak(textForTts).fold(
-            onSuccess = {
-                if (!ttsInterruptHandled) {
-                    resumeListeningAfterAssistantTurn()
-                }
-            },
-            onFailure = { error ->
-                if (error is TtsInterruptedException || ttsInterruptHandled) return@fold
+        try {
+            startSpeakingBodyLanguage()
+            val speakResult = ttsRepository.speak(textForTts)
+            if (speakResult.isSuccess && !ttsInterruptHandled) {
+                markPendingAnnouncedNotificationRead()
+                resumeListeningAfterAssistantTurn()
+                return
+            }
+            val error = speakResult.exceptionOrNull() ?: return
+            if (error is TtsInterruptedException || ttsInterruptHandled) return
 
-                ensureAssistantTurnEnded()
-                showRecoverableAnger(messages.ttsFailed(error.message.orEmpty()))
-                drainQueuedUtterance()
-                drainDeferredInputs()
-            },
+            pendingAnnouncedNotificationDedupKey = null
+            ensureAssistantTurnEnded()
+            showRecoverableAnger(messages.ttsFailed(error.message.orEmpty()))
+            drainQueuedUtterance()
+            drainDeferredInputs()
+        } finally {
+            stopSpeakingBodyLanguage()
+        }
+    }
+
+    private fun isSpeakingPhase(): Boolean =
+        _uiState.value.phase is ConversationPhase.Speaking
+
+    private fun startSpeakingBodyLanguage() {
+        bodyExpressionController.startSpeakingMicroMoves(
+            context = buildBodyExpressionContext(),
+            isStillSpeaking = ::isSpeakingPhase,
         )
+    }
+
+    private fun stopSpeakingBodyLanguage() {
+        bodyExpressionController.stopSpeakingMicroMoves(moodManager.currentMood.value.baseEmotion)
     }
 
     private fun onSpeechInterrupted(transcript: String) {
@@ -2519,6 +3034,7 @@ class ConversationViewModel(
 
         ttsInterruptHandled = true
         ttsRepository.stop()
+        stopSpeakingBodyLanguage()
         HotwordController.endAssistantTurn(cooldownMs = 0)
 
         _uiState.update {
@@ -2588,6 +3104,7 @@ class ConversationViewModel(
         if (!_uiState.value.isHotwordListeningActive) return
         Log.w(TAG, "handleLlmFailure: $message")
 
+        pendingAnnouncedNotificationDedupKey = null
         conversationLogBeforeCurrentTurn = null
         HotwordController.endAssistantTurn(postTtsCooldownMs, lastAssistantResponse)
         HotwordController.clearPendingPhrase()
@@ -2757,10 +3274,11 @@ class ConversationViewModel(
         viewModelScope.launch { moodManager.initialize() }
         moodMonitorJob = viewModelScope.launch {
             var previousMood = moodManager.currentMood.value
+            var previousEphemeral: EphemeralExpression? = moodManager.ephemeralExpression.value
             combine(
                 moodManager.currentMood,
                 moodManager.ephemeralExpression,
-            ) { mood, ephemeral -> mood to ephemeral }.collect { (current, _) ->
+            ) { mood, ephemeral -> mood to ephemeral }.collect { (current, ephemeral) ->
                 if (current != previousMood) {
                     bodyExpressionController.onMoodTransition(
                         previous = previousMood,
@@ -2769,6 +3287,26 @@ class ConversationViewModel(
                     )
                     previousMood = current
                 }
+
+                val activeEphemeral = ephemeral?.takeIf { it.isActive() }
+                val prevEmotion = previousEphemeral?.takeIf { it.isActive() }?.emotion
+                val currEmotion = activeEphemeral?.emotion
+                val context = buildBodyExpressionContext()
+
+                if (currEmotion != null && currEmotion != prevEmotion) {
+                    bodyExpressionController.onEphemeralExpression(
+                        emotion = currEmotion,
+                        intensity = activeEphemeral.intensity,
+                        context = context,
+                    )
+                } else if (
+                    previousEphemeral?.isActive() == true &&
+                    (activeEphemeral == null || !activeEphemeral.isActive())
+                ) {
+                    bodyExpressionController.restoreHeadNeutralUnlessSleeping(current.baseEmotion)
+                }
+                previousEphemeral = activeEphemeral
+
                 refreshUiEmotionFromMood()
             }
         }
@@ -2780,7 +3318,7 @@ class ConversationViewModel(
                 refreshUiEmotionFromMood()
                 workingMemoryRepository.checkAndResetIfNewDay()
                 userAwarenessRepository.checkAndResetIfNewDay()
-                checkProactiveSpeakTimeout()
+                proactiveTracker.recordIgnoredIfTimedOut()
                 checkAndTriggerReflection()
             }
         }
@@ -2795,49 +3333,11 @@ class ConversationViewModel(
     private fun buildBodyExpressionContext(): BodyExpressionContext {
         val state = _uiState.value
         return BodyExpressionContext(
-            isStandby = state.isHotwordListeningActive && state.phase is ConversationPhase.WaitingForHotword,
+            phase = state.phase,
             isLlmBusy = llmJob?.isActive == true,
             isVisionBusy = visionPipelineActive,
+            isBodyHardwareBusy = bodyHardwareBusyGate.isBusy,
         )
-    }
-
-    /**
-     * Check if user responded to the last proactive speak within 5 minutes.
-     * If so, record it as a positive response.
-     */
-    private suspend fun checkProactiveSpeakResponse() {
-        val lastSpeak = lastProactiveSpeakTime ?: return
-        val elapsed = System.currentTimeMillis() - lastSpeak
-        val withinWindow = elapsed < PROACTIVE_RESPONSE_WINDOW_MS
-
-        if (withinWindow) {
-            weeklyStatsRepository.recordPositiveResponse(lastProactiveTopic)
-            lastProactiveSpeakTime = null
-            lastProactiveTopic = null
-        }
-    }
-
-    /**
-     * Check if the proactive speak response window has expired without response.
-     * If so, record it as ignored.
-     */
-    private suspend fun checkProactiveSpeakTimeout() {
-        val lastSpeak = lastProactiveSpeakTime ?: return
-        val elapsed = System.currentTimeMillis() - lastSpeak
-
-        if (elapsed >= PROACTIVE_RESPONSE_WINDOW_MS) {
-            weeklyStatsRepository.recordIgnoredSuggestion(lastProactiveTopic)
-            lastProactiveSpeakTime = null
-            lastProactiveTopic = null
-        }
-    }
-
-    /**
-     * Mark a proactive speak for response tracking.
-     */
-    private fun markProactiveSpeakForTracking(topic: String?) {
-        lastProactiveSpeakTime = System.currentTimeMillis()
-        lastProactiveTopic = topic
     }
 
     private fun recordTopicFromUserTurn() {
@@ -2966,6 +3466,33 @@ class ConversationViewModel(
         return if (log.isBlank()) line else "$log\n\n$line"
     }
 
+    private fun onMicroTickReceived(tick: HeartbeatMicroTick) {
+        if (!_uiState.value.isHotwordListeningActive) return
+        if (isAssistantTurnInProgress() || visionPipelineActive) {
+            Log.d(TAG, "Micro tick skipped: assistant busy")
+            return
+        }
+
+        Log.d(TAG, "Heartbeat MICRO tick: idle=${tick.idleMinutes}m mood=${tick.moodLabel}")
+
+        val mood = moodManager.currentMood.value
+        moodManager.setEphemeralExpression(
+            when (tick.moodLabel) {
+                "bored" -> RobotEmotion.BORED
+                "drowsy" -> RobotEmotion.DROWSY
+                else -> mood.baseEmotion
+            },
+        )
+        refreshUiEmotionFromMood()
+
+        if (tick.suggestBodyLookAround) {
+            val choreography = BodyExpressionMapper.resolveMicroTick(mood, tick.idleMinutes)
+            if (choreography != null) {
+                bodyExpressionController.executeMicroTick(choreography, buildBodyExpressionContext())
+            }
+        }
+    }
+
     private fun onSystemInputReceived(envelope: SystemInputEnvelope) {
         val uiState = _uiState.value
         if (!InputPolicyEngine.canAcceptInput(uiState)) {
@@ -2978,6 +3505,18 @@ class ConversationViewModel(
                 Log.d(TAG, "DROP system heartbeat (robot context silent)")
                 return
             }
+            val deskSettings = kotlinx.coroutines.runBlocking { deskPresenceSettingsRepository.load() }
+            val heartbeatSettings = kotlinx.coroutines.runBlocking { heartbeatSettingsRepository.load() }
+            val occupancy = DeskPresenceStateStore.current()
+            if (!DeskPresenceGate.allowsProactiveInteraction(
+                    occupancy = occupancy,
+                    lastInteractionMillis = heartbeatSettings.lastInteractionMillis,
+                    monitorEnabled = deskSettings.enabled,
+                )
+            ) {
+                Log.d(TAG, "DROP system heartbeat (desk absent ML Kit)")
+                return
+            }
         }
         if (envelope.input !is RobotInput.ScheduledTaskFired &&
             InputPolicyEngine.shouldSuppressForNightMode(uiState, envelope.input.priority)
@@ -2987,9 +3526,6 @@ class ConversationViewModel(
         }
         if (InputPolicyEngine.canProcessNow(envelope.input.priority, uiState)) {
             deferredInputQueue.markSeen(envelope.dedupKey)
-            if (envelope.input is RobotInput.Notification) {
-                viewModelScope.launch { persistNotificationEpisode(envelope) }
-            }
             sendSystemInputToLlm(envelope)
         } else {
             Log.i(TAG, "Deferring system input: ${envelope.input.sourceId}")
@@ -3007,11 +3543,33 @@ class ConversationViewModel(
         suppressTtsForCurrentTurn = envelope.input is RobotInput.Notification &&
             RobotContextPolicy.shouldSuppressNotificationTts(stored)
         pendingSilentNotificationEnvelope = if (suppressTtsForCurrentTurn) envelope else null
+        pendingAnnouncedNotificationDedupKey = if (
+            envelope.input is RobotInput.Notification && !suppressTtsForCurrentTurn
+        ) {
+            envelope.dedupKey
+        } else {
+            null
+        }
+
+        if (envelope.input is RobotInput.Notification) {
+            viewModelScope.launch { persistNotificationEpisode(envelope) }
+        }
 
         val state = _uiState.value
         conversationLogBeforeCurrentTurn = state.conversationLog
 
         currentInputIsHeartbeat = envelope.input is RobotInput.Heartbeat
+        if (envelope.input is RobotInput.Heartbeat) {
+            val hb = envelope.input
+            currentHeartbeatDomainId = hb.activeDomainId
+            currentHeartbeatDomainName = hb.activeDomainName
+            currentHeartbeatDomainSensitivity = hb.activeDomainSensitivity?.let { name ->
+                runCatching { DomainSensitivity.valueOf(name) }.getOrNull()
+            }
+            currentHeartbeatInterventions = hb.recentInterventionsOnDomain
+        } else {
+            clearHeartbeatDomainContext()
+        }
         val scheduledTaskId = (envelope.input as? RobotInput.ScheduledTaskFired)?.taskId
         scheduledTaskIdForFireAndCheckCompletion = if (scheduledTaskId != null &&
             kotlinx.coroutines.runBlocking {
@@ -3053,6 +3611,7 @@ class ConversationViewModel(
         llmJob = viewModelScope.launch {
             try {
                 if (turnId != llmTurnGeneration) return@launch
+                refreshReasoningEngineIfBodySettingsChanged()
 
                 val result = reasoningEngine.processSystemInput(
                     envelope = envelope,
@@ -3081,12 +3640,50 @@ class ConversationViewModel(
         if (!_uiState.value.isHotwordListeningActive) return
         if (isAssistantTurnInProgress() || visionPipelineActive) return
 
-        val deferred = deferredInputQueue.drain()
+        val deferred = inputRouter.drainDeferred()
         if (deferred.isEmpty()) return
 
         Log.i(TAG, "Draining ${deferred.size} deferred system inputs")
         val first = deferred.first()
         sendSystemInputToLlm(first)
+    }
+
+    private fun clearHeartbeatDomainContext() {
+        currentHeartbeatDomainId = null
+        currentHeartbeatDomainName = null
+        currentHeartbeatDomainSensitivity = null
+        currentHeartbeatInterventions = emptyList()
+    }
+
+    private sealed interface CriticPassOutcome {
+        data object Unchanged : CriticPassOutcome
+        data object Blocked : CriticPassOutcome
+        data class Modified(val text: String) : CriticPassOutcome
+    }
+
+    private suspend fun applyCriticPassIfNeeded(proposal: String): CriticPassOutcome {
+        if (proposal.isBlank()) return CriticPassOutcome.Unchanged
+        if (currentHeartbeatDomainSensitivity != DomainSensitivity.HIGH) {
+            return CriticPassOutcome.Unchanged
+        }
+        val domainId = currentHeartbeatDomainId ?: return CriticPassOutcome.Unchanged
+
+        val criticResult = reasoningEngine.processCriticPass(
+            proposal = proposal,
+            domainId = domainId,
+            domainName = currentHeartbeatDomainName,
+            recentInterventions = currentHeartbeatInterventions,
+        )
+
+        return when (criticResult) {
+            CriticResult.Block -> CriticPassOutcome.Blocked
+            is CriticResult.Modify -> CriticPassOutcome.Modified(criticResult.text)
+            is CriticResult.Approve -> CriticPassOutcome.Unchanged
+            is CriticResult.Failed -> {
+                Log.w(TAG, "Critic pass failed: ${criticResult.message}")
+                CriticPassOutcome.Unchanged
+            }
+        }
     }
 
     override fun onCleared() {
@@ -3100,6 +3697,8 @@ class ConversationViewModel(
         }
         memoryExtractionScheduler.stop()
         activityLogExtractionScheduler.stop()
+        deskPresenceMonitor.stop()
+        VoiceSessionState.setActive(false)
         super.onCleared()
     }
 

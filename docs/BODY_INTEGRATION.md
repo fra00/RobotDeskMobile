@@ -37,8 +37,79 @@ Vedi [PROMPT_PHILOSOPHY.md](PROMPT_PHILOSOPHY.md).
   - *Centering*: rifocare un soggetto specifico con piccoli delta + rifoto (~3 cicli suggeriti).
   - *Persistent search / spatial verify*: nascondino, cercami, *cerca …*, *c'è X dietro di me* — ruota verso l'indizio spaziale + foto; mai *"non c'è"* dopo una sola immagine se l'utente ha indicato posizione o esistenza.
   - *Room exploration*: più angoli + note `SCAN_*` + sintesi finale.
-  - *Gestures*: es. cenno sì con catena `head_tilt`.
-  - *Mood-informed body*: `STATO ROBOT` può suggerire espressione fisica opzionale (bored → look-around silenzioso, angry → stillness/turn away, happy → cenno leggero) — planner libero, non ogni turno.
+  - *Gestures*: comandi espliciti utente (cenno sì) via LLM `move_body_joint` con `position` assoluta.
+  - *Espressività automatica*: Kotlin esegue coreografie da campo `emotion` — il LLM non duplica nod/testa giù per puro mood.
+
+## Espressività automatica (coreografie Kotlin)
+
+Quando il corpo ESP32 è configurato, l'app esegue gesti **chiusi** (neutro testa → picco → neutro) in parallelo agli occhi:
+
+| Componente | Ruolo |
+|------------|--------|
+| `EmotionGestureMapper` | `RobotEmotion` + intensità → `BodyChoreography` |
+| `BodyExpressionMapper` | Transizione `RobotMood` → coreografia (poke, sonno, idle, …) |
+| `HeadNeutralizer` | Centra `head_tilt` / `head_roll` / `display_pan` prima dei gesti |
+| `BodyChoreographyExecutor` | Esecuzione sequenza su ESP32 |
+| `BodyExpressionController` | Orchestrazione da VM (mood, ephemeral, micro-tick) |
+| `BodyExpressionContext` | Guard: visione, LLM busy, `BodyHardwareBusyGate` |
+| `BodyHardwareBusyGate` | Blocca gesti Kotlin durante tool LLM body |
+
+### Trigger
+
+| Evento | Gesto |
+|--------|-------|
+| Cambio `EphemeralExpression` (emotion LLM) | `EmotionGestureMapper` — anche durante dialogo (`Speaking` / `ActiveListening`) |
+| TTS attivo (`Speaking`) | Micro-oscillazioni testa (`SpeakingMicroMoves`) — ritorno neutro a fine risposta |
+| Transizione `RobotMood` | `BodyExpressionMapper` |
+| Scadenza TTL ephemeral | Ritorno testa neutra (salvo `SLEEPING`) |
+| Heartbeat micro-tick bored | Look-around silenzioso |
+
+### Mappa emozione → corpo (ESP32)
+
+| `emotion` | Gesto tipico |
+|-----------|----------------|
+| `sad` | `head_tilt` giù breve → ritorno 0 |
+| `happy` / `loving` | cenno sì (`head_tilt`) |
+| `surprised` | look-around `display_pan` |
+| `confused` | `head_roll` breve → 0 |
+| `angry` | `display_pan` gira via |
+| `bored` | micro pan chiuso |
+| `sleeping` | `body_home` + `head_tilt` ≈ −10° |
+
+Priorità conflitti: **tool LLM body > visione > gesto ephemeral Kotlin > fidget standby**.
+
+## Espressione corporea da umore (SSOT)
+
+`MoodManager` guida anche il corpo fisico, non solo occhi e prompt:
+
+| Componente | Ruolo |
+|------------|--------|
+| `BodyExpressionMapper` | Transizione `RobotMood` → `BodyChoreography` |
+| `BodyExpressionController` | Esegue preset su ESP32 |
+| `BodyExpressionContext` | Evita conflitti con turni LLM / visione / tool body |
+
+Preset principali (Kotlin, immediati):
+
+| Motivo mood | Movimento tipico |
+|-------------|------------------|
+| `EYE_POKE` angry | `display_pan` −12/−15 (gira via) |
+| `EYE_POKE` confused | `head_roll` tilt → ritorno 0 |
+| `USER_APOLOGY` | `body_home` o leggero ritorno verso utente |
+| `IDLE_LONG` → bored | micro `display_pan` → 0 |
+| Decay da annoyance | `body_home` |
+| Entrata `SLEEPING` (notte) | Se non centrato → `body_home`; poi `head_tilt` ≈ −10° |
+
+Il poke occhi **muove subito** il corpo (anche in dialogo). Obiettivi complessi (visione, scan) restano al planner LLM.
+
+## Codice
+
+- Client: `integration/body/BodyApiClient.kt`
+- Coreografie: `BodyChoreography.kt`, `BodyChoreographyExecutor.kt`, `HeadNeutralizer.kt`, `EmotionGestureMapper.kt`, `SpeakingMicroMoves.kt`
+- Espressione: `BodyExpressionController.kt`, `BodyExpressionMapper.kt`, `BodyHardwareBusyGate.kt`
+- Impostazioni: `data/body/BodySettingsRepository.kt`
+- Prompt: `integration/body/BodyPromptProviderImpl.kt`
+- Tool: `integration/tool/hardware/*`
+- Engine: `ReasoningModule.kt`, `ConversationViewModel.refreshReasoningEngineIfBodySettingsChanged()`
 
 ## API firmware
 
@@ -63,59 +134,28 @@ Joint: `base_pan`, `head_roll`, `head_tilt`, `display_pan` (±45°).
 
 Registrazione: solo se `BodySettings.isConfigured()` (`enabled` + URL).
 
-## Espressione corporea da umore (SSOT)
-
-`MoodManager` guida anche il corpo fisico, non solo occhi e prompt:
-
-| Componente | Ruolo |
-|------------|--------|
-| `BodyExpressionMapper` | Transizione `RobotMood` → preset (`display_pan`, `head_roll`, `body_home`, …) |
-| `BodyExpressionController` | Esegue preset su ESP32 quando il mood cambia |
-| `BodyExpressionContext` | Evita conflitti con turni LLM / visione |
-
-Preset principali (Kotlin, immediati):
-
-| Motivo mood | Movimento tipico |
-|-------------|------------------|
-| `EYE_POKE` angry | `display_pan` −12/−15 (gira via) |
-| `EYE_POKE` confused | `head_roll` +8 |
-| `USER_APOLOGY` | `body_home` o leggero ritorno verso utente |
-| `IDLE_LONG` → bored | micro `display_pan` |
-| Decay da annoyance | `body_home` |
-| Entrata `SLEEPING` (notte) | Se non centrato → `body_home`; poi `head_tilt` ≈ −10° (testa leggermente abbassata) |
-
-Il poke occhi **muove subito** il corpo (anche in standby). Obiettivi complessi (visione, scan) restano al planner LLM.
-
-## Codice
-
-- Client: `integration/body/BodyApiClient.kt`
-- Espressione mood: `integration/body/BodyExpressionController.kt`, `BodyExpressionMapper.kt`
-- Impostazioni: `data/body/BodySettingsRepository.kt`
-- Prompt: `integration/body/BodyPromptProviderImpl.kt`
-- Tool: `integration/tool/hardware/*`
-- Engine: `ReasoningModule.kt`, `ConversationViewModel.refreshReasoningEngineIfBodySettingsChanged()`
-
 ## Test manuale (checklist)
 
 | Comando | Atteso (comportamento, non script fisso) |
 |---------|------------------------------------------|
-| Corpo disabilitato | Nessun tool body; LLM non chiama `move_body_joint` |
-| *"Fai sì con la testa"* | Gesto `head_tilt` (LLM può variare delta), risposta vuota |
+| Corpo disabilitato | Nessun tool body; nessun gesto Kotlin; solo occhi |
+| *"Adesso sei triste"* | Occhi sad + testa giù breve (Kotlin) + ritorno neutro |
+| *"Sii felice"* | Occhi happy + cenno sì (Kotlin) |
+| *"Fai sì con la testa"* | LLM: nod con `position` 12→0; testa ancora centrata dopo ripetizioni |
 | *"Gira la testa"* | Probabilmente `base_pan` |
 | *"Gira solo la testa"* | Probabilmente `display_pan` |
-| *"Guardati intorno e dimmi cosa vedi"* | Esplorazione multi-angolo ragionata + sintesi (angoli non fissi) |
+| *"Guardati intorno e dimmi cosa vedi"* | Esplorazione multi-angolo ragionata + sintesi |
 | *"Guarda a destra"* | `base_pan`, reply vuota |
-| *"Guarda il mio cane"* | Foto + eventuale movimento se LLM giudica utile + risposta |
-| *"C'è qualcuno alla scrivania?"* | Foto → eventuale esplorazione → risposta |
-| Heartbeat bored, idle | Può tacere O muoversi silenziosamente — scelta del planner |
-| Corpo disabilitato + focus soggetto | Solo `take_photo` |
+| *"Guarda il mio cane"* | Foto + eventuale movimento funzionale + risposta |
+| Heartbeat bored, idle 15+ min | Look-around silenzioso Kotlin (non LLM) |
+| *"Vai a dormire"* | Pose sonno testa ~−10°, non resettata da ephemeral |
 
 ## Limiti (v1)
 
-- Nessun tool `body_gesture` (gesti via catene `move_body_joint`).
-- Centering / room exploration: **pattern suggeriti nel prompt**, closed-loop guidato LLM — nessun controller automatico in codice Kotlin.
-- Nessun closed-loop automatico post-promemoria.
-- Umore → corpo: preset deterministici in `BodyExpressionController` (SSOT con `MoodManager`); LLM resta libero per catene goal-driven.
+- Nessun tool `body_gesture` dedicato (gesti espliciti via catene LLM `move_body_joint`).
+- Centering / room exploration: pattern LLM — nessun controller automatico Kotlin.
+- Nessuna sincronizzazione gesto ↔ fonemi TTS.
+- Espressività mood: coreografie deterministiche Kotlin + LLM per compiti fisici.
 
 ## Riferimento firmware
 

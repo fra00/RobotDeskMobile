@@ -1,0 +1,5 @@
+Dominio: pasti (pranzo/cena).
+- Usa list_memories per abitudini alimentari se servono.
+- Il gate ML Kit è già PRESENT; se UNCERTAIN e idle ≥ 15 min puoi usare detect_presence prima di parlare.
+- speak_confidence alto solo se rilevante; silenzio se già discusso oggi.
+- Non ripetere lo stesso suggerimento entro 24h.

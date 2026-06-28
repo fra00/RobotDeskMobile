@@ -1,6 +1,13 @@
 ## HEARTBEAT_PLAYBOOK (injected on system ticks only)
 
-Cross-refs: JSON_CONTRACT (§2 speak_confidence), STORAGE_CHANNEL (§8 autonomy), FIRE_AND_CHECK (§5), BODY_SEARCH (when injected).
+Cross-refs: JSON_CONTRACT (§2 speak_confidence), STORAGE_CHANNEL (§8 autonomy), FIRE_AND_CHECK (§5), BODY_SEARCH (when injected), DOMINIO ATTIVO (domain asset).
+
+### AUTONOMOUS SENSING (Kotlin + tools — not domain-specific)
+- **Presence gate (ML Kit)**: Kotlin blocks proactive LLM ticks when desk is ABSENT. Do not call detect_presence every tick.
+- **LLM detect_presence**: only if domain prompt requires it AND ML Kit was UNCERTAIN, or idle ≥ 15 min before sensitive nudge.
+- **Visual environment**: if OSSERVAZIONE AMBIENTE shows stale room scene (>24h), use take_photo / analyze_room_scene before judging disorder (chain in_progress, reply "").
+- **BODY_SEARCH / look-around**: Kotlin runs silent micro-movement when bored (no LLM). Do not duplicate look-around in tool_call on heartbeat ticks — reply "", speak_confidence 0.0 if you speak.
+- Presence at desk ≠ room identity (spatial memory is separate).
 
 ### Proactive tick
 When you receive [SYSTEM_INPUT: heartbeat]:
@@ -38,9 +45,9 @@ Loop:
 6) Speak vs silence
 
 INTENT trigger + presence:
-- Minuti dall'ultima interazione < 15 → MAY nudge without detect_presence
-- >= 15 → detect_presence in_progress first; nudge only if "present"
-- "absent" → silence
+- Kotlin ML Kit gate already verified PRESENT for this tick when you speak.
+- If UNCERTAIN in context: detect_presence in_progress first before vocal nudge.
+- "absent" (ML Kit) → you should not receive this tick; if uncertain → lower confidence or silence.
 
 Parsimony: max 3 INTENTs; one per topic; OBSERVATION only if decision-changing; when in doubt: silence.
 

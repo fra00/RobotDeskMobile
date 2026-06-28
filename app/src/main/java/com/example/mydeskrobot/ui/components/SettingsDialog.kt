@@ -40,11 +40,15 @@ fun SettingsDialog(
     onOpenVoskModelSettings: () -> Unit,
     onOpenNotificationSettings: () -> Unit,
     onOpenHeartbeatSettings: () -> Unit,
+    onOpenAttentionDomainsSettings: () -> Unit,
+    onOpenDeskPresenceSettings: () -> Unit,
     isVoskModelReady: Boolean,
     sttProviderName: String,
     notificationsEnabled: Boolean,
     isNotificationAccessGranted: Boolean,
     heartbeatEnabled: Boolean,
+    attentionDomainsSummary: String,
+    deskPresenceEnabled: Boolean,
     onNotificationsEnabledChange: (Boolean) -> Unit,
     onSaveNotifications: () -> Unit,
 ) {
@@ -129,6 +133,20 @@ fun SettingsDialog(
                         stringResource(R.string.heartbeat_status_disabled)
                     },
                     onClick = onOpenHeartbeatSettings,
+                )
+                SettingsRow(
+                    label = stringResource(R.string.settings_attention_domains),
+                    value = attentionDomainsSummary,
+                    onClick = onOpenAttentionDomainsSettings,
+                )
+                SettingsRow(
+                    label = stringResource(R.string.settings_desk_presence),
+                    value = if (deskPresenceEnabled) {
+                        stringResource(R.string.desk_presence_status_enabled)
+                    } else {
+                        stringResource(R.string.desk_presence_status_disabled)
+                    },
+                    onClick = onOpenDeskPresenceSettings,
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 HorizontalDivider()

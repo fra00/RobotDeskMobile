@@ -104,6 +104,10 @@
     <string name="cd_sleeping">Robot che dorme</string>
     <string name="cd_drowsy">Robot assonnato</string>
     <string name="cd_standby_sleeping">In standby — dorme</string>
+    <string name="cd_desk_presence_present">Presenza rilevata alla scrivania</string>
+    <string name="cd_desk_presence_absent">Nessuna presenza alla scrivania</string>
+    <string name="cd_desk_presence_uncertain">Presenza incerta</string>
+    <string name="cd_desk_presence_unknown">Presenza non ancora rilevata</string>
     <string name="cd_robot_context_work">Contesto robot: lavoro</string>
     <string name="cd_robot_context_call">Contesto robot: chiamata</string>
     <string name="cd_robot_context_meeting">Contesto robot: riunione</string>
@@ -280,6 +284,8 @@
     <string name="notification_settings_saved">Impostazioni notifiche salvate</string>
 
     <string name="settings_heartbeat">Proattività</string>
+    <string name="settings_attention_domains">Domini di attenzione</string>
+    <string name="attention_domains_summary">%1$d di %2$d attivi</string>
     <string name="heartbeat_settings_title">Proattività (Heartbeat)</string>
     <string name="heartbeat_enabled_label">Abilita interventi spontanei</string>
     <string name="heartbeat_interval_label">Intervallo controllo: %1$d min</string>
@@ -291,6 +297,55 @@
     <string name="heartbeat_status_enabled">Attivo</string>
     <string name="heartbeat_status_disabled">Disattivo</string>
     <string name="heartbeat_settings_saved">Impostazioni proattività salvate</string>
+    <string name="heartbeat_manage_domains">Gestisci domini di attenzione</string>
+
+    <string name="settings_desk_presence">Presenza scrivania</string>
+    <string name="desk_presence_settings_title">Presenza scrivania (ML Kit)</string>
+    <string name="desk_presence_enabled_label">Rilevamento presenza on-device</string>
+    <string name="desk_presence_fps_label">Analisi camera: %1$d fps</string>
+    <string name="desk_presence_threshold_label">Soglia volto: %1$d%%</string>
+    <string name="desk_presence_privacy_hint">Analisi locale (volto + pose). Nessun invio cloud per il gate presenza. Il dispositivo è pensato sempre in carica.</string>
+    <string name="desk_presence_settings_saved">Impostazioni presenza salvate</string>
+    <string name="desk_presence_status_enabled">Attivo</string>
+    <string name="desk_presence_status_disabled">Disattivo</string>
+
+    <string name="attention_domains_title">Domini di attenzione</string>
+    <string name="attention_domain_builtin">Predefinito</string>
+    <string name="attention_domain_sensitivity_high">Sensibilità alta</string>
+    <string name="attention_domain_sensitivity_medium">Sensibilità media</string>
+    <string name="attention_domain_sensitivity_low">Sensibilità bassa</string>
+    <string name="attention_domain_add_title">Nuovo dominio</string>
+    <string name="attention_domain_edit_title">Modifica dominio</string>
+    <string name="attention_domain_add_button">Aggiungi dominio</string>
+    <string name="attention_domain_name_label">Nome</string>
+    <string name="attention_domain_description_label">Descrizione (prompt)</string>
+    <string name="attention_domain_description_hint">Descrivi cosa deve osservare il robot in questo dominio (min. 20 caratteri)</string>
+    <string name="attention_domain_trigger_label">Trigger</string>
+    <string name="attention_domain_trigger_daily">Giornaliero</string>
+    <string name="attention_domain_trigger_weekly">Settimanale</string>
+    <string name="attention_domain_trigger_event_photo">Evento: nuova foto</string>
+    <string name="attention_domain_trigger_event_room">Evento: cambio stanza</string>
+    <string name="attention_domain_trigger_hour">Ora: %1$d:00</string>
+    <string name="attention_domain_weekday_label">Giorno della settimana</string>
+    <string name="attention_domain_weekday_monday">Lunedì</string>
+    <string name="attention_domain_weekday_tuesday">Martedì</string>
+    <string name="attention_domain_weekday_wednesday">Mercoledì</string>
+    <string name="attention_domain_weekday_thursday">Giovedì</string>
+    <string name="attention_domain_weekday_friday">Venerdì</string>
+    <string name="attention_domain_weekday_saturday">Sabato</string>
+    <string name="attention_domain_weekday_sunday">Domenica</string>
+    <string name="attention_domain_sensitivity_label">Sensibilità</string>
+    <string name="attention_domain_requires_presence">Richiede presenza alla scrivania</string>
+    <string name="attention_domain_can_use_camera">Può usare la camera</string>
+    <string name="attention_domain_enabled_label">Abilitato</string>
+    <string name="attention_domain_delete_title">Elimina dominio</string>
+    <string name="attention_domain_delete_message">Eliminare il dominio \"%1$s\"? L\'azione non è reversibile.</string>
+    <string name="attention_domain_delete_confirm">Elimina</string>
+    <string name="attention_domain_error_name_required">Inserisci un nome</string>
+    <string name="attention_domain_error_description_short">La descrizione deve avere almeno 20 caratteri</string>
+    <string name="attention_domain_error_id_conflict">Esiste già un dominio con questo nome</string>
+    <string name="attention_domain_saved">Dominio salvato</string>
+    <string name="attention_domain_deleted">Dominio eliminato</string>
 
     <string name="settings_body">Corpo robot</string>
     <string name="body_settings_title">Corpo robot (ESP32)</string>

@@ -111,6 +111,18 @@ sealed class RobotInput {
         val placeConfidence: Float? = null,
         /** Known memorized places (short list). */
         val knownPlaces: List<String> = emptyList(),
+        /** Active attention domain for this tick (round-robin). */
+        val activeDomainId: String? = null,
+        val activeDomainName: String? = null,
+        val activeDomainSensitivity: String? = null,
+        /** Custom domain user prompt; built-in domains use asset files. */
+        val activeDomainUserPrompt: String? = null,
+        /** Recent proactive interventions on the active domain. */
+        val recentInterventionsOnDomain: List<String> = emptyList(),
+        /** ML Kit desk occupancy for this tick. */
+        val deskOccupancyState: String? = null,
+        /** Environment sensing freshness block (metadata only). */
+        val environmentFreshnessBlock: String? = null,
         override val timestamp: Long = System.currentTimeMillis(),
     ) : RobotInput() {
         override val sourceId: String = "heartbeat"

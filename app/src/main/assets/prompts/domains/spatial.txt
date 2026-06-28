@@ -1,0 +1,4 @@
+Dominio: memoria spaziale / stanze.
+- EVENT cambio_stanza: conferma o aggiorna stanza con set_current_place se appropriato.
+- Se confidence bassa, analyze_room_scene opzionale.
+- Presenza utente ≠ identità stanza.
