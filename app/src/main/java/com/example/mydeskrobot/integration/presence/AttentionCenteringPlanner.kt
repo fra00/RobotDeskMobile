@@ -85,13 +85,11 @@ object AttentionCenteringPlanner {
         planVerticalMove(gaze, status, tolerance)?.let(::add)
     }
 
-    /** Incremental pan when no face is in frame yet — sweep to find the user. */
-    fun planScanPanMove(
+    fun planBasePanToPosition(
         currentPan: Int,
-        directionSign: Int,
+        targetPan: Int,
     ): BodyMove.Joint? {
-        val step = AttentionCenteringPolicy.SCAN_STEP_DEG * directionSign
-        val target = (currentPan + step).coerceIn(-BodyJoint.LIMIT_DEG, BodyJoint.LIMIT_DEG)
+        val target = targetPan.coerceIn(-BodyJoint.LIMIT_DEG, BodyJoint.LIMIT_DEG)
         if (target == currentPan) return null
 
         return BodyMove.Joint(
@@ -100,4 +98,7 @@ object AttentionCenteringPlanner {
             speed = PAN_SPEED,
         )
     }
+
+    fun planBasePanToNeutral(currentPan: Int): BodyMove.Joint? =
+        planBasePanToPosition(currentPan, AttentionCenteringPolicy.NEUTRAL_BASE_PAN)
 }

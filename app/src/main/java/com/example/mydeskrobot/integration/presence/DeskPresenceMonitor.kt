@@ -12,6 +12,7 @@ import androidx.core.content.ContextCompat
 import com.example.mydeskrobot.data.presence.DeskPresenceSettingsRepository
 import com.example.mydeskrobot.data.presence.DeskPresenceStateStore
 import com.example.mydeskrobot.data.presence.FaceGazeStateStore
+import com.example.mydeskrobot.data.presence.PresenceDebugStateStore
 import com.example.mydeskrobot.data.vision.VisionCaptureActivityProvider
 import com.example.mydeskrobot.domain.presence.DeskOccupancy
 import com.example.mydeskrobot.domain.presence.DeskOccupancyState
@@ -41,6 +42,7 @@ class DeskPresenceMonitor(
 ) {
     private val detector = FacePosePresenceDetector()
     private var fusionPolicy = PresenceFusionPolicy()
+    private var faceConfidenceThreshold = 0.6f
     private var analysisJob: Job? = null
     private val running = AtomicBoolean(false)
     private val frameMutex = Mutex()
@@ -65,6 +67,7 @@ class DeskPresenceMonitor(
             fusionPolicy = PresenceFusionPolicy(
                 faceConfidenceThreshold = settings.faceConfidenceThreshold,
             )
+            faceConfidenceThreshold = settings.faceConfidenceThreshold
 
             val activity = VisionCaptureActivityProvider.getCaptureActivity()
             if (activity == null) {
@@ -90,10 +93,12 @@ class DeskPresenceMonitor(
         analysisJob?.cancel()
         analysisJob = null
         fusionPolicy.reset()
+        detector.resetFilters()
         val unknown = DeskOccupancy.UNKNOWN
         _occupancy.value = unknown
         DeskPresenceStateStore.update(unknown)
         FaceGazeStateStore.reset()
+        PresenceDebugStateStore.reset()
         runCatching {
             ProcessCameraProvider.getInstance(context).get().unbindAll()
         }
@@ -155,15 +160,23 @@ class DeskPresenceMonitor(
             val inputImage = InputImage.fromMediaImage(mediaImage, rotation)
 
             runCatching {
-                val signals = detector.analyze(
+                val result = detector.analyze(
                     image = inputImage,
                     imageWidth = imageProxy.width,
                     imageHeight = imageProxy.height,
+                    faceConfidenceThreshold = faceConfidenceThreshold,
+                    capturedAt = now,
                 )
-                val fused = fusionPolicy.fuse(signals)
+                val fused = fusionPolicy.fuse(result.signals)
                 _occupancy.value = fused
                 DeskPresenceStateStore.update(fused)
-                updateFaceGaze(signals, now)
+                PresenceDebugStateStore.update(
+                    result.debug.copy(
+                        occupancyState = fused.state,
+                        occupancyConfidence = fused.confidence,
+                    ),
+                )
+                updateFaceGaze(result.signals, now)
             }.onFailure { error ->
                 Log.w(TAG, "Frame analysis failed: ${error.message}")
             }
@@ -175,7 +188,10 @@ class DeskPresenceMonitor(
     private fun updateFaceGaze(signals: PresenceFrameSignals, now: Long) {
         val offsetX = signals.primaryFaceOffsetX
         val offsetY = signals.primaryFaceOffsetY
-        if (offsetX == null || offsetY == null || signals.facesInRoi == 0) return
+        if (offsetX == null || offsetY == null || signals.facesInRoi == 0) {
+            FaceGazeStateStore.update(null)
+            return
+        }
         FaceGazeStateStore.update(
             FaceGazeSnapshot(
                 horizontalOffset = offsetX,

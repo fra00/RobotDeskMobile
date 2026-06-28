@@ -13,6 +13,15 @@ class PresenceFusionPolicyTest {
 
     @Test
     fun fuse_present_whenFaceConfident() {
+        repeat(2) {
+            val warming = policy.fuse(
+                PresenceFrameSignals(
+                    facesInRoi = 1,
+                    maxFaceConfidence = 0.8f,
+                ),
+            )
+            assertEquals(DeskOccupancyState.UNCERTAIN, warming.state)
+        }
         val result = policy.fuse(
             PresenceFrameSignals(
                 facesInRoi = 1,

@@ -20,6 +20,7 @@ import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.SentimentSatisfied
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Terminal
+import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -63,6 +64,7 @@ import com.example.mydeskrobot.ui.components.MemorySettingsDialog
 import com.example.mydeskrobot.ui.components.SpatialSettingsDialog
 import com.example.mydeskrobot.ui.components.PhraseInfoCorner
 import com.example.mydeskrobot.ui.components.NotificationSettingsDialog
+import com.example.mydeskrobot.ui.components.PresenceDebugDialog
 import com.example.mydeskrobot.ui.components.PendingInboxDialog
 import com.example.mydeskrobot.ui.components.PendingInboxIndicator
 import com.example.mydeskrobot.ui.components.SettingsDialog
@@ -91,21 +93,26 @@ fun RobotScreen(
     var showHistory by remember { mutableStateOf(false) }
     var showReasoningLog by remember { mutableStateOf(false) }
     var showMoodStatus by remember { mutableStateOf(false) }
+    var showPresenceDebug by remember { mutableStateOf(false) }
     var selectedFireAndCheck by remember { mutableStateOf<FireAndCheckEntry?>(null) }
     var showPendingInbox by remember { mutableStateOf(false) }
     val showHistoryButton = uiState.isHotwordListeningActive || uiState.displayText.isNotBlank()
     val showReasoningLogButton =
         uiState.isHotwordListeningActive || uiState.reasoningLogText.isNotBlank()
     val showMoodButton = uiState.isHotwordListeningActive
+    val showPresenceDebugButton =
+        uiState.isHotwordListeningActive && uiState.deskPresenceMonitorEnabled
     val layout = rememberScreenLayout()
     val topDebugIconStackOffset = layout.cornerIconButtonSize + 4.dp
     val topDebugButtonCount = listOf(
         showHistoryButton,
         showReasoningLogButton,
         showMoodButton,
+        showPresenceDebugButton,
     ).count { it }
     val reasoningLogStackIndex = if (showHistoryButton) 1 else 0
     val moodStackIndex = (if (showHistoryButton) 1 else 0) + (if (showReasoningLogButton) 1 else 0)
+    val presenceDebugStackIndex = moodStackIndex + (if (showMoodButton) 1 else 0)
     val backgroundTapInteraction = remember { MutableInteractionSource() }
     val canTapBackgroundToWake =
         uiState.isHotwordListeningActive &&
@@ -313,6 +320,25 @@ fun RobotScreen(
             }
         }
 
+        if (showPresenceDebugButton) {
+            IconButton(
+                onClick = { showPresenceDebug = true },
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(
+                        top = layout.cornerPadding + topDebugIconStackOffset * presenceDebugStackIndex,
+                        end = layout.cornerPadding,
+                    )
+                    .size(layout.cornerIconButtonSize),
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Visibility,
+                    contentDescription = stringResource(R.string.cd_show_presence_debug),
+                    tint = MaterialTheme.colorScheme.primary,
+                )
+            }
+        }
+
         Row(
             modifier = Modifier
                 .align(Alignment.BottomStart)
@@ -368,6 +394,12 @@ fun RobotScreen(
         MoodStatusDialog(
             moodState = uiState.moodUiState,
             onDismiss = { showMoodStatus = false },
+        )
+    }
+
+    if (showPresenceDebug) {
+        PresenceDebugDialog(
+            onDismiss = { showPresenceDebug = false },
         )
     }
 

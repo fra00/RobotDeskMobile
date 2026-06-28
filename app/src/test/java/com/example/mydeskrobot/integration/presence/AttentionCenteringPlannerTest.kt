@@ -65,14 +65,26 @@ class AttentionCenteringPlannerTest {
     }
 
     @Test
-    fun scanPan_movesInDirection() {
-        val move = AttentionCenteringPlanner.planScanPanMove(currentPan = 0, directionSign = -1)!!
+    fun basePanToPosition_movesToTarget() {
+        val move = AttentionCenteringPlanner.planBasePanToPosition(currentPan = 0, targetPan = -14)!!
         assertEquals(BodyJoint.BASE_PAN, move.joint)
         assertEquals(-14, move.position)
     }
 
     @Test
-    fun scanPan_atLimit_returnsNull() {
-        assertTrue(AttentionCenteringPlanner.planScanPanMove(currentPan = 45, directionSign = 1) == null)
+    fun basePanToNeutral_fromOffset() {
+        val move = AttentionCenteringPlanner.planBasePanToNeutral(currentPan = 28)!!
+        assertEquals(0, move.position)
+    }
+
+    @Test
+    fun basePanToNeutral_alreadyNeutral_returnsNull() {
+        assertTrue(AttentionCenteringPlanner.planBasePanToNeutral(currentPan = 0) == null)
+    }
+
+    @Test
+    fun expandScanTargets_alternatesSignedMagnitudes() {
+        val targets = com.example.mydeskrobot.domain.presence.AttentionCenteringPolicy.expandScanTargets()
+        assertEquals(listOf(14, -14, 28, -28, 42, -42), targets)
     }
 }

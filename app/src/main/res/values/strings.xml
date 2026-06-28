@@ -108,6 +108,23 @@
     <string name="cd_desk_presence_absent">Nessuna presenza alla scrivania</string>
     <string name="cd_desk_presence_uncertain">Presenza incerta</string>
     <string name="cd_desk_presence_unknown">Presenza non ancora rilevata</string>
+    <string name="cd_show_presence_debug">Mostra vista debug presenza (camera ML Kit)</string>
+    <string name="presence_debug_title">Debug presenza camera</string>
+    <string name="presence_debug_hint">Schema dell\'ultimo frame analizzato (frontale). Verde = ROI desk; blu = volti; arancione = pose (naso/spalle). La voce non influenza questo rilevamento.</string>
+    <string name="presence_debug_no_frame">Nessun frame ancora — attiva il microfono e attendi qualche secondo.</string>
+    <string name="presence_debug_legend_roi">ROI</string>
+    <string name="presence_debug_legend_face">Volto</string>
+    <string name="presence_debug_legend_pose">Pose</string>
+    <string name="presence_debug_state_present">PRESENT</string>
+    <string name="presence_debug_state_absent">ABSENT</string>
+    <string name="presence_debug_state_uncertain">UNCERTAIN</string>
+    <string name="presence_debug_state_unknown">UNKNOWN</string>
+    <string name="presence_debug_fusion_line">Stato: %1$s (conf. %2$.2f) — face gate: %3$s pose gate: %4$s</string>
+    <string name="presence_debug_legend_rejected">Scartato</string>
+    <string name="presence_debug_faces_line">Volti: %1$d totali, %2$d accettati in ROI, %3$d usati — conf max %4$.2f</string>
+    <string name="presence_debug_pose_line">Pose: %1$d/%2$d landmark in ROI — conf %3$.2f</string>
+    <string name="presence_debug_gaze_line">Offset sguardo: H %1$.2f V %2$.2f (centering)</string>
+    <string name="presence_debug_frame_line">Frame %1$d×%2$d px — aggiornamento live ~5 fps</string>
     <string name="cd_robot_context_work">Contesto robot: lavoro</string>
     <string name="cd_robot_context_call">Contesto robot: chiamata</string>
     <string name="cd_robot_context_meeting">Contesto robot: riunione</string>
