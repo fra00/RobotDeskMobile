@@ -121,7 +121,7 @@ On session start: `moodManager.initialize()` loads persisted mood; `resetConvers
 ## Prompt injection
 
 - Provider: [`MoodContextProvider`](../app/src/main/java/com/example/mydeskrobot/reasoning/MoodContextProvider.kt) / [`DelegatingMoodContextProvider`](../app/src/main/java/com/example/mydeskrobot/integration/mood/DelegatingMoodContextProvider.kt)
-- Formatter: [`MoodPromptFormatter`](../app/src/main/java/com/example/mydeskrobot/domain/mood/MoodPromptFormatter.kt) → block **`STATO ROBOT`** (+ optional turn hints from evaluator: fatigue, repetition)
+- Formatter: [`MoodPromptFormatter`](../app/src/main/java/com/example/mydeskrobot/domain/mood/MoodPromptFormatter.kt) → block **`STATO ROBOT`**: persistent wellbeing **and** active ephemeral face (if any), plus coherence rule for “come stai?” (+ turn hints: fatigue, repetition)
 - Reply style: [`MoodReplyStyleResolver`](../app/src/main/java/com/example/mydeskrobot/domain/mood/MoodReplyStyleResolver.kt) → `terse` / `normal` / `warm` appended to STATO ROBOT
 - Human cadence: [`HumanVoicePrompt`](../app/src/main/java/com/example/mydeskrobot/domain/mood/HumanVoicePrompt.kt) (injected each user turn)
 

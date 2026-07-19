@@ -5,23 +5,25 @@ Il robot può intervenire in due modi distinti (oltre ai promemoria che **tu** c
 1. **Predittività** — impara dalle attività che racconti (passeggiata, tapis roulant, pranzo fuori…) e, se un giorno salti un’abitudine, può chiedertelo con tatto.
 2. **Wellness** — una volta al giorno (in condizioni precise) valuta come stai su pasti, lavoro, movimento, contatti e — se hai il **corpo ESP32** — anche ordine della scrivania/stanza.
 
+Sono **canali separati**: spegnere uno non spegne l’altro. Hanno regole e interruttori diversi.
+
 ## Cosa non fa
 
 - Non usa le foto che chiedi con «cosa vedi» per giudicare il disordine.
-- Non ti interrompe appena accendi il microfono.
+- Non ti interrompe a metà dialogo.
 - Non parla in modalità lavoro / call / riunione / focus.
 
-## Wellness — quando può parlare
+## Wellness — quando può partire
 
-Circa **un’ora** (configurabile) dopo la **prima accensione del microfono** del giorno, se:
+In sequenza:
 
-- il microfono è ancora attivo;
-- non sei in modalità lavoro / call / riunione / focus silenzioso;
-- dall’**ultimo turno vocale** sono passati almeno **~5 minuti** (buffer: evita il check subito dopo un dialogo; non è «mic acceso da 5 min»).
+1. **Anchor** — è passata almeno ~1 ora (configurabile) dalla **prima** accensione del microfono del giorno (così non parte appena accendi).
+2. **Buffer dopo dialogo** — dall’ultimo turno vocale sono passati almeno ~5 minuti (evita di accavallarsi con una conversazione ancora “calda”).
+3. **Presenza** — se c’è il corpo, prova a localizzarti; se non ti trova, serve un’interazione recente (finestra presenza, default ~15 min, comunque ≥ buffer). Senza corpo resta solo l’interazione recente.
+4. **Sessione libera** — microfono attivo, non notte, non in thinking/speaking/ascolto attivo.
+5. **Start** — al massimo un check al giorno; parla solo se qualcosa è chiaramente carente (altrimenti silenzio).
 
-Se il check trova qualcosa da dire, parla solo se risulti ancora **presente**: interazione nelle ultime **~45 minuti** **oppure** volto in camera / corpo che ti localizza (finestra **W**, configurabile). Altrimenti resta in silenzio.
-
-Al massimo **una frase** al giorno, solo se un ambito (es. pranzo saltato, scrivania molto disordinata) è chiaramente «carente».
+Se non vuoi più un ambito (es. pasti), disattivalo da **Gestisci domini** — non serve anti-ripetizione extra: parla al più una volta al giorno.
 
 ## Ordine ambientale
 
@@ -31,13 +33,18 @@ Senza corpo ESP32 il wellness resta su abitudini e log testuali, senza valutazio
 
 ## Predittività — esempio
 
-Se fai spesso tapis verso le 19:00 e un giorno non risulta nel log, il robot può chiedere con tatto — solo se l’abitudine ha **confidence sufficiente** (più giorni ripetuti) e sei **presente** (parlato negli ultimi 10 minuti o il corpo ti trova).
+Se fai spesso tapis verso le 19:00 e un giorno non risulta nel log, il robot può chiedere con tatto — solo se l’abitudine ha **confidence sufficiente** (più giorni ripetuti) e sei **presente** (parlato negli ultimi 10 minuti o il corpo ti trova). Ha un proprio tetto di interventi e cooldown, indipendente dal wellness.
 
-I pattern si aggiornano dal **Log Day** con mining **incrementale** (all’apertura app, prima di cancellare episodi vecchi): stessa attività alla stessa ora in **giorni diversi** aumenta la confidence. Se dici che non fai più quell’abitudine, il pattern viene **eliminato**.
+I pattern si aggiornano dal **Log Day** con mining **incrementale** (all’apertura app, prima di cancellare episodi vecchi). Se dici che non fai più quell’abitudine, il pattern viene **eliminato**.
 
 ## Impostazioni
 
-**Impostazioni → Proattività** — attiva/disattiva heartbeat, predittività e wellness; minuti anchor/idle/presenza; soglia confidenza. **Gestisci domini** abilita/disabilita gli ambiti del check wellness (predefiniti + personalizzati). I domini custom sono uguali agli altri: scrivi nome e descrizione; partono con le stesse regole di ingaggio del wellness (niente orario/evento separato). L’ordine, se attivo e col corpo ESP32, viene valutato in silenzio **prima** dello score. La stanza corrente non è un dominio: si aggiorna con i tool spaziali.
+**Impostazioni → Proattività**:
+
+- **Micro-tick** — solo occhi/corpo in standby (niente LLM). Indipendente da wellness/predittività.
+- **Predittività** / **Wellness** — interruttori dei due canali.
+- Minuti anchor / buffer dialogo / presenza; soglia `speak_confidence`.
+- **Gestisci domini** — abilita/disabilita ambiti del check wellness (predefiniti + personalizzati).
 
 ## Spec tecnica
 

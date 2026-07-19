@@ -32,7 +32,7 @@ L’umore **torna verso un baseline** con il tempo (decay), salvo eventi nuovi.
 
 ## Cosa vede l’LLM
 
-Nel prompt compare **STATO ROBOT** (valenza, emozione di fondo, motivo, stile risposta) più eventuali hint di contesto (fatica conversazione, ripetizione). Il robot è invitato a usare `neutral`/`thinking` di default e `happy` solo quando ha senso emotivo.
+Nel prompt compare **STATO ROBOT** (valenza, emozione di fondo, motivo, **espressione occhi attuale** se effimera attiva, stile risposta) più eventuali hint di contesto (fatica conversazione, ripetizione). Se gli chiedi come sta, deve rispondere coerente con quella faccia/stato — non “va tutto bene” mentre è bored/sad. Default `emotion` ancora `neutral`/`thinking`, `happy` solo quando ha senso emotivo.
 
 ## Corpo ESP32
 

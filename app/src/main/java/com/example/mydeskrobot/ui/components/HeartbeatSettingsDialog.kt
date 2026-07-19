@@ -54,6 +54,11 @@ fun HeartbeatSettingsDialog(
                         onCheckedChange = { onFormChange(form.copy(enabled = it)) },
                     )
                 }
+                Text(
+                    text = stringResource(R.string.heartbeat_enabled_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
 
                 Spacer(modifier = Modifier.height(16.dp))
 
@@ -194,7 +199,7 @@ fun HeartbeatSettingsDialog(
                 Slider(
                     value = form.wellnessPresenceMinutes.toFloat(),
                     onValueChange = { onFormChange(form.copy(wellnessPresenceMinutes = it.roundToInt())) },
-                    valueRange = 10f..120f,
+                    valueRange = 5f..60f,
                     steps = 10,
                     modifier = Modifier.fillMaxWidth(),
                 )

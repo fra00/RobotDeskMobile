@@ -6,7 +6,6 @@ package com.example.mydeskrobot.domain.proactive
  */
 object ProactivityConstants {
     const val PREDICTIVITY_PRESENCE_MINUTES = 10
-    const val WELLNESS_PRESENCE_MINUTES = 45
 
     const val TIME_BUCKET_MINUTES = 30
 
@@ -16,7 +15,13 @@ object ProactivityConstants {
     const val PREDICTIVITY_TIME_TOLERANCE_MINUTES = 45
 
     const val WELLNESS_ANCHOR_MINUTES = 60
+    /** Buffer after last user turn so wellness does not overlap an ongoing dialog. */
     const val WELLNESS_IDLE_MINUTES = 5
+    /**
+     * Presence fallback: recent interaction when body locate fails / no body.
+     * Must be ≥ [WELLNESS_IDLE_MINUTES] so a non-empty start window exists after the idle buffer.
+     */
+    const val WELLNESS_PRESENCE_MINUTES = 15
 
     const val PATTERN_TTL_DAYS = 30
 

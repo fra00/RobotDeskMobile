@@ -33,7 +33,6 @@ class DeviationWatcher(
 ) {
     suspend fun findCandidate(context: DeviationWatchContext): HabitSlot? {
         if (!context.micSessionActive) return null
-        if (!context.heartbeatSettings.enabled) return null
         if (!context.proactivitySettings.predictivityEnabled) return null
 
         val speakGate = ProactiveSpeakGate.canSpeak(

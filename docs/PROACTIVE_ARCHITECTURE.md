@@ -50,10 +50,10 @@ flowchart TB
 
 | Constant | Default | Meaning |
 |----------|---------|---------|
-| `N` (`wellnessDelayMinutes`) | 60 | Minutes after **first hotword-on of the day** before Wellness tick is eligible |
-| `idleMinutes` | 5 | Min minutes since **last user voice turn** before Wellness tick (post-dialog buffer; not «mic on for N min») |
-| `W` (`presenceWindowMinutes`) | 45 | Window for `userPresentEnough` (interaction or face) |
-| `wellnessSpeakCapPerDay` | 1 | Max Wellness **spoken** lines per day |
+| `N` (`wellnessAnchorMinutes`) | 60 | Minutes after **first hotword-on of the day** before Wellness tick is eligible |
+| `idleMinutes` | 5 | Post-dialog buffer: do not start wellness while a conversation may still be ongoing |
+| `W` (`wellnessPresenceMinutes`) | 15 | Presence fallback: recent user turn when body locate fails / no body (clamped ≥ idle) |
+| `wellnessSpeakCapPerDay` | 1 | Max Wellness **spoken** lines per day (once-per-day check; independent of predictivity cap) |
 | `predictivityPresenceMinutes` | 10 | Max minutes since last user turn for predictivity speak (without body locate) |
 | `predictivityPromoteHitCount` | 7 | Distinct calendar days on same slot → confidence cap (~90%) |
 | `predictivityMinHitCount` | 3 | Minimum slot hits before deviation speak is eligible |
@@ -275,16 +275,17 @@ All must pass before `SYSTEM_INPUT: wellness_check`:
 
 | Gate | Rule |
 |------|------|
-| Proactivity enabled | `HeartbeatSettings.enabled` (or future `WellnessSettings`) |
+| Wellness enabled | `ProactivitySettings.wellnessEnabled` (**not** micro-tick / `HeartbeatSettings.enabled`) |
 | Mic active | Hotword / voice session active **at check time** |
-| Daily anchor | `now - firstHotwordOnToday >= N` minutes |
-| Idle | No user voice turn for `idleMinutes` |
-| Once per day | `wellnessCheckDoneToday` in [`WorkingMemory`](../app/src/main/java/com/example/mydeskrobot/domain/memory/WorkingMemory.kt) (future field) |
+| Not busy | No Thinking/Speaking/ActiveListening/CapturingImage; LLM idle |
+| Night | Suppressed |
 | Robot context | Not SILENT profile ([`RobotContextPolicy`](../app/src/main/java/com/example/mydeskrobot/domain/context/RobotContextPolicy.kt)) |
-| Not busy | LLM chain idle, TTS not speaking |
-| Active window | Heartbeat time window (if retained) |
-| Night | Suppressed (if night mode enabled on VM path) |
+| Daily anchor | `now - firstHotwordOnToday >= N` minutes |
+| Idle buffer | No user voice turn for `idleMinutes` (anti-overlap with dialog) |
+| Presence | Body configured+reachable → `locateUser` first; if miss → recent turn within `W` (≥ idle). No body → recent turn only |
+| Once per day | `wellnessCheckDoneToday` / `wellnessVisualDoneToday` marked **after** successful tick (not before dispatch) |
 
+**Independent from predictivity** speak gates (daily cap 3 / cooldown 20).  
 **Not** gated on ML Kit `DeskPresenceGate` for starting the tick.
 
 ### Wellness pipeline (four phases)
@@ -398,15 +399,18 @@ Optional structured fields in future Kotlin DTO: `orderLevel` = `ordinato` | `di
 
 ## UserPresencePolicy
 
-Replaces ML Kit `DeskPresenceGate` for proactive **speak** paths.
+Replaces ML Kit `DeskPresenceGate` for proactive **speak / start** paths.
 
-### Wellness
+### Wellness (body first)
 
 ```text
-wellnessUserPresentEnough =
-  lastUserInteractionWithin(W minutes)     // default 45
-  OR lastFaceSeenWithin(W minutes)
+if bodyConfigured && bodyReachable:
+  locateUserNow() OR lastUserTurnWithin(max(W, idle) minutes)
+else:
+  lastUserTurnWithin(max(W, idle) minutes)   // default W=15, idle=5
 ```
+
+Idle buffer (do not start right after a dialog) is a **separate** scheduling gate from presence.
 
 ### Predictivity (baseline)
 
@@ -420,18 +424,17 @@ Evaluated at **deviation window** time. Body locate = on-demand scan (pan + face
 
 | Action | Wellness presence | Predictivity presence | Requires body? |
 |--------|-------------------|----------------------|----------------|
-| Room order capture | No | No | Yes |
-| Wellness TTS | Yes (W=45) | — | No |
+| Wellness tick (visual + score) | Yes (locate first, else turn ≤W) | — | Locate preferred |
 | Predictivity deviation TTS | — | Yes (10 min OR locate) | Locate only |
 
 ### Scenario table
 
-| Scenario | Order capture | Wellness speak | Predictivity speak |
-|----------|---------------|----------------|-------------------|
-| Spoke 10 min ago, no body | No | Yes | Yes |
-| Spoke 30 min ago, body finds face | Yes | Yes | Yes |
-| Spoke 30 min ago, no body | No | Yes | No |
-| Mic on, never spoke, body scan empty | Yes if body OK | No | No |
+| Scenario | Wellness start | Predictivity speak |
+|----------|----------------|-------------------|
+| Spoke 8 min ago, no body (idle≥5, W=15) | Yes | Yes |
+| Spoke 30 min ago, body finds user | Yes | Yes |
+| Spoke 30 min ago, no body | No | No |
+| Mic on, never spoke, body scan empty | No | No |
 
 ML Kit [`DeskPresenceMonitor`](DESK_PRESENCE.md) remains for conversational centering and debug — not mandatory gate for Wellness.
 
@@ -441,12 +444,15 @@ ML Kit [`DeskPresenceMonitor`](DESK_PRESENCE.md) remains for conversational cent
 
 | | Predictivity | Wellness |
 |--|--------------|----------|
-| Trigger | Habitual time window | T+N after first hotword-on, idle |
+| Trigger | Habitual time window | T+N after first hotword-on + idle + presence |
+| Enable switch | `predictivityEnabled` | `wellnessEnabled` |
 | Data | Log Day episodes | Habit summary, log, PATTERN, order OBS |
 | Photos | Never | Only room order in Wellness tick (body) |
-| Speak | Deviation question | One care summary line |
-| Presence for speak | 10 min OR body locate | W=45 min OR recent face |
+| Speak | Deviation question (cap/cooldown shared among predictivity speaks) | At most one care line / day |
+| Presence | 10 min turn OR body locate | Body locate first, else turn ≤W |
 | Mining | Incremental catch-up + pre-prune | — |
+
+`HeartbeatSettings.enabled` = **micro-tick alarm only** (eyes/body look-around, no LLM).
 
 ---
 

@@ -347,6 +347,8 @@ class ConversationViewModel(
     private var currentInputIsPredictivityDeviation = false
     /** True when the current LLM turn was triggered by wellness check. */
     private var currentInputIsWellnessCheck = false
+    /** Prevents double-dispatch while a wellness tick is in flight. */
+    private var wellnessCheckInFlight = false
     private var currentWellnessPhase: WellnessPhase? = null
     /** Active heartbeat domain context for tracking. */
     private var currentHeartbeatDomainId: String? = null
@@ -436,6 +438,7 @@ class ConversationViewModel(
 
     init {
         moodContextProvider.snapshotProvider = { moodManager.currentMood.value }
+        moodContextProvider.ephemeralProvider = { moodManager.ephemeralExpression.value }
         moodContextProvider.promptHintsProvider = { moodManager.currentPromptHints() }
         viewModelScope.launch {
             spatialContextManager.initialize()
@@ -2716,13 +2719,15 @@ class ConversationViewModel(
 
                 if (shouldSuppressWellness(result.copy(finalText = finalText))) {
                     Log.i(TAG, "Wellness check suppressed: confidence ${result.speakConfidence}")
-                    if (currentInputIsWellnessCheck && currentWellnessPhase == WellnessPhase.VISUAL_ORDER) {
+                    val suppressedPhase = currentWellnessPhase
+                    if (currentInputIsWellnessCheck && suppressedPhase == WellnessPhase.VISUAL_ORDER) {
                         viewModelScope.launch {
                             sensingLogRepository.record(SensingKind.ROOM_SCENE)
                         }
                     }
                     currentInputIsWellnessCheck = false
                     currentWellnessPhase = null
+                    markWellnessPhaseCompleted(suppressedPhase)
                     viewModelScope.launch {
                         proactiveTracker.recordSuppressed("wellness", "low speak_confidence")
                     }
@@ -2787,6 +2792,7 @@ class ConversationViewModel(
                     }
                     if (wasWellness) {
                         viewModelScope.launch { proactiveTracker.recordSilent("wellness") }
+                        markWellnessPhaseCompleted(wellnessPhase)
                     }
                     if (wasWellness && wellnessPhase == WellnessPhase.VISUAL_ORDER) {
                         viewModelScope.launch {
@@ -2829,6 +2835,7 @@ class ConversationViewModel(
                                 sensingLogRepository.record(SensingKind.ROOM_SCENE)
                             }
                         }
+                        markWellnessPhaseCompleted(wellnessPhase)
                     }
                     val reply = LlmAssistantReply(
                         text = finalText,
@@ -2845,6 +2852,7 @@ class ConversationViewModel(
             is ReasoningResult.Error -> {
                 currentInputIsHeartbeat = false
                 currentInputIsPredictivityDeviation = false
+                if (currentInputIsWellnessCheck) clearWellnessInFlightWithoutDone()
                 currentInputIsWellnessCheck = false
                 currentWellnessPhase = null
                 clearSilentNotificationTurnState()
@@ -2852,10 +2860,15 @@ class ConversationViewModel(
             }
 
             is ReasoningResult.MaxStepsReached -> {
+                val maxStepsWellnessPhase =
+                    if (currentInputIsWellnessCheck) currentWellnessPhase else null
                 currentInputIsHeartbeat = false
                 currentInputIsPredictivityDeviation = false
                 currentInputIsWellnessCheck = false
                 currentWellnessPhase = null
+                if (maxStepsWellnessPhase != null) {
+                    markWellnessPhaseCompleted(maxStepsWellnessPhase)
+                }
                 if (suppressTtsForCurrentTurn) {
                     val envelope = pendingSilentNotificationEnvelope
                     val text = result.lastText.trim()
@@ -3526,8 +3539,16 @@ class ConversationViewModel(
 
     private suspend fun pollWellnessCheck() {
         if (!VoiceSessionState.isActive) return
+        if (wellnessCheckInFlight) return
         val uiState = _uiState.value
-        if (uiState.phase is ConversationPhase.Thinking || uiState.phase is ConversationPhase.Speaking) return
+        // Do not disturb an active assistant turn / dialog.
+        if (uiState.phase is ConversationPhase.Thinking ||
+            uiState.phase is ConversationPhase.Speaking ||
+            uiState.phase is ConversationPhase.ActiveListening ||
+            uiState.phase is ConversationPhase.CapturingImage
+        ) {
+            return
+        }
         if (llmJob?.isActive == true) return
 
         val bodySettings = bodySettingsRepository.load()
@@ -3545,7 +3566,6 @@ class ConversationViewModel(
                 )
             }
         val context = WellnessWatchContext(
-            heartbeatSettings = heartbeatSettingsRepository.load(),
             proactivitySettings = proactivitySettingsRepository.load(),
             workingMemory = workingMemoryRepository.load(),
             robotContext = robotContextRepository.getStoredState(),
@@ -3555,6 +3575,7 @@ class ConversationViewModel(
             llmBusy = llmJob?.isActive == true,
             isNightMode = uiState.isNightMode,
             enabledDomainIds = enabledDomainIds,
+            locateUser = { bodyLocateService.locateUserNow() },
         )
         val phase = wellnessWatcher.nextPhase(context) ?: return
         val input = wellnessContextBuilder.build(
@@ -3564,12 +3585,21 @@ class ConversationViewModel(
             enabledDomainIds = enabledDomainIds,
             customDomains = customDomains,
         )
-        if (phase == WellnessPhase.VISUAL_ORDER) {
-            workingMemoryRepository.recordWellnessVisualDone()
-        } else {
-            workingMemoryRepository.recordWellnessCheckDone()
-        }
+        wellnessCheckInFlight = true
         wellnessCheckOrchestrator.dispatch(input)
+    }
+
+    private suspend fun markWellnessPhaseCompleted(phase: WellnessPhase?) {
+        when (phase) {
+            WellnessPhase.VISUAL_ORDER -> workingMemoryRepository.recordWellnessVisualDone()
+            WellnessPhase.DOMAIN_SCORE -> workingMemoryRepository.recordWellnessCheckDone()
+            null -> Unit
+        }
+        wellnessCheckInFlight = false
+    }
+
+    private fun clearWellnessInFlightWithoutDone() {
+        wellnessCheckInFlight = false
     }
 
     private suspend fun pollPredictivityDeviation() {
@@ -3900,16 +3930,30 @@ class ConversationViewModel(
                     },
                 )
 
-                if (turnId != llmTurnGeneration) return@launch
-                if (!_uiState.value.isHotwordListeningActive) return@launch
+                if (turnId != llmTurnGeneration || !_uiState.value.isHotwordListeningActive) {
+                    if (currentInputIsWellnessCheck) clearWellnessInFlightWithoutDone()
+                    currentInputIsWellnessCheck = false
+                    currentWellnessPhase = null
+                    return@launch
+                }
 
                 handleReasoningResult(result)
             } catch (e: CancellationException) {
                 if (turnId == llmTurnGeneration) {
+                    if (currentInputIsWellnessCheck) clearWellnessInFlightWithoutDone()
+                    currentInputIsWellnessCheck = false
+                    currentWellnessPhase = null
                     clearSilentNotificationTurnState()
                     recoverFromCancelledLlmTurn()
                 }
                 throw e
+            } catch (e: Exception) {
+                if (turnId == llmTurnGeneration) {
+                    if (currentInputIsWellnessCheck) clearWellnessInFlightWithoutDone()
+                    currentInputIsWellnessCheck = false
+                    currentWellnessPhase = null
+                    handleLlmFailure(LlmHttpErrors.formatForLog(e))
+                }
             }
         }
     }

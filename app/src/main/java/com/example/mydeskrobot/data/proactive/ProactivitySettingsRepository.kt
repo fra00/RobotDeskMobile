@@ -60,7 +60,7 @@ class ProactivitySettingsRepository(
                 prefs[KEY_WELLNESS_IDLE_MINUTES] = it.coerceIn(5, 120)
             }
             wellnessPresenceMinutes?.let {
-                prefs[KEY_WELLNESS_PRESENCE_MINUTES] = it.coerceIn(10, 120)
+                prefs[KEY_WELLNESS_PRESENCE_MINUTES] = it.coerceIn(5, 60)
             }
         }
     }

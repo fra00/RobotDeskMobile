@@ -308,8 +308,9 @@
     <string name="settings_heartbeat">Proattività</string>
     <string name="settings_attention_domains">Domini di attenzione</string>
     <string name="attention_domains_summary">%1$d di %2$d attivi</string>
-    <string name="heartbeat_settings_title">Proattività (Heartbeat)</string>
-    <string name="heartbeat_enabled_label">Abilita interventi spontanei</string>
+    <string name="heartbeat_settings_title">Proattività</string>
+    <string name="heartbeat_enabled_label">Micro-tick (occhi/corpo, senza LLM)</string>
+    <string name="heartbeat_enabled_hint">Solo look-around silenzioso in standby. Wellness e predittività hanno i loro interruttori sotto.</string>
     <string name="heartbeat_interval_label">Intervallo controllo: %1$d min</string>
     <string name="heartbeat_time_window_label">Fascia oraria: %1$d:00 – %2$d:00</string>
     <string name="heartbeat_start_hour">Da:</string>
@@ -322,9 +323,9 @@
     <string name="heartbeat_manage_domains">Gestisci domini di attenzione</string>
     <string name="proactivity_predictivity_enabled">Predittività (abitudini)</string>
     <string name="proactivity_wellness_enabled">Wellness (check giornaliero)</string>
-    <string name="proactivity_wellness_anchor_label">Wellness: minuti dopo hotword: %1$d</string>
-    <string name="proactivity_wellness_idle_label">Wellness: minuti senza dialogo prima del check: %1$d</string>
-    <string name="proactivity_wellness_presence_label">Wellness: finestra presenza: %1$d min</string>
+    <string name="proactivity_wellness_anchor_label">Wellness: aspetta dopo prima attivazione: %1$d min</string>
+    <string name="proactivity_wellness_idle_label">Wellness: buffer dopo dialogo (non accavallare): %1$d min</string>
+    <string name="proactivity_wellness_presence_label">Wellness: presenza (interazione recente se corpo assente/non trova): %1$d min</string>
 
     <string name="settings_desk_presence">Presenza scrivania</string>
     <string name="desk_presence_settings_title">Presenza scrivania (ML Kit)</string>

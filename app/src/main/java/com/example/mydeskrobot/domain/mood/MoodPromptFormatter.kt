@@ -1,25 +1,47 @@
 package com.example.mydeskrobot.domain.mood
 
-import com.example.mydeskrobot.domain.model.RobotEmotion
-
 /**
- * Formats persistent robot wellbeing for LLM system prompt injection.
+ * Formats persistent robot wellbeing (+ optional active ephemeral face) for LLM prompt injection.
  */
 object MoodPromptFormatter {
 
-    fun format(mood: RobotMood, promptHints: List<String> = emptyList()): String {
+    fun format(
+        mood: RobotMood,
+        promptHints: List<String> = emptyList(),
+        ephemeral: EphemeralExpression? = null,
+        now: Long = System.currentTimeMillis(),
+    ): String {
         val emotion = mood.baseEmotion.name.lowercase()
         val intensityPct = (mood.intensity * 100).toInt()
         val reasonLine = mood.reason?.let { formatReason(it) }.orEmpty()
         val valenceLine = MoodValenceMapper.formatValence(mood.valence)
         val baselineLine = MoodValenceMapper.formatValence(mood.baseline)
+        val activeEphemeral = ephemeral?.takeIf { it.isActive(now) }
 
         return buildString {
-            appendLine("STATO ROBOT (autoritativo — benessere persistente):")
+            appendLine("STATO ROBOT (autoritativo — benessere persistente + faccia attuale):")
             appendLine("- Valenza: $valenceLine (baseline $baselineLine)")
             appendLine("- Emozione di fondo: $emotion ($intensityPct%)")
             if (reasonLine.isNotBlank()) {
-                appendLine("- Motivo: $reasonLine")
+                appendLine("- Motivo di fondo: $reasonLine")
+            }
+            if (activeEphemeral != null) {
+                val ePct = (activeEphemeral.intensity * 100).toInt()
+                appendLine(
+                    "- Espressione attuale (occhi, effimera): " +
+                        "${activeEphemeral.emotion.name.lowercase()} ($ePct%)",
+                )
+                appendLine(
+                    "- Coerenza: se ti chiedono come stai / cos'hai / perché quella faccia, " +
+                        "rispondi in linea con l'espressione attuale e/o l'emozione di fondo — " +
+                        "non dire che va tutto bene se risulti bored, sad, angry o drowsy.",
+                )
+            } else {
+                appendLine("- Espressione attuale (occhi): = emozione di fondo (nessuna effimera attiva)")
+                appendLine(
+                    "- Coerenza: se ti chiedono come stai, parla dello stato di fondo sopra " +
+                        "(non inventare un umore diverso).",
+                )
             }
             if (mood.recentDeltas.isNotEmpty()) {
                 val events = mood.recentDeltas.takeLast(3).joinToString(", ") { delta ->
@@ -27,17 +49,33 @@ object MoodPromptFormatter {
                 }
                 appendLine("- Ultimi eventi: $events")
             }
-            appendLine("- Regola: emotion sul turno finale aggiorna occhi (effimero). Valenza di fondo sale con presenza utile, scende con noia/critiche; happy/loving routinari non alzano la valenza.")
-            appendLine("- Default conversazione: emotion neutral o thinking; happy solo per eventi emotivi reali (elogio, affetto, buona notizia).")
-            appendLine("- Critiche all'utente verso di te (imperfetto, deluso, arrabbiato): rispondi con tono adeguato e emotion sad o angry — non happy routinario.")
+            appendLine(
+                "- Regola: emotion sul turno finale aggiorna occhi (effimero). " +
+                    "Valenza di fondo sale con presenza utile, scende con noia/critiche; " +
+                    "happy/loving routinari non alzano la valenza.",
+            )
+            appendLine(
+                "- Default conversazione: emotion neutral o thinking; " +
+                    "happy solo per eventi emotivi reali (elogio, affetto, buona notizia).",
+            )
+            appendLine(
+                "- Critiche all'utente verso di te (imperfetto, deluso, arrabbiato): " +
+                    "rispondi con tono adeguato e emotion sad o angry — non happy routinario.",
+            )
             promptHints.forEach { hint ->
                 appendLine("- Contesto turno: $hint")
             }
             if (mood.reason == MoodReason.NIGHT_TIME) {
-                appendLine("- Interazione notturna legittima: rispondi breve e stanco, senza tono colpevole verso l'utente.")
+                appendLine(
+                    "- Interazione notturna legittima: rispondi breve e stanco, " +
+                        "senza tono colpevole verso l'utente.",
+                )
             }
             if (mood.reason == MoodReason.EYE_POKE) {
-                appendLine("- Scuse sincere dell'utente possono ammorbidire il tono; non diventare subito entusiasta.")
+                appendLine(
+                    "- Scuse sincere dell'utente possono ammorbidire il tono; " +
+                        "non diventare subito entusiasta.",
+                )
             }
             val replyStyle = MoodReplyStyleResolver.resolve(mood)
             appendLine("- Profilo stile: ${replyStyle.name.lowercase()}")

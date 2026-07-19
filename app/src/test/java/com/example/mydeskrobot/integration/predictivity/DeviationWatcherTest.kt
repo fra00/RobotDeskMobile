@@ -142,14 +142,14 @@ class DeviationWatcherTest {
     }
 
     @Test
-    fun `findCandidate skips when heartbeat disabled`() = runTest {
+    fun `findCandidate proceeds when micro-tick switch disabled`() = runTest {
         val slot = eligibleSlot()
         val watcher = createWatcher(listOf(slot), episodes = emptyList())
         val context = watchContext(lastUserTurnMs = fixedNow - 60_000L).copy(
             heartbeatSettings = HeartbeatSettings(enabled = false),
         )
 
-        assertNull(watcher.findCandidate(context))
+        assertEquals(slot.slotKey, watcher.findCandidate(context)?.slotKey)
     }
 
     @Test

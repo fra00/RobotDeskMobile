@@ -64,33 +64,7 @@ class UserPresencePolicyTest {
     }
 
     @Test
-    fun `wellnessPresentEnough true inside 45 minute window`() = runTest {
-        val now = 1_000_000L
-        val present = UserPresencePolicy.wellnessPresentEnough(
-            lastUserTurnMs = now - 30 * 60_000L,
-            bodyConfigured = false,
-            bodyReachable = false,
-            locateUser = { false },
-            now = now,
-        )
-        assertTrue(present)
-    }
-
-    @Test
-    fun `wellnessPresentEnough false outside 45 minute window without body`() = runTest {
-        val now = 1_000_000L
-        val present = UserPresencePolicy.wellnessPresentEnough(
-            lastUserTurnMs = now - 46 * 60_000L,
-            bodyConfigured = false,
-            bodyReachable = false,
-            locateUser = { false },
-            now = now,
-        )
-        assertFalse(present)
-    }
-
-    @Test
-    fun `wellnessPresentEnough uses body locate when no recent turn`() = runTest {
+    fun `wellnessPresentEnough with body prefers locate before turn`() = runTest {
         val now = 1_000_000L
         var locateCalled = false
         val present = UserPresencePolicy.wellnessPresentEnough(
@@ -101,9 +75,63 @@ class UserPresencePolicyTest {
                 locateCalled = true
                 true
             },
+            presenceWindowMinutes = 5,
             now = now,
         )
         assertTrue(present)
         assertTrue(locateCalled)
+    }
+
+    @Test
+    fun `wellnessPresentEnough with body falls back to recent turn when locate fails`() = runTest {
+        val now = 1_000_000L
+        val present = UserPresencePolicy.wellnessPresentEnough(
+            lastUserTurnMs = now - 3 * 60_000L,
+            bodyConfigured = true,
+            bodyReachable = true,
+            locateUser = { false },
+            presenceWindowMinutes = 5,
+            now = now,
+        )
+        assertTrue(present)
+    }
+
+    @Test
+    fun `wellnessPresentEnough with body false when locate fails and turn stale`() = runTest {
+        val now = 1_000_000L
+        val present = UserPresencePolicy.wellnessPresentEnough(
+            lastUserTurnMs = now - 10 * 60_000L,
+            bodyConfigured = true,
+            bodyReachable = true,
+            locateUser = { false },
+            presenceWindowMinutes = 5,
+            now = now,
+        )
+        assertFalse(present)
+    }
+
+    @Test
+    fun `wellnessPresentEnough without body uses only recent turn`() = runTest {
+        val now = 1_000_000L
+        assertTrue(
+            UserPresencePolicy.wellnessPresentEnough(
+                lastUserTurnMs = now - 2 * 60_000L,
+                bodyConfigured = false,
+                bodyReachable = false,
+                locateUser = { true },
+                presenceWindowMinutes = 5,
+                now = now,
+            ),
+        )
+        assertFalse(
+            UserPresencePolicy.wellnessPresentEnough(
+                lastUserTurnMs = now - 10 * 60_000L,
+                bodyConfigured = false,
+                bodyReachable = false,
+                locateUser = { true },
+                presenceWindowMinutes = 5,
+                now = now,
+            ),
+        )
     }
 }

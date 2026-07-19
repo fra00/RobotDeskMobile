@@ -32,7 +32,8 @@ class ProactiveSpeakGateTest {
     }
 
     @Test
-    fun `canSpeak skips when proactivity disabled`() {
+    fun `canSpeak proceeds when micro-tick switch disabled`() {
+        // HeartbeatSettings.enabled gates alarm/micro-tick only — not predictivity speak.
         val decision = ProactiveSpeakGate.canSpeak(
             ProactiveSpeakContext(
                 heartbeatSettings = HeartbeatSettings(enabled = false),
@@ -41,8 +42,7 @@ class ProactiveSpeakGateTest {
                 nowMs = activeNowMs,
             ),
         )
-        assertTrue(decision is GateDecision.Skip)
-        assertEquals("proactivity disabled", (decision as GateDecision.Skip).reason)
+        assertEquals(GateDecision.Proceed, decision)
     }
 
     @Test

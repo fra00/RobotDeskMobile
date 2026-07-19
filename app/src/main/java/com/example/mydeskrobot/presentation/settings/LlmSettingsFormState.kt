@@ -116,7 +116,7 @@ data class HeartbeatSettingsFormState(
     val wellnessEnabled: Boolean = true,
     val wellnessAnchorMinutes: Int = 60,
     val wellnessIdleMinutes: Int = ProactivityConstants.WELLNESS_IDLE_MINUTES,
-    val wellnessPresenceMinutes: Int = 45,
+    val wellnessPresenceMinutes: Int = 15,
 )
 
 fun HeartbeatSettings.toFormState(

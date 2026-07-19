@@ -8,8 +8,8 @@ import com.example.mydeskrobot.reasoning.model.RobotContextState
 import java.util.Calendar
 
 /**
- * Speak-side proactive gates (cap, cooldown, robot context, active window).
- * Reusable by predictivity deviation and future wellness.
+ * Speak-side gates for **predictivity** (cap, cooldown, robot context, active window).
+ * Wellness uses its own once-per-day scheduling — do not call this for wellness ticks.
  */
 data class ProactiveSpeakContext(
     val heartbeatSettings: HeartbeatSettings,
@@ -20,9 +20,13 @@ data class ProactiveSpeakContext(
 
 object ProactiveSpeakGate {
 
+    /**
+     * Speak gates for **predictivity** (and legacy heartbeat voice ticks).
+     * Does not gate Wellness — wellness has its own once-per-day scheduling.
+     * Does not require [HeartbeatSettings.enabled] (that switch is micro-tick / alarm only).
+     */
     fun canSpeak(context: ProactiveSpeakContext): GateDecision {
         val settings = context.heartbeatSettings
-        if (!settings.enabled) return GateDecision.Skip("proactivity disabled")
 
         if (context.robotContext != null &&
             RobotContextPolicy.shouldSuppressNotificationTts(context.robotContext, context.nowMs)

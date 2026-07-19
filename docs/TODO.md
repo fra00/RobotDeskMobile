@@ -14,8 +14,8 @@
 
 ### H4 — Working memory
 
-- [ ] Iniettare `topicsDiscussedToday` / cap proattivo nell'envelope `wellness_check` (oggi solo su heartbeat legacy)
 - [ ] `recordIgnoredSuggestion` su ignoro esplicito utente (oggi: timeout in `ProactiveTracker` + stats settimanali)
+- ~~Iniettare topic anti-ripetizione nel wellness~~ — non necessario (check 1×/giorno; dominio disattivabile in UI)
 
 ### H5 — Self-reflection settimanale
 
@@ -28,7 +28,8 @@
 
 ### Follow-up proattività (post-H7 v1)
 
-- [ ] Collegare `UserPresencePolicy.wellnessPresentEnough()` al gate wellness (oggi solo predittività usa presenza + body)
+- [x] `wellnessPresentEnough` cablato (body first → fallback interazione; idle buffer separato)
+- [x] Wellness done solo dopo esito; micro-tick switch separato da wellness/predittività
 - [ ] Smoke manuale: [`guides/PROATTIVITA_SMOKE.md`](guides/PROATTIVITA_SMOKE.md)
 
 ---
