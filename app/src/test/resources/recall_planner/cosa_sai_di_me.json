@@ -1,0 +1,12 @@
+{
+  "temporal_scope": "WEEK",
+  "focus_day_key": null,
+  "recall_focus": "GENERAL",
+  "search_queries": [
+    "nome identità professione preferenze routine",
+    "fatti utente memoria personale",
+    "attività recenti episodi messaggi promemoria"
+  ],
+  "include_habit_summary": true,
+  "localize_spatial": false
+}

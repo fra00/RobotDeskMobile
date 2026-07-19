@@ -5,6 +5,7 @@ Episodic timeline of the user's day — physical activities, future plans, socia
 ## Purpose
 
 - Capture meals, walks, breaks, brief outings for **proactivity** and habit awareness.
+- Primary input for **Predictivity** (recurring habit miner → `PATTERN` → deviation prompts). See [PROACTIVE_ARCHITECTURE.md](PROACTIVE_ARCHITECTURE.md).
 - Capture **future-relevant episodes** (plans, social messages, commitments) from dialogue and notifications via semantic organizer.
 - Support **tentative → confirmed** conjectures (e.g. vague WhatsApp then confirmed time).
 - Retain events for **7 days** (TTL), then prune automatically.
@@ -39,6 +40,20 @@ Episodic timeline of the user's day — physical activities, future plans, socia
 
 Do **not** store ephemeral activities in `save_memory`. Do **not** dump all notifications — organizer returns empty for spam/irrelevant content.
 
+## Predictivity mining (incremental)
+
+Before [`PROACTIVE_ARCHITECTURE.md`](PROACTIVE_ARCHITECTURE.md) deviation watcher can run, episodes must be mined into **PATTERN** habit slots.
+
+| Rule | Detail |
+|------|--------|
+| **When** | App/session open catch-up; **always before** `pruneExpired()` |
+| **Watermark** | `lastMinedDayKey` — never re-mine the same calendar day |
+| **Retention** | Log keeps 7 days; mined slots persist ~30 days in unified memory |
+| **Slot key** | `canonicalLabel \| timeBucket` — same time on different days increments one slot |
+| **LLM** | One lightweight label-normalize batch per mining run (pending days only) |
+
+See [PROACTIVE_ARCHITECTURE.md § Channel 1 — Predictivity](PROACTIVE_ARCHITECTURE.md#channel-1--predictivity).
+
 ## Context injection (unified recall)
 
 All episodic and planning context is retrieved via **unified recall** (`UnifiedRecallMemoryContextProvider`) — no separate Day/Activity providers.
@@ -47,7 +62,7 @@ All episodic and planning context is retrieved via **unified recall** (`UnifiedR
 |----------|----------------|
 | **Temporal** (ieri/oggi/domani) | All `EPISODE` + `REMINDER` for resolved `dayKey` in `MEMORIA` |
 | **Planning** ("cosa devo fare domani") | Same — semantic + day scope |
-| **Habit** | `HABIT_SUMMARY` doc when recall scores it |
+| **Habit** | `HABIT_SUMMARY` when recall plan sets `include_habit_summary: true` (and not `preferUserFacts` / `preferEpisodicDetail`) |
 
 `PlanningDayResolver` maps "domani"/"dopodomani" in user phrase to `dayKey` filter.
 
@@ -62,8 +77,15 @@ Legacy operational DBs (`activity_log.db`, etc.) remain for write/tools; read pa
 - List events grouped by day (kind, confidence, scheduled time, raw phrase)
 - Clear log
 
+## Predictivity (target)
+
+Weekly **RecurringHabit** miner reads episodes (7-day window; promotes durable `PATTERN` before prune). Runtime **deviation watcher** compares habitual windows to today's log — separate from Wellness tick.
+
+`ActivityHabitSummarizer` prose remains for recall (`HABIT_SUMMARY`); structured habits are SSOT for predictivity miner output.
+
 ## Related docs
 
+- [`PROACTIVE_ARCHITECTURE.md`](PROACTIVE_ARCHITECTURE.md) — Predictivity + Wellness SSOT
 - [`MEMORY.md`](MEMORY.md) — durable memory; PLAN profile blocks
 - [`INPUT_ARCHITECTURE.md`](INPUT_ARCHITECTURE.md) — notification pipeline (live LLM vs Log Day organizer)
-- [`AGENT_REASONING.md`](AGENT_REASONING.md) — proactive heartbeat policy
+- [`AGENT_REASONING.md`](AGENT_REASONING.md) — proactive heartbeat policy (legacy)

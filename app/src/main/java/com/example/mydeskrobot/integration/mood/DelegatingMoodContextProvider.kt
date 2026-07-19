@@ -1,5 +1,6 @@
 package com.example.mydeskrobot.integration.mood
 
+import com.example.mydeskrobot.domain.mood.HumanVoicePrompt
 import com.example.mydeskrobot.domain.mood.MoodPromptFormatter
 import com.example.mydeskrobot.domain.mood.RobotMood
 import com.example.mydeskrobot.reasoning.MoodContextProvider
@@ -11,6 +12,11 @@ class DelegatingMoodContextProvider : MoodContextProvider {
 
     var snapshotProvider: () -> RobotMood = { RobotMood.NEUTRAL }
 
-    override suspend fun buildContextSection(): String =
-        MoodPromptFormatter.format(snapshotProvider())
+    var promptHintsProvider: () -> List<String> = { emptyList() }
+
+    override suspend fun buildContextSection(): String = buildString {
+        append(MoodPromptFormatter.format(snapshotProvider(), promptHintsProvider()))
+        append("\n\n")
+        append(HumanVoicePrompt.section())
+    }
 }

@@ -57,11 +57,13 @@ class CameraXVisionImageCapture : VisionImageCapture {
                     provider?.unbindAll()
                     surface?.release()
                     surfaceTexture?.release()
+                    VisionCameraLifecycleCoordinator.notifyVisionCaptureEnded()
                 }
 
                 continuation.invokeOnCancellation {
                     runCatching {
                         cameraProviderFuture.get().unbindAll()
+                        VisionCameraLifecycleCoordinator.notifyVisionCaptureEnded()
                     }
                 }
 

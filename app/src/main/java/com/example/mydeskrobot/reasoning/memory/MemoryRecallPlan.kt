@@ -22,6 +22,11 @@ data class MemoryRecallPlan(
         if (recallFocus == RecallFocus.MESSAGES && scope == TemporalScope.NONE) {
             scope = TemporalScope.WEEK
         }
+        if (recallFocus == RecallFocus.GENERAL && scope == TemporalScope.NONE) {
+            scope = TemporalScope.WEEK
+        }
+        val habitSummary = includeHabitSummary ||
+            (recallFocus == RecallFocus.GENERAL && scope == TemporalScope.WEEK)
         val queries = searchQueries
             .map { it.trim() }
             .filter { it.isNotBlank() }
@@ -38,7 +43,7 @@ data class MemoryRecallPlan(
             preferEpisodicDetail = recallFocus == RecallFocus.EPISODIC,
             preferUserFacts = recallFocus == RecallFocus.USER_FACTS,
             searchQueries = queries,
-            includeHabitSummary = includeHabitSummary,
+            includeHabitSummary = habitSummary,
         )
     }
 

@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.map
 
 class FakeActivityLogDao(
     initial: List<ActivityLogEventEntity> = emptyList(),
+    private val onDeleteOlderThan: ((Long) -> Int)? = null,
 ) : ActivityLogDao {
 
     private val events = initial.map { it.copy() }.toMutableList()
@@ -80,6 +81,7 @@ class FakeActivityLogDao(
         events.count { it.timestampMs >= sinceMs }
 
     override suspend fun deleteOlderThan(cutoffMs: Long): Int {
+        onDeleteOlderThan?.let { return it(cutoffMs) }
         val before = events.size
         events.removeAll { it.timestampMs < cutoffMs }
         emit()
@@ -104,4 +106,17 @@ class FakeActivityLogDao(
 
     override suspend fun getById(id: Long): ActivityLogEventEntity? =
         events.firstOrNull { it.id == id }
+
+    override suspend fun getDistinctDayKeysSince(sinceMs: Long): List<String> =
+        events.filter { it.timestampMs >= sinceMs }
+            .map { it.dayKey }
+            .distinct()
+            .sorted()
+
+    override suspend fun getConfirmedPhysicalForDay(dayKey: String): List<ActivityLogEventEntity> =
+        events.filter {
+            it.dayKey == dayKey &&
+                it.eventKind == EpisodeKind.PHYSICAL_NOW &&
+                it.confidence == com.example.mydeskrobot.domain.activitylog.EpisodeConfidence.CONFIRMED
+        }.sortedBy { it.timestampMs }
 }

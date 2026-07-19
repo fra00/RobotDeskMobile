@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.Bundle
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
+import com.example.mydeskrobot.domain.mood.TtsProsody
 import kotlinx.coroutines.CancellableContinuation
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -32,7 +33,10 @@ class AndroidTextToSpeechDataSource(
         }
     }
 
-    suspend fun speak(text: String): Result<Unit> = withContext(Dispatchers.Main) {
+    suspend fun speak(
+        text: String,
+        prosody: TtsProsody = TtsProsody.NEUTRAL,
+    ): Result<Unit> = withContext(Dispatchers.Main) {
         if (!initDeferred.await()) {
             return@withContext Result.failure(IllegalStateException("TextToSpeech init failed"))
         }
@@ -45,6 +49,10 @@ class AndroidTextToSpeechDataSource(
         if (trimmed.isEmpty()) {
             return@withContext Result.failure(IllegalArgumentException("Empty TTS text"))
         }
+
+        // Mood-driven voice shaping; reset to defaults happens on the next call.
+        engine.setPitch(prosody.pitch)
+        engine.setSpeechRate(prosody.rate)
 
         suspendCancellableCoroutine { continuation ->
             activeSpeakContinuation.set(continuation)

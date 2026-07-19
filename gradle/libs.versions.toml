@@ -22,8 +22,10 @@ securityCrypto = "1.1.0-alpha06"
 room = "2.6.1"
 vosk = "0.3.47"
 jsoup = "1.18.3"
+readability4j = "1.0.8"
 onnxruntime = "1.19.2"
 djl = "0.31.1"
+orgJson = "20240303"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -61,9 +63,11 @@ androidx-room-ktx = { group = "androidx.room", name = "room-ktx", version.ref = 
 androidx-room-compiler = { group = "androidx.room", name = "room-compiler", version.ref = "room" }
 vosk-android = { group = "com.alphacephei", name = "vosk-android", version.ref = "vosk" }
 jsoup = { group = "org.jsoup", name = "jsoup", version.ref = "jsoup" }
+readability4j = { group = "net.dankito.readability4j", name = "readability4j", version.ref = "readability4j" }
 onnxruntime-android = { group = "com.microsoft.onnxruntime", name = "onnxruntime-android", version.ref = "onnxruntime" }
 onnxruntime = { group = "com.microsoft.onnxruntime", name = "onnxruntime", version.ref = "onnxruntime" }
 djl-tokenizers = { group = "ai.djl.huggingface", name = "tokenizers", version.ref = "djl" }
+org-json = { group = "org.json", name = "json", version.ref = "orgJson" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

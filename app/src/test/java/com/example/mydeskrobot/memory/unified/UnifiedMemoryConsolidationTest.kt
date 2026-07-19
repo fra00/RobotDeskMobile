@@ -41,11 +41,37 @@ class UnifiedMemoryConsolidationTest {
         assertTrue(dao.getById(11L)!!.isActive.not() || dao.getById(12L)!!.isActive.not())
     }
 
+    @Test
+    fun replaceUserFacingWithConsolidated_leaves_pinned_rows_untouched() = runTest {
+        val dao = FakeMemoryDocumentDao(
+            listOf(
+                userFact(20L, "L'utente si chiama Francesco", MemoryCategory.IDENTITY, isPinned = true),
+                userFact(21L, "L'utente ama il cinema", MemoryCategory.PREFERENCE),
+            ),
+        )
+        val repository = UnifiedMemoryRepository.createForTest(dao)
+
+        repository.replaceUserFacingWithConsolidated(
+            listOf(
+                ConsolidatedMemoryLine(
+                    category = MemoryCategory.PREFERENCE,
+                    value = "L'utente ama il cinema e il teatro",
+                ),
+            ),
+        )
+
+        val francesco = dao.getById(20L)!!
+        assertTrue(francesco.isActive)
+        assertTrue(francesco.isPinned)
+        assertEquals("L'utente si chiama Francesco", francesco.value)
+    }
+
     private fun userFact(
         id: Long,
         value: String,
         category: MemoryCategory,
         useCount: Int = 0,
+        isPinned: Boolean = false,
     ) = com.example.mydeskrobot.memory.unified.db.MemoryDocumentEntity(
         id = id,
         value = value,
@@ -56,5 +82,6 @@ class UnifiedMemoryConsolidationTest {
         useCount = useCount,
         createdAt = 1L,
         updatedAt = 1L,
+        isPinned = isPinned,
     )
 }

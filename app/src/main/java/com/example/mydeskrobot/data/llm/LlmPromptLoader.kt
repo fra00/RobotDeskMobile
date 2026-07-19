@@ -16,12 +16,15 @@ object LlmPromptLoader {
     const val ROOM_LANDMARKS_PROMPT_ASSET_PATH = "prompts/room_landmarks_prompt.txt"
     const val BODY_CAPABILITIES_PROMPT_ASSET_PATH = "prompts/body_capabilities_prompt.txt"
     const val HEARTBEAT_PLAYBOOK_PROMPT_ASSET_PATH = "prompts/heartbeat_playbook_prompt.txt"
-    const val HEARTBEAT_CRITIC_PROMPT_ASSET_PATH = "prompts/heartbeat_critic_prompt.txt"
     const val MEMORY_CONSOLIDATION_PROMPT_ASSET_PATH = "prompts/memory_consolidation_prompt.txt"
     const val MEMORY_RECALL_PLANNER_PROMPT_ASSET_PATH = "prompts/memory_recall_planner_prompt.txt"
     const val EPISODIC_EXTRACTOR_PROMPT_ASSET_PATH = "prompts/episodic_extractor_prompt.txt"
     const val ACTIVITY_EXTRACTOR_PROMPT_ASSET_PATH = EPISODIC_EXTRACTOR_PROMPT_ASSET_PATH
     const val ACTIVITY_HABIT_SUMMARY_PROMPT_ASSET_PATH = "prompts/activity_habit_summary_prompt.txt"
+    const val HABIT_LABEL_NORMALIZE_PROMPT_ASSET_PATH = "prompts/habit_label_normalize_prompt.txt"
+    const val PREDICTIVITY_DEVIATION_PROMPT_ASSET_PATH = "prompts/predictivity_deviation_prompt.txt"
+    const val WELLNESS_CHECK_PROMPT_ASSET_PATH = "prompts/wellness_check_prompt.txt"
+    const val ROOM_ORDER_AUDIT_PROMPT_ASSET_PATH = "prompts/room_order_audit_prompt.txt"
 
     private const val DATETIME_PLACEHOLDER = "{{CURRENT_DATETIME}}"
 
@@ -80,14 +83,6 @@ object LlmPromptLoader {
         return text
     }
 
-    fun loadHeartbeatCriticPrompt(context: Context): String {
-        val text = loadTextAsset(context, HEARTBEAT_CRITIC_PROMPT_ASSET_PATH)
-        require(text.isNotBlank()) {
-            "Heartbeat critic prompt asset is empty: $HEARTBEAT_CRITIC_PROMPT_ASSET_PATH"
-        }
-        return text
-    }
-
     fun loadActivityExtractorPrompt(context: Context): String {
         val text = loadTextAsset(context, ACTIVITY_EXTRACTOR_PROMPT_ASSET_PATH)
         require(text.isNotBlank()) {
@@ -102,6 +97,38 @@ object LlmPromptLoader {
             "Activity habit summary prompt asset is empty: $ACTIVITY_HABIT_SUMMARY_PROMPT_ASSET_PATH"
         }
         return text.replace(DATETIME_PLACEHOLDER, getCurrentDateTimeString())
+    }
+
+    fun loadHabitLabelNormalizePrompt(context: Context): String {
+        val text = loadTextAsset(context, HABIT_LABEL_NORMALIZE_PROMPT_ASSET_PATH)
+        require(text.isNotBlank()) {
+            "Habit label normalize prompt asset is empty: $HABIT_LABEL_NORMALIZE_PROMPT_ASSET_PATH"
+        }
+        return text
+    }
+
+    fun loadPredictivityDeviationPrompt(context: Context): String {
+        val text = loadTextAsset(context, PREDICTIVITY_DEVIATION_PROMPT_ASSET_PATH)
+        require(text.isNotBlank()) {
+            "Predictivity deviation prompt asset is empty: $PREDICTIVITY_DEVIATION_PROMPT_ASSET_PATH"
+        }
+        return text
+    }
+
+    fun loadWellnessCheckPrompt(context: Context): String {
+        val text = loadTextAsset(context, WELLNESS_CHECK_PROMPT_ASSET_PATH)
+        require(text.isNotBlank()) {
+            "Wellness check prompt asset is empty: $WELLNESS_CHECK_PROMPT_ASSET_PATH"
+        }
+        return text
+    }
+
+    fun loadRoomOrderAuditPrompt(context: Context): String {
+        val text = loadTextAsset(context, ROOM_ORDER_AUDIT_PROMPT_ASSET_PATH)
+        require(text.isNotBlank()) {
+            "Room order audit prompt asset is empty: $ROOM_ORDER_AUDIT_PROMPT_ASSET_PATH"
+        }
+        return text
     }
 
     fun loadPresenceDetectionPrompt(context: Context): String {

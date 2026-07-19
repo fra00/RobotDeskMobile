@@ -113,12 +113,6 @@ data class SystemInputEnvelope(
                         append("Stato emotivo: ${heartbeat.moodLabel} ($intensityPct%)\n")
                     }
                 }
-                if (heartbeat.userMood != null && heartbeat.userMood != "unknown") {
-                    append("Umore utente percepito: ${heartbeat.userMood}\n")
-                }
-                if (heartbeat.userProbablyKnows.isNotEmpty()) {
-                    append("L'utente probabilmente sa già: ${heartbeat.userProbablyKnows.joinToString(", ")}\n")
-                }
                 if (heartbeat.todayInteractions > 0) {
                     append("Interazioni oggi: ${heartbeat.todayInteractions}\n")
                 }
@@ -231,6 +225,90 @@ data class SystemInputEnvelope(
             )
         }
 
+        fun fromPredictivityDeviation(deviation: RobotInput.PredictivityDeviation): SystemInputEnvelope {
+            val hour = deviation.typicalTimeMinutes / 60
+            val minute = deviation.typicalTimeMinutes % 60
+            val timeLabel = "${hour}:${minute.toString().padStart(2, '0')}"
+            val formatted = buildString {
+                append("[SYSTEM_INPUT: predictivity_deviation]\n")
+                append("Attività abituale: ${deviation.displayLabel}\n")
+                append("Orario tipico: $timeLabel\n")
+                append("Occorrenze osservate: ${deviation.hitCount}\n")
+                append("Confidenza abitudine: ${"%.0f".format(deviation.confidence * 100)}%\n")
+                append("Oggi non risulta nel log attività entro la finestra abituale.\n")
+            }.trimEnd()
+
+            val dedupKey = "predictivity_deviation:${deviation.slotKey}:${deviation.timestamp / 60000}"
+
+            return SystemInputEnvelope(
+                input = deviation,
+                formattedForLlm = formatted,
+                dedupKey = dedupKey,
+            )
+        }
+
+        fun fromWellnessCheck(check: RobotInput.WellnessCheck): SystemInputEnvelope {
+            val phaseLabel = when (check.phase) {
+                com.example.mydeskrobot.domain.wellness.WellnessPhase.VISUAL_ORDER ->
+                    "visual_order (silent body scan + room order photo)"
+                com.example.mydeskrobot.domain.wellness.WellnessPhase.DOMAIN_SCORE ->
+                    "domain_score (max one short sentence if needed)"
+            }
+            val enabledLabels = check.enabledDomainIds
+                .sorted()
+                .map { id ->
+                    check.customDomains.find { it.id == id }?.displayName
+                        ?: com.example.mydeskrobot.domain.wellness.WellnessDomains.DISPLAY_NAMES[id]
+                        ?: id
+                }
+            val formatted = buildString {
+                append("[SYSTEM_INPUT: wellness_check]\n")
+                append("Phase: $phaseLabel\n")
+                if (enabledLabels.isNotEmpty()) {
+                    append("Enabled domains: ${enabledLabels.joinToString(", ")}\n")
+                } else {
+                    append("Enabled domains: (none)\n")
+                }
+                if (check.customDomains.isNotEmpty()) {
+                    append("Custom domain prompts:\n")
+                    check.customDomains.forEach { custom ->
+                        append("- ${custom.displayName}: ${custom.prompt}\n")
+                    }
+                }
+                if (check.bodyConfigured && check.bodyReachable) {
+                    append("Body: configured and reachable\n")
+                } else {
+                    append("Body: not available (skip visual order)\n")
+                }
+                check.habitProfileSummary?.takeIf { it.isNotBlank() }?.let {
+                    append("Habit summary:\n$it\n")
+                }
+                if (check.recentDailyActivities.isNotEmpty()) {
+                    append("Today activities:\n")
+                    check.recentDailyActivities.forEach { append("- $it\n") }
+                }
+                if (check.activePatterns.isNotEmpty()) {
+                    append("Patterns:\n")
+                    check.activePatterns.take(5).forEach { append("- $it\n") }
+                }
+                if (check.recentObservations.isNotEmpty()) {
+                    append("Recent observations:\n")
+                    check.recentObservations.take(5).forEach { append("- $it\n") }
+                }
+                check.orderObservationFresh?.let {
+                    append("Fresh order observation:\n$it\n")
+                }
+            }.trimEnd()
+
+            val dedupKey = "wellness_check:${check.phase.name}:${check.timestamp / 60000}"
+
+            return SystemInputEnvelope(
+                input = check,
+                formattedForLlm = formatted,
+                dedupKey = dedupKey,
+            )
+        }
+
         /**
          * Factory method that dispatches to the appropriate builder.
          */
@@ -241,6 +319,8 @@ data class SystemInputEnvelope(
             is RobotInput.ScheduledTaskFired -> fromScheduledTask(input)
             is RobotInput.Heartbeat -> fromHeartbeat(input)
             is RobotInput.WeeklyReflection -> fromWeeklyReflection(input)
+            is RobotInput.PredictivityDeviation -> fromPredictivityDeviation(input)
+            is RobotInput.WellnessCheck -> fromWellnessCheck(input)
         }
     }
 }

@@ -8,8 +8,14 @@ class MoodValenceMapperTest {
 
     @Test
     fun `high valence maps to happy`() {
-        val derived = MoodValenceMapper.derive(0.30f, null)
+        val derived = MoodValenceMapper.derive(0.40f, null)
         assertEquals(RobotEmotion.HAPPY, derived.emotion)
+    }
+
+    @Test
+    fun `cordial valence stays neutral face`() {
+        val derived = MoodValenceMapper.derive(0.30f, null)
+        assertEquals(RobotEmotion.NEUTRAL, derived.emotion)
     }
 
     @Test

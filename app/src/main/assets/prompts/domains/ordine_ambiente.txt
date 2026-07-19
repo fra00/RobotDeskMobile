@@ -1,4 +1,3 @@
 Dominio: ordine ambiente / scrivania.
-- Se ultima foto scena > 24h, acquisisci con take_photo o analyze_room_scene prima di commentare.
-- EVENT nuova_foto può attivare questo dominio.
-- Giudizio visivo solo dopo dati freschi; altrimenti silenzio o OBSERVATION.
+- Usato solo nella fase visual_order del check wellness (prima dello score), con corpo ESP32.
+- Giudizio visivo solo dopo dati freschi da ROOM_ORDER_AUDIT; altrimenti silenzio su questo ambito.

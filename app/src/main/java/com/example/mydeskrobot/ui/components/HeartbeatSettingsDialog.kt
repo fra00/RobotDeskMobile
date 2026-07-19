@@ -131,6 +131,76 @@ fun HeartbeatSettingsDialog(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = stringResource(R.string.proactivity_predictivity_enabled),
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Switch(
+                        checked = form.predictivityEnabled,
+                        onCheckedChange = { onFormChange(form.copy(predictivityEnabled = it)) },
+                    )
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = stringResource(R.string.proactivity_wellness_enabled),
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Switch(
+                        checked = form.wellnessEnabled,
+                        onCheckedChange = { onFormChange(form.copy(wellnessEnabled = it)) },
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Text(
+                    text = stringResource(R.string.proactivity_wellness_anchor_label, form.wellnessAnchorMinutes),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Slider(
+                    value = form.wellnessAnchorMinutes.toFloat(),
+                    onValueChange = { onFormChange(form.copy(wellnessAnchorMinutes = it.roundToInt())) },
+                    valueRange = 15f..180f,
+                    steps = 10,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+
+                Text(
+                    text = stringResource(R.string.proactivity_wellness_idle_label, form.wellnessIdleMinutes),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Slider(
+                    value = form.wellnessIdleMinutes.toFloat(),
+                    onValueChange = { onFormChange(form.copy(wellnessIdleMinutes = it.roundToInt())) },
+                    valueRange = 5f..60f,
+                    steps = 10,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+
+                Text(
+                    text = stringResource(R.string.proactivity_wellness_presence_label, form.wellnessPresenceMinutes),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Slider(
+                    value = form.wellnessPresenceMinutes.toFloat(),
+                    onValueChange = { onFormChange(form.copy(wellnessPresenceMinutes = it.roundToInt())) },
+                    valueRange = 10f..120f,
+                    steps = 10,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
                 TextButton(onClick = onManageDomains) {
                     Text(stringResource(R.string.heartbeat_manage_domains))
                 }

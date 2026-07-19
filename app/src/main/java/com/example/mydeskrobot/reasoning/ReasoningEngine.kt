@@ -1,6 +1,5 @@
 package com.example.mydeskrobot.reasoning
 
-import com.example.mydeskrobot.reasoning.model.CriticResult
 import com.example.mydeskrobot.reasoning.model.IntermediateResponse
 import com.example.mydeskrobot.reasoning.model.ReasoningResult
 import com.example.mydeskrobot.reasoning.model.SystemInputEnvelope
@@ -68,17 +67,6 @@ interface ReasoningEngine {
         onIntermediateResponse: suspend (IntermediateResponse) -> Unit = {},
     ): ReasoningResult
 
-    /**
-     * Optional second LLM pass for HIGH-sensitivity heartbeat domains.
-     * Reviews proposed spoken text (tone, repetition) — no tools.
-     */
-    suspend fun processCriticPass(
-        proposal: String,
-        domainId: String,
-        domainName: String?,
-        recentInterventions: List<String>,
-    ): CriticResult
-    
     /**
      * Reset conversation history.
      * Call this when starting a new conversation session.

@@ -4,18 +4,18 @@ import com.example.mydeskrobot.data.heartbeat.HeartbeatSettings
 import com.example.mydeskrobot.data.presence.DeskPresenceSettingsRepository
 import com.example.mydeskrobot.data.presence.DeskPresenceStateStore
 import com.example.mydeskrobot.data.hotword.VoiceSessionState
-import com.example.mydeskrobot.domain.awareness.UserAwarenessState
-import com.example.mydeskrobot.domain.awareness.UserStateTracker
 import com.example.mydeskrobot.domain.context.RobotContextPolicy
 import com.example.mydeskrobot.reasoning.model.RobotContextState
 import com.example.mydeskrobot.domain.memory.WorkingMemory
 import com.example.mydeskrobot.domain.presence.DeskPresenceGate
+import com.example.mydeskrobot.domain.proactive.GateDecision
+import com.example.mydeskrobot.domain.proactive.ProactiveSpeakContext
+import com.example.mydeskrobot.domain.proactive.ProactiveSpeakGate
 import java.util.Calendar
 
 data class ProactiveGateContext(
     val heartbeatSettings: HeartbeatSettings,
     val workingMemory: WorkingMemory?,
-    val userAwareness: UserAwarenessState?,
     val robotContext: RobotContextState?,
     val isNightMode: Boolean,
     val deskPresenceMonitorEnabled: Boolean,
@@ -53,30 +53,23 @@ class ProactiveGatePolicy(
             return GateDecision.Skip("night mode")
         }
 
-        val wm = context.workingMemory
-        if (wm != null && wm.proactiveSpeaksToday >= MAX_PROACTIVE_SPEAKS_PER_DAY) {
-            return GateDecision.Skip("daily proactive cap")
-        }
-
-        val minutesSinceLast = wm?.minutesSinceLastProactiveSpeak()
-        if (minutesSinceLast != null && minutesSinceLast < MIN_MINUTES_BETWEEN_PROACTIVE) {
-            return GateDecision.Skip("proactive cooldown")
-        }
-
-        return GateDecision.Proceed
+        return ProactiveSpeakGate.canSpeak(
+            ProactiveSpeakContext(
+                heartbeatSettings = settings,
+                workingMemory = context.workingMemory,
+                robotContext = context.robotContext,
+            ),
+        )
     }
 
     fun shouldSpeak(
         speakConfidence: Float?,
         finalText: String,
         settings: HeartbeatSettings,
-        userAwareness: UserAwarenessState?,
     ): Boolean {
         if (finalText.isBlank()) return false
         val confidence = speakConfidence ?: return false
-        val modifier = userAwareness?.let { UserStateTracker.interventionConfidenceModifier(it) } ?: 1f
-        val threshold = settings.proactiveThreshold / modifier
-        return confidence >= threshold
+        return confidence >= settings.proactiveThreshold
     }
 
     private fun isWithinActiveWindow(settings: HeartbeatSettings): Boolean {
@@ -95,7 +88,3 @@ class ProactiveGatePolicy(
     }
 }
 
-sealed interface GateDecision {
-    data object Proceed : GateDecision
-    data class Skip(val reason: String) : GateDecision
-}

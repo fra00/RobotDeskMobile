@@ -36,6 +36,10 @@ object MemoryEmbeddingGoldenSet {
             query = "orari pomeridiani settimana",
         ),
         ParaphrasePair(
+            memory = "L'utente si chiama Francesco",
+            query = "come mi chiamo",
+        ),
+        ParaphrasePair(
             memory = "L'utente fa smart working il martedì",
             query = "lavori da casa",
         ),
@@ -76,12 +80,13 @@ object MemoryEmbeddingGoldenSet {
         )
     }
 
-    /** Token-only baseline queries from UNIFIED_MEMORY_RAG_PLAN §13 (subset). */
+    /** Token-only baseline queries for calibrator (subset). See docs/MEMORY_EMBEDDING.md. */
     val tokenBaselineQueries: List<Pair<String, String>> = listOf(
         "Il venerdì lavora dalle 9 alle 13" to "Quando lavoro il venerdì?",
         "L'utente fa smart working il martedì" to "Lavori da casa?",
         "Il cane si chiama Brina" to "Come si chiama il cane?",
         "Lista spesa: latte, pane" to "Cosa c'è nella lista della spesa?",
+        "L'utente si chiama Francesco" to "Come mi chiamo?",
         "L'utente si chiama Francesco" to "Cosa sai di me?",
     )
 }

@@ -62,7 +62,7 @@ Weekly full reconcile remains for reminders, lists, spatial legacy data.
 | Liste | `ListItemRepository` | LIST_ITEM | `saveListItem` / `removeListItem` | `AddListItemTool`, `UpdateListItemTool`, `DeleteListItemTool` |
 | Spatial | `SpatialPlaceRepository` | SPATIAL | `savePlace` / `setCurrentPlace` | `SavePlaceTool`, `SetCurrentPlaceTool` |
 | Habit | `activity_habit_profile` | HABIT_SUMMARY | `saveHabitSummary` | `ActivityHabitSummarizer` |
-| USER_FACT | — | USER_FACT | `UnifiedMemoryRepository.saveUserFact` | `SaveMemoryTool`, memory extractors, consolidation |
+| USER_FACT | — | USER_FACT | `UnifiedMemoryRepository.upsertUserFacingFact` | `SaveMemoryTool`, `MemoryExtractionService`; consolidation via `MemoryReorganizeService` |
 
 ## Recall sections (MEMORIA block)
 

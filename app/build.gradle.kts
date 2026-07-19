@@ -116,6 +116,9 @@ dependencies {
     implementation(libs.retrofit.converter.moshi)
     implementation(libs.okhttp)
     implementation(libs.jsoup)
+    implementation(libs.readability4j) {
+        exclude(group = "org.jsoup", module = "jsoup")
+    }
     implementation(libs.moshi.kotlin)
     implementation(libs.androidx.camera.core)
     implementation(libs.androidx.camera.camera2)
@@ -139,6 +142,7 @@ dependencies {
     testImplementation(libs.onnxruntime)
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.org.json)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))

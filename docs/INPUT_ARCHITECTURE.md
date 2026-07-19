@@ -24,7 +24,7 @@
 
 Il robot può ricevere input da diverse fonti oltre alla voce:
 
-- **Notifiche di sistema** (WhatsApp, SMS, email, calendario)
+- **Notifiche di sistema** (WhatsApp, Microsoft Teams, SMS, email, calendario)
 - **Task schedulati** (promemoria utente a scadenza — vedi `docs/SCHEDULED_TASKS.md`)
 - **Pulsanti hardware** (ESP32 futuro)
 - **Sensori ambientali** (temperatura, luminosità — futuro)
@@ -222,7 +222,7 @@ L'utente deve abilitare manualmente l'accesso alle notifiche:
 ### 6.2 Configurazione Settings
 
 - **Master switch**: abilita/disabilita lettura notifiche
-- **Whitelist app**: solo app selezionate (WhatsApp, Telegram, SMS, Gmail, Calendario)
+- **Whitelist app**: solo app selezionate (WhatsApp, Microsoft Teams, Telegram, SMS, Gmail, Calendario)
 - **Deep link**: pulsante per aprire direttamente le impostazioni di sistema
 
 ### 6.3 Filtri

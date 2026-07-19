@@ -1,7 +1,6 @@
 package com.example.mydeskrobot.integration.input.heartbeat
 
 import com.example.mydeskrobot.domain.heartbeat.AttentionDomainState
-import com.example.mydeskrobot.domain.heartbeat.DomainSensitivity
 import com.example.mydeskrobot.domain.heartbeat.DomainTrigger
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -42,6 +41,14 @@ class DomainSchedulerTest {
     }
 
     @Test
+    fun nextDueDomain_wellnessTriggerNeverDue() {
+        val domains = listOf(
+            domain("pasti", DomainTrigger.Wellness),
+        )
+        assertNull(scheduler.nextDueDomain(domains))
+    }
+
+    @Test
     fun nextDomainForDebug_ignoresSchedule() {
         val domains = listOf(
             domain("a", DomainTrigger.TimeDaily(hour = 3)),
@@ -60,7 +67,6 @@ class DomainSchedulerTest {
             isBuiltIn = true,
             userPrompt = null,
             trigger = trigger,
-            sensitivity = DomainSensitivity.MEDIUM,
             lastCheckedAt = null,
         )
 }

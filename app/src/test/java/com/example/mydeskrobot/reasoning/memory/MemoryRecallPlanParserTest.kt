@@ -158,6 +158,18 @@ class MemoryRecallPlanMappingTest {
     }
 
     @Test
+    fun general_expands_none_scope_to_week() {
+        val request = MemoryRecallPlan(
+            recallFocus = RecallFocus.GENERAL,
+            searchQueries = listOf("fatti episodi promemoria"),
+        ).toRequest("ripeti tutto quello che sai di me")
+
+        assertEquals(TemporalScope.WEEK, request.temporalScope)
+        assertFalse(request.preferUserFacts)
+        assertTrue(request.includeHabitSummary)
+    }
+
+    @Test
     fun messages_expands_none_scope_to_week() {
         val request = MemoryRecallPlan(
             recallFocus = RecallFocus.MESSAGES,

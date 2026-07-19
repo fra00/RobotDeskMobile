@@ -19,14 +19,21 @@ class MoodEngineTest {
     }
 
     @Test
-    fun `positive interaction increases valence to happy band`() {
+    fun `llm happy full tier increases valence`() {
         val neutral = neutralMood()
-        val result = engine.evaluate(neutral, MoodTrigger.PositiveInteraction, baseTime + 1000)
+        val result = engine.evaluate(
+            neutral,
+            MoodTrigger.LlmEmotion(RobotEmotion.HAPPY, LlmEmotionValenceTier.FULL),
+            baseTime + 1000,
+        )
 
         assertNotNull(result)
-        assertEquals(0.3f, result!!.valence, 0.001f)
-        assertEquals(RobotEmotion.HAPPY, result.baseEmotion)
-        assertEquals(MoodReason.POSITIVE_INTERACTION, result.reason)
+        assertEquals(
+            MoodValenceConfig.DEFAULT_BASELINE + MoodValenceConfig.LLM_HAPPY_DELTA,
+            result!!.valence,
+            0.001f,
+        )
+        assertEquals(MoodReason.LLM_EXPRESSION, result.reason)
     }
 
     @Test
@@ -40,23 +47,35 @@ class MoodEngineTest {
     }
 
     @Test
-    fun `negative interaction decreases valence`() {
+    fun `llm angry emotion decreases valence`() {
         val neutral = neutralMood()
-        val result = engine.evaluate(neutral, MoodTrigger.NegativeInteraction, baseTime + 1000)
+        val result = engine.evaluate(
+            neutral,
+            MoodTrigger.LlmEmotion(RobotEmotion.ANGRY),
+            baseTime + 1000,
+        )
 
         assertNotNull(result)
-        assertTrue(result!!.valence < MoodValenceConfig.DEFAULT_BASELINE)
-        assertEquals(MoodReason.NEGATIVE_INTERACTION, result.reason)
+        assertEquals(
+            MoodValenceConfig.DEFAULT_BASELINE + MoodValenceConfig.LLM_ANGRY_DELTA,
+            result!!.valence,
+            0.001f,
+        )
+        assertEquals(MoodReason.LLM_EXPRESSION, result.reason)
     }
 
     @Test
-    fun `positive interaction blocked when annoyed from eye poke`() {
+    fun `llm happy blocked when annoyed from eye poke`() {
         val annoyed = RobotMood.fromValence(
             valence = -0.2f,
             since = baseTime,
             reason = MoodReason.EYE_POKE,
         )
-        val result = engine.evaluate(annoyed, MoodTrigger.PositiveInteraction, baseTime + 1000)
+        val result = engine.evaluate(
+            annoyed,
+            MoodTrigger.LlmEmotion(RobotEmotion.HAPPY, LlmEmotionValenceTier.FULL),
+            baseTime + 1000,
+        )
         assertNull(result)
     }
 
@@ -122,13 +141,13 @@ class MoodEngineTest {
     }
 
     @Test
-    fun `valence decays toward baseline after positive interaction`() {
+    fun `positive valence decays toward baseline after happy decay window`() {
         val config = MoodConfig(happyDecayMinutes = 20)
         val engine = MoodEngine(config, MoodValenceConfig())
         val happy = RobotMood.fromValence(
             valence = 0.35f,
             since = baseTime,
-            reason = MoodReason.POSITIVE_INTERACTION,
+            reason = MoodReason.LLM_EXPRESSION,
         )
         val decayed = engine.checkDecay(happy, baseTime + 20 * 60_000)
 
@@ -138,13 +157,81 @@ class MoodEngineTest {
     }
 
     @Test
-    fun `reminder soon triggers surprised`() {
+    fun `negative valence drifts toward baseline after sad decay window`() {
+        val config = MoodConfig(sadDecayMinutes = 45)
+        val engine = MoodEngine(config, MoodValenceConfig())
+        val sad = RobotMood.fromValence(
+            valence = -0.3f,
+            since = baseTime,
+            reason = MoodReason.LLM_EXPRESSION,
+        )
+        val decayed = engine.checkDecay(sad, baseTime + 45 * 60_000)
+
+        assertNotNull(decayed)
+        assertTrue(decayed!!.valence > sad.valence)
+        assertTrue(decayed.valence <= sad.baseline)
+    }
+
+    @Test
+    fun `negative valence does not drift before sad decay window`() {
+        val config = MoodConfig(sadDecayMinutes = 45)
+        val engine = MoodEngine(config, MoodValenceConfig())
+        val sad = RobotMood.fromValence(
+            valence = -0.3f,
+            since = baseTime,
+            reason = MoodReason.LLM_EXPRESSION,
+        )
+        assertNull(engine.checkDecay(sad, baseTime + 30 * 60_000))
+    }
+
+    @Test
+    fun `idle bored valence does not generic-drift`() {
+        val bored = RobotMood.fromValence(
+            valence = -0.2f,
+            since = baseTime,
+            reason = MoodReason.IDLE_LONG,
+        )
+        assertNull(engine.checkDecay(bored, baseTime + 120 * 60_000))
+    }
+
+    @Test
+    fun `hotword listening idle transitions to bored listening reason`() {
         val neutral = neutralMood()
-        val result = engine.evaluate(neutral, MoodTrigger.ReminderSoon(10), baseTime + 1000)
+        val result = engine.evaluate(
+            neutral,
+            MoodTrigger.HotwordListeningIdle(10),
+            baseTime + 10 * 60_000,
+        )
 
         assertNotNull(result)
-        assertEquals(RobotEmotion.SURPRISED, result!!.baseEmotion)
-        assertEquals(MoodReason.REMINDER_URGENT, result.reason)
+        assertEquals(RobotEmotion.BORED, result!!.baseEmotion)
+        assertEquals(MoodReason.IDLE_LISTENING, result.reason)
+    }
+
+    @Test
+    fun `voice turn presence increases valence slightly`() {
+        val neutral = neutralMood()
+        val result = engine.evaluate(
+            neutral,
+            MoodTrigger.VoiceTurnPresence(0.04f),
+            baseTime + 1000,
+        )
+
+        assertNotNull(result)
+        assertEquals(0.14f, result!!.valence, 0.001f)
+        assertEquals(MoodReason.VOICE_TURN_PRESENCE, result.reason)
+    }
+
+    @Test
+    fun `routine happy llm emotion does not shift valence`() {
+        val neutral = neutralMood()
+        val result = engine.evaluate(
+            neutral,
+            MoodTrigger.LlmEmotion(RobotEmotion.HAPPY, LlmEmotionValenceTier.ROUTINE),
+            baseTime + 1000,
+        )
+
+        assertNull(result)
     }
 
     private fun neutralMood(): RobotMood =

@@ -16,8 +16,14 @@ object MemoryTopicMatcher {
         "che", "non", "mi", "mio", "mia", "miei", "mie", "tuo", "tua", "del", "della", "dei", "delle",
         "al", "alla", "ai", "alle", "dal", "dalla", "nel", "nella", "sul", "sulla", "e", "o", "ma",
         "memoria", "memorie", "dimentica", "dimenticare", "rimuovi", "rimuovere", "cancella", "cancello",
-        "cancellare", "elimina", "eliminare", "forget", "ricorda", "ricordati", "tutto", "quello", "cosa",
+        "cancellare", "elimina", "eliminare", "forget", "ricorda", "ricordati", "ricordami", "tutto", "quello", "cosa",
         "come", "sono", "ho", "hai", "avevo", "detto", "sulla", "sulle", "degli", "delle",
+    )
+
+    /** Italian paraphrase groups for identity/name recall (chiamo ↔ si chiama ↔ nome). */
+    private val RELATED_TOKEN_GROUPS = listOf(
+        setOf("chiamo", "chiami", "chiama", "chiam", "chiamato", "chiamati", "chiamava", "nome", "nomi"),
+        setOf("identita", "identità", "ident"),
     )
 
     data class ScoredMemory(
@@ -31,6 +37,19 @@ object MemoryTopicMatcher {
             .split(Regex("\\s+"))
             .filter { it.length >= 2 && it !in STOP_WORDS }
 
+    private fun tokensRelated(queryToken: String, memoryToken: String): Boolean {
+        if (queryToken == memoryToken) return true
+        if (queryToken.contains(memoryToken) || memoryToken.contains(queryToken)) return true
+        val queryGroup = RELATED_TOKEN_GROUPS.firstOrNull { queryToken in it }
+        val memoryGroup = RELATED_TOKEN_GROUPS.firstOrNull { memoryToken in it }
+        return queryGroup != null && queryGroup === memoryGroup
+    }
+
+    private fun queryTokenMatchesMemory(queryToken: String, memoryValue: String, memoryTokens: List<String>): Boolean {
+        if (queryToken.length >= 2 && memoryValue.contains(queryToken)) return true
+        return memoryTokens.any { memoryToken -> tokensRelated(queryToken, memoryToken) }
+    }
+
     fun score(query: String, memoryValue: String): Float {
         val q = query.trim().lowercase()
         val m = memoryValue.trim().lowercase()
@@ -42,16 +61,16 @@ object MemoryTopicMatcher {
             return if (m.contains(q)) 1f else 0f
         }
 
+        val memoryTokens = tokenize(memoryValue)
         var matched = 0
         for (qt in queryTokens) {
-            if (qt.length >= 2 && m.contains(qt)) matched++
+            if (queryTokenMatchesMemory(qt, m, memoryTokens)) matched++
         }
         val tokenScore = matched.toFloat() / queryTokens.size
 
-        val memoryTokens = tokenize(memoryValue)
         var reverse = 0
         for (mt in memoryTokens) {
-            if (mt.length >= 3 && queryTokens.any { qt -> qt.contains(mt) || mt.contains(qt) }) {
+            if (mt.length >= 3 && queryTokens.any { qt -> tokensRelated(qt, mt) }) {
                 reverse++
             }
         }

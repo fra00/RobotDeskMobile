@@ -14,7 +14,7 @@ The planner (the LLM) combines tools freely to reach the user's goal or heartbea
 
 ## Cognitive agent layer (persona)
 
-[`docs/nextPromptv1.md`](nextPromptv1.md) defines **who the robot is** (companion, not assistant) and autonomous policies (heartbeat relevance, Fire-and-Check, boundaries). That content lives in `llm_system_prompt.txt` as narrative constraints and optional patterns — **not** as rigid playbooks. Persona rules use the same JSON contract (`reply`, `emotion`, `speak_confidence`, `action.chain_status`). See the mapping table at the top of `nextPromptv1.md`.
+[`docs/nextPromptv1.md`](nextPromptv1.md) defines **who the robot is** (companion, not assistant) and autonomous policies (heartbeat relevance, Fire-and-Check, boundaries). That content lives in `llm_system_prompt.txt` as narrative constraints and optional patterns — **not** as rigid playbooks. Persona rules use the same JSON contract (`reply`, `emotion`, `user_tone`, `speak_confidence`, `action.chain_status`). See the mapping table at the top of `nextPromptv1.md`.
 
 ## Rules for authors
 
@@ -36,8 +36,11 @@ Cross-references in prompts use **labels** + section numbers — never duplicate
 | `FIRE_AND_CHECK` | §5 | always |
 | `STORAGE_CHANNEL` | §8 | always |
 | `ROBOT_FACE` | §9 | always |
+| `HUMAN_VOICE` | §6 + `HumanVoicePrompt.kt` | user turns (with STATO ROBOT) |
 | `SYSTEM_INPUTS` | §10 | always |
-| `HEARTBEAT_PLAYBOOK` | `heartbeat_playbook_prompt.txt` | heartbeat / weekly_reflection ticks only |
+| `HEARTBEAT_PLAYBOOK` | `heartbeat_playbook_prompt.txt` | custom heartbeat / weekly_reflection ticks only |
+| `WELLNESS_CHECK` | `wellness_check_prompt.txt` *(future)* | `SYSTEM_INPUT: wellness_check` only |
+| `HABIT_LABEL_NORMALIZE` | `habit_label_normalize_prompt.txt` | incremental predictivity mining (one batch per run) |
 | `BODY_SEARCH` | `body_capabilities_prompt.txt` | ESP32 body configured |
 
 ### Audit matrix (removed text → where it lives)
@@ -56,7 +59,10 @@ Cross-references in prompts use **labels** + section numbers — never duplicate
 | Asset | Role |
 |-------|------|
 | `llm_system_prompt.txt` | Global planner, storage semantics, system inputs (base) |
-| `heartbeat_playbook_prompt.txt` | Heartbeat + weekly_reflection (injected on system ticks) |
+| `heartbeat_playbook_prompt.txt` | Custom heartbeat + weekly_reflection |
+| `wellness_check_prompt.txt` | Unified Wellness scoring + optional speak *(future)* |
+| `room_order_audit_prompt.txt` | Room order/clutter assessment for Wellness input *(future)* |
+| `habit_label_normalize_prompt.txt` | Batch canonical labels for predictivity mining *(future)* |
 | `body_capabilities_prompt.txt` | Body + vision (injected when ESP32 configured) |
 | Tool `description` fields | Short catalog entries in AVAILABLE TOOLS |
 | `memory_extractor_prompt.txt` | **Exception:** DB extraction rules (not dialog planner freedom) |
@@ -70,6 +76,7 @@ Cross-references in prompts use **labels** + section numbers — never duplicate
 
 ## Related docs
 
+- [PROACTIVE_ARCHITECTURE.md](PROACTIVE_ARCHITECTURE.md) — Predictivity + Wellness target
 - [TOOL_ARCHITECTURE.md](TOOL_ARCHITECTURE.md) — tool chains and orchestrator
 - [BODY_INTEGRATION.md](BODY_INTEGRATION.md) — ESP32 body + prompt injection
 - [MEMORY.md](MEMORY.md) — memory vs lists vs reminders

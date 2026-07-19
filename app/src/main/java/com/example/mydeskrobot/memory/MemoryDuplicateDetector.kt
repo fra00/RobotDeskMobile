@@ -34,6 +34,12 @@ object MemoryDuplicateDetector {
         if (left.isBlank() || right.isBlank()) return false
         if (left.equals(right, ignoreCase = true)) return true
 
+        if (category == MemoryCategory.ROUTINE &&
+            RoutineWeekdayScope.hasDistinctWeekdayScope(left, right)
+        ) {
+            return false
+        }
+
         val normalizedLeft = normalizeForDedup(left)
         val normalizedRight = normalizeForDedup(right)
         if (normalizedLeft == normalizedRight) return true

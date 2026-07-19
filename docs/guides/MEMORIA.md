@@ -64,19 +64,23 @@ Sono i **fatti su di te** che il robot dovrebbe ricordare tra una settimana e l�
 1. **Durante il dialogo** — il LLM può chiamare il tool `save_memory` quando capisce che stai dicendo qualcosa di duraturo (“ricorda che il venerdì lavoro fino alle 13”).
 2. **Estrazione automatica** — in standby (hotword attivo), un job in background legge il log della conversazione, estrae fatti con un LLM dedicato e li salva. Intervallo configurabile in **Impostazioni → Memoria** (default 45 secondi).
 3. **Modifica manuale** — in **Impostazioni → Memoria** puoi editare, salvare o eliminare ogni riga.
-4. **Riorganizza ora** — deduplica righe simili e, se ci sono abbastanza fatti, un LLM le compatta in frasi più ordinate (vedi sotto).
+4. **Salvataggio** — duplicati si **aggiornano** solo su **match esatto** (stessa categoria + stesso testo normalizzato). Parafrasi o omonimi (nome utente vs contatto) restano righe separate fino a **Riorganizza** (LLM). Per ROUTINE, giorni diversi (lun–gio vs venerdì) restano sempre righe separate anche in consolidation (`RoutineWeekdayScope`).
 
-### Comandi vocali (senza passare dal LLM)
+### Memoria in dialogo (LLM + tool)
 
-| Comando | Effetto |
-|---------|---------|
-| **“cosa sai di me”** | Legge ad alta voce fino a 8 fatti attivi (lista diretta, non recall intelligente) |
-| **“dimentica …”** | Cerca per parole chiave e soft-delete (es. “dimentica il cane Brina”) |
-| **“reset memoria”** | Cancella tutta la memoria fattuale utente; **non** cancella INTENT/OBSERVATION del robot |
+| Intento | Percorso |
+|---------|----------|
+| **“cosa sai di me”** / **“ripeti tutto quello che sai”** | Planner `GENERAL` (non `USER_FACTS`) + `WEEK` + episodi recenti + abitudini → MEMORIA → LLM sintetizza tutte le sezioni |
+| **“dimentica …”** / “va bene allora dimentica X” | Planner `skip_recall` se il topic è nella frase → LLM → tool `delete_memory` |
+| **“ricordati che …”** | LLM → `save_memory` |
+| **Reset totale** | Solo **Impostazioni → Memoria** (non comando vocale) |
+
+Nessun bypass Kotlin: stesso ingresso `sendPhraseToLlm` per tutte le frasi (salvo shortcut notifiche/debug documentati altrove).
 
 ### Cosa non compare in Impostazioni → Memoria
 
-Le categorie **OBSERVATION**, **INTENT**, **PATTERN** sono memoria **interna al robot** (heartbeat autonomo). Non le vedi nella lista Settings né in “cosa sai di me”.
+- **OBSERVATION**, **INTENT**, **PATTERN** — memoria interna heartbeat; non in Settings.
+- **Episodi Log Day** e **PROFILO ABITUDINI** — visibili in Log Day / recall dialogo, non in questa lista.
 
 ---
 
@@ -127,7 +131,7 @@ Le notifiche accettate creano episodi con `isUnread=true`. In dialogo compaiono 
 
 ### Riepilogo abitudini (PROFILO ABITUDINI)
 
-Periodicamente il sistema genera un **testo sintetico** delle tue abitudini (es. “colazione verso le 8, pausa pranzo verso le 13”) a partire dagli episodi. Compare nel blocco MEMORIA soprattutto su domande **ampie** (“questa settimana”, “ultimo periodo”).
+Periodicamente il sistema genera un **testo sintetico** delle tue abitudini (es. “colazione verso le 8, pausa pranzo verso le 13”) a partire dagli episodi. Compare nel blocco MEMORIA come **PROFILO ABITUDINI** solo se il **recall planner** imposta `include_habit_summary: true` (domande ampie su abitudini o periodi — non automatico su ogni “questa settimana”).
 
 È utile per risposte generali, ma può **affogare** il dettaglio se chiedi qualcosa di specifico (es. un allenamento su tapis roulant) senza parole che attivano il recall episodico mirato.
 
@@ -169,11 +173,16 @@ Visione complessiva: [AUTONOMOUS_AGENT_VISION.md](../Drafts/AUTONOMOUS_AGENT_VIS
 
 Percorso: **ingranaggio** (basso a sinistra) → **Memoria**.
 
-### Configurazione estrazione
+### Configurazione estrazione e Riorganizza
 
-- **Switch** — attiva/disattiva l’estrazione automatica dal log conversazione
-- **Intervallo (secondi)** — ogni quanto controllare nuove righe (10–300; default 45)
-- Pulsante **Salva** (in basso al dialog) — salva **solo** queste preferenze in DataStore
+- **Switch estrazione** — attiva/disattiva l’estrazione automatica dal log conversazione
+- **Intervallo (secondi)** — ogni quanto controllare nuove righe in standby (10–300; default 45)
+- **Riorganizza automaticamente** — in standby, valuta gate (min righe + cooldown + LLM) e lancia compattazione LLM + prune
+- **Minimo righe per Riorganizza** — default 100 (10–500)
+- **Giorni tra Riorganizza** — default 7 (1–90)
+- Pulsante **Salva** (in basso al dialog) — salva tutte le preferenze sopra in DataStore
+
+L’**auto Riorganizza** gira a ogni ciclo standby dello scheduler estrazione (anche se l’estrazione è disattivata), non richiede il pulsante manuale.
 
 ### Lista fatti editabili
 
@@ -192,9 +201,11 @@ Le modifiche al testo **non** si salvano da sole: serve **Salva** sulla singola 
 | Pulsante | Cosa fa |
 |----------|---------|
 | **Reset memoria** | Cancella tutti i fatti utente visibili; resetta il cursore estrazione; **non** tocca memoria autonoma robot |
-| **Riorganizza ora** | (1) dedup Kotlin tra righe simili; (2) consolidamento LLM se ≥3 fatti; mostra spinner durante l’operazione |
+| **Riorganizza ora** | Stessi gate dell’auto (min righe + cooldown + LLM): compattazione LLM + eventuale prune oltre 300. L’**auto** parte in standby se abilitata in impostazioni |
 
-**Riorganizza** non è un prune: non taglia la memoria per fare spazio, unisce duplicati e compatta testo.
+**Riorganizza** compatta duplicati e frammenti simili via LLM quando i gate sono soddisfatti (anche **in automatico** in standby, se abilitato), poi taglia l’eccedenza oltre 300 righe. Minimo righe e giorni di cooldown si configurano in Impostazioni → Memoria (default 100 e 7).
+
+**Pinned:** il robot può marcare fatti critici (`pinned: true` su `save_memory`) — nome utente, allergie, emergenze, “ricordalo sempre”. Non si inferisce il pin da contatti WhatsApp o omonimi.
 
 ---
 
@@ -227,7 +238,7 @@ Codice: `LlmMemoryRecallPlanner` + prompt `memory_recall_planner_prompt.txt`. Un
 
 | Campo piano | Esempi nella domanda | Effetto |
 |-------------|---------------------|---------|
-| **skip_recall** | saluti, buona notte, grazie, ok | Nessun blocco MEMORIA — non è un errore |
+| **skip_recall** | saluti, ack, comandi azione diretti (luce, volume, …), save/delete con topic già in frase | Nessun blocco MEMORIA — non è un errore |
 | **temporal_scope / focus_day_key** | ieri, oggi, questa settimana | Carica episodi/promemoria del giorno o range |
 | **recall_focus** | USER_FACTS, EPISODIC, MESSAGES, PLANNING, SPATIAL, GENERAL | Attiva preferenze ranking e filtri pool |
 | **search_queries** | 1–4 frasi italiane espresse come in MEMORIA | Ricerca semantica multi-query (parafrasi incluse) |
@@ -284,6 +295,10 @@ Dettaglio implementativo: [MEMORIA_TECNICA.md](MEMORIA_TECNICA.md).
 
 ## 9. FAQ e troubleshooting
 
+### “Cosa sai di me” e domande ampie
+
+Passano dal **recall planner** (`recall_focus: GENERAL`, parafrasi in `search_queries`, spesso `include_habit_summary`) e dal blocco MEMORIA — non più un elenco fisso di 8 fatti. Per la timeline giornaliera chiedi anche “cosa ho fatto ieri?” o apri **Impostazioni → Log Day**.
+
 ### Il robot parla di abitudini generiche invece dei miei orari di lavoro
 
 Gli orari sono in memoria fattuale **ROUTINE**. Se la domanda è vaga o il recall privilegia il PROFILO ABITUDINI, la risposta può essere generica. Verifica che le righe ROUTINE siano in **Impostazioni → Memoria** e riprova con domande esplicite (“dimmi gli orari di lavoro”, “che orario faccio il venerdì”).
@@ -298,12 +313,12 @@ Possibile disallineamento **parafrasi**: la domanda (“che lavoro svolgo”) e 
 
 ### Linguaggio di programmazione sì, professione no
 
-Stesso meccanismo: alcune coppie query/memoria matchano meglio per token comuni. Controlla categoria IDENTITY vs FACT e usa Riorganizza se ci sono duplicati confusi.
+Stesso meccanismo: alcune coppie query/memoria matchano meglio per token comuni. Controlla categoria IDENTITY vs FACT; parafrasi duplicate restano righe separate finché non scatta **Riorganizza** (auto o manuale, gate min righe + cooldown configurabili). Per omonimi (nome utente vs contatto) verifica che non siano state fuse al save — il merge al salvataggio è solo su testo identico.
 
 ### Reset memoria vs dimentica
 
-- **Reset** — tutto il profilo utente visibile
-- **Dimentica X** — solo righe che matchano l’argomento X
+- **Reset** — solo **Impostazioni → Memoria** (tutto il profilo utente visibile)
+- **Dimentica X** — voce naturale → LLM → `delete_memory` con topic
 - Nessuno dei due cancella INTENT/OBSERVATION del heartbeat
 
 ### Estrazione non salva nulla

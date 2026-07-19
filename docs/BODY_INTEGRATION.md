@@ -42,6 +42,8 @@ Vedi [PROMPT_PHILOSOPHY.md](PROMPT_PHILOSOPHY.md).
 
 ## Espressività automatica (coreografie Kotlin)
 
+Umore persistente + espressione effimera LLM: [`MOOD.md`](MOOD.md). Token occhi: [`ROBOT_EXPRESSIONS.md`](ROBOT_EXPRESSIONS.md).
+
 Quando il corpo ESP32 è configurato, l'app esegue gesti **chiusi** (neutro testa → picco → neutro) in parallelo agli occhi:
 
 | Componente | Ruolo |
@@ -149,6 +151,21 @@ Registrazione: solo se `BodySettings.isConfigured()` (`enabled` + URL).
 | *"Guarda il mio cane"* | Foto + eventuale movimento funzionale + risposta |
 | Heartbeat bored, idle 15+ min | Look-around silenzioso Kotlin (non LLM) |
 | *"Vai a dormire"* | Pose sonno testa ~−10°, non resettata da ephemeral |
+
+## Room order scan (Wellness only — target)
+
+Part of the **unified Wellness tick**, not a separate user-facing channel. See [PROACTIVE_ARCHITECTURE.md](PROACTIVE_ARCHITECTURE.md).
+
+| Rule | Detail |
+|------|--------|
+| When | Wellness phase 2, only if `BodySettings.isConfigured()` and `body_status` reachable |
+| Actions | Body pan/scan + `take_photo` with `ROOM_ORDER_AUDIT` prompt (future asset) |
+| Output | `save_memory` OBSERVATION (order/clutter) + `SensingKind.ROOM_SCENE` |
+| TTS | **None** from order phase alone; data feeds Wellness domain scoring |
+| User dialog photos | **Never** reused for order assessment |
+| Without body | Wellness skips order dimension; text-only domains still scored |
+
+Phone-only (no ESP32) cannot pan — order assessment is skipped, not degraded to fixed front-camera guess.
 
 ## Limiti (v1)
 

@@ -12,6 +12,8 @@ import com.example.mydeskrobot.domain.activitylog.ActivitySource
 import com.example.mydeskrobot.domain.activitylog.DayActivityGroup
 import com.example.mydeskrobot.domain.activitylog.EpisodeConfidence
 import com.example.mydeskrobot.domain.activitylog.EpisodeKind
+import com.example.mydeskrobot.domain.predictivity.HabitSlot
+import com.example.mydeskrobot.domain.predictivity.HabitSlotKey
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import java.text.SimpleDateFormat
@@ -76,7 +78,6 @@ class ActivityLogRepository(
                 isUnread = isUnread,
             ),
         )
-        pruneExpired()
         return id
     }
 
@@ -125,7 +126,6 @@ class ActivityLogRepository(
                     isUnread = isUnread || existing.isUnread,
                 ),
             )
-            pruneExpired()
             return existing.id
         }
 
@@ -145,9 +145,62 @@ class ActivityLogRepository(
                 isUnread = isUnread,
             ),
         )
-        pruneExpired()
         return id
     }
+
+    suspend fun getConfirmedPhysicalEvents(dayKey: String): List<ActivityLogEntry> =
+        dao.getConfirmedPhysicalForDay(dayKey).map { it.toDomain() }
+
+    fun pendingDayKeys(lastMined: String?, todayKey: String, allDayKeys: List<String>): List<String> =
+        allDayKeys
+            .sorted()
+            .filter { key ->
+                (lastMined.isNullOrBlank() || key > lastMined) && key < todayKey
+            }
+
+    suspend fun listDayKeysInRetention(): List<String> {
+        val sinceMs = System.currentTimeMillis() - RETENTION_MS
+        return dao.getDistinctDayKeysSince(sinceMs)
+    }
+
+    suspend fun pendingMiningDayKeys(lastMined: String?): List<String> {
+        val todayKey = dayKeyFor(System.currentTimeMillis())
+        return pendingDayKeys(lastMined, todayKey, listDayKeysInRetention())
+    }
+
+    suspend fun hasMatchingEpisodeToday(
+        slot: HabitSlot,
+        todayKey: String,
+        toleranceMinutes: Int,
+    ): Boolean {
+        val episodes = getConfirmedPhysicalEvents(todayKey)
+        return episodes.any { episode ->
+            labelsMatchSlot(slot, episode.label) &&
+                timeWithinTolerance(
+                    HabitSlotKey.minutesSinceMidnight(episode.timestampMs),
+                    slot.typicalTimeMinutes,
+                    toleranceMinutes,
+                )
+        }
+    }
+
+    private fun labelsMatchSlot(
+        slot: HabitSlot,
+        episodeLabel: String,
+    ): Boolean {
+        val norm = episodeLabel.trim().lowercase()
+        if (norm.isBlank()) return false
+        if (slot.rawLabels.any { it.trim().equals(episodeLabel, ignoreCase = true) }) return true
+        if (slot.displayLabel.trim().equals(episodeLabel, ignoreCase = true)) return true
+        val canonicalHuman = slot.canonicalLabel.replace('_', ' ').trim().lowercase()
+        return norm == canonicalHuman
+    }
+
+    private fun timeWithinTolerance(
+        episodeMinutes: Int,
+        typicalMinutes: Int,
+        toleranceMinutes: Int,
+    ): Boolean = kotlin.math.abs(episodeMinutes - typicalMinutes) <= toleranceMinutes
 
     suspend fun getUpcomingForDay(targetDayKey: String, limit: Int = 8): List<ActivityLogEntry> =
         dao.getUpcomingForDay(targetDayKey, limit).map { it.toDomain() }

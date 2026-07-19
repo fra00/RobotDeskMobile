@@ -1,6 +1,6 @@
 # Memory Review Follow-up (2.1 / 2.2 / 2.3)
 
-Implementation of the third-party memory review follow-up. Scope: projection consistency, recall budget, safety pinning (Level 1 only). No Room schema migration, no voice “ricordalo sempre”.
+Implementation of the third-party memory review follow-up. Scope: projection consistency, recall budget, safety pinning. No voice-only “ricordalo sempre” command beyond LLM tool (backlog polish).
 
 ## 2.1 MUST — Projection guard + reconcile
 
@@ -43,37 +43,40 @@ Cognitive projections (`memory_documents.db`) are synced **synchronously** (`sus
 **Routing:**
 
 - **SINGLE_DAY** — all episodes for `focusDayKey` (cap 40) + min 20 non-episode slots
-- **WEEK / MONTH** — inject `HABIT_SUMMARY` (score 0.92) + at most 10 recent episodes; no full granular episode load
+- **WEEK / MONTH** — up to 10 recent episodes in range; **`HABIT_SUMMARY` pinned only when** `includeHabitSummary == true` in the recall plan (not automatic on WEEK alone). See [`MEMORY_RECALL_PLANNER.md`](MEMORY_RECALL_PLANNER.md).
 - **NONE** — reserve min 15 `USER_FACT` when present above threshold
 
 [`RecallContextFormatter`](../app/src/main/java/com/example/mydeskrobot/integration/context/RecallContextFormatter.kt) labels wide-range blocks (“questa settimana”, “questo mese”).
 
-## 2.3 NICE — Safety pin Level 1
+## 2.3 Pinning — Level 1 superseded, Level 2 partial
 
-### Scope
+### Historical Level 1 (superseded)
 
-Deterministic Italian health/safety keywords only. **No** `isPinned` column. **No** voice pin command (backlog).
+[`MemorySafetyPinDetector`](../app/src/main/java/com/example/mydeskrobot/memory/MemorySafetyPinDetector.kt) applied keyword-based health/emergency pinning and confidence floor at upsert/prune. **Removed from runtime write and prune paths** (2026). Class may remain for reference/tests only.
 
-### Solution
+### Current (Level 2 partial)
 
-[`MemorySafetyPinDetector`](../app/src/main/java/com/example/mydeskrobot/memory/MemorySafetyPinDetector.kt):
+| Mechanism | Status |
+|-----------|--------|
+| `isPinned` column on `memory_documents` (Room v3) | ✅ |
+| LLM `pinned: true` on `save_memory` / extractor | ✅ |
+| Excluded from `pruneIfNeeded` and consolidation input | ✅ |
+| Voice shortcut “ricordalo sempre” without LLM tool | ⬜ backlog |
+| Fragmentation analyzer | ⬜ backlog (`docs/TODO.md`) |
 
-- Categories: `IDENTITY`, `FACT`
-- Keywords: allergia, intolleranza, celiachia, diabete, epipen, emergenza, 118, 112, ospedale, farmaco, …
-- On match: `confidence` floor **0.95**
-- `pruneIfNeeded`: excludes safety-pinned rows (re-checked on `value` at prune time)
-
-Applied on: `upsertUserFacingFact`, `replaceUserFacingWithConsolidated`, extraction (`MemoryExtractionService` → unified upsert).
+Write dedup is **exact match only**; semantic merge runs in **Riorganizza** (`MemoryConsolidationService`), auto or manual when gated. See [`MEMORY.md`](MEMORY.md) § Duplicate handling.
 
 ## Acceptance (verified by unit tests)
 
 - Projection verify + retry + drift path (`MemoryProjectionGuardTest`)
 - 50 episodes + user facts on single day → ≥3 `USER_FACT` in recall, total ≤ 60
-- “Questa settimana” → `TemporalScope.WEEK` + `HABIT_SUMMARY` in context
-- Safety allergy fact survives prune at cap 300
+- “Questa settimana” with planner `include_habit_summary: true` → `TemporalScope.WEEK` + `HABIT_SUMMARY` in context (when summary doc exists)
+- `isPinned` fact survives prune at cap 300 (`UnifiedMemoryRepositoryTest`)
+- Exact vs paraphrase upsert (`UpsertExactMatchTest`); homonym identity (`UpsertHomonymIdentityTest`)
+- Reorganize gate + auto config (`MemoryReorganizePolicyTest`, `MemoryConsolidationServiceTest`)
 - Full memory test suite green (`memory.*`, `integration.memory.*`, `reasoning.memory.*`)
 
 ## Backlog (out of scope)
 
-- Level 2 pinning: `isPinned` schema + voice “ricordalo sempre”
+- Voice-only pin command polish
 - H2 heartbeat `speak_confidence` threshold

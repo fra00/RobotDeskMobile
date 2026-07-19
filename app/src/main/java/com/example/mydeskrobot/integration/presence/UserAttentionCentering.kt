@@ -52,7 +52,13 @@ class UserAttentionCentering(
             return AttentionCenteringResult.AlreadyCentered
         }
 
+        // Abort before scan/moves: unreachable ESP32 would otherwise stack connect timeouts
+        // (~8s each) across every pan target and delay the LLM by tens of seconds.
         var status = fetchStatus(client)
+        if (status == null) {
+            Log.w(TAG, "Body unreachable — skip attention centering")
+            return AttentionCenteringResult.SkippedBodyUnreachable
+        }
         var moveCount = 0
 
         if (gaze != null) {
@@ -73,10 +79,12 @@ class UserAttentionCentering(
             gaze = scanResult.gaze
 
             if (gaze != null) {
-                val loopResult = centerHorizontally(client, gaze, status)
-                moveCount += loopResult.moves
-                status = loopResult.status ?: status
-                gaze = loopResult.gaze
+                if (!gaze.isCentered()) {
+                    val loopResult = centerHorizontally(client, gaze, status)
+                    moveCount += loopResult.moves
+                    status = loopResult.status ?: status
+                    gaze = loopResult.gaze
+                }
             } else {
                 val neutralMoves = returnBasePanToNeutral(client, status)
                 moveCount += neutralMoves.moves
@@ -101,6 +109,38 @@ class UserAttentionCentering(
         return AttentionCenteringResult.Centered(moveCount)
     }
 
+    /**
+     * Silent pan scan for predictivity / wellness presence (no vertical centering, no TTS).
+     */
+    suspend fun locateUserNow(timeoutMs: Long = DEFAULT_LOCATE_TIMEOUT_MS): Boolean {
+        val bodySettings = bodySettingsProvider()
+        if (!bodySettings.isConfigured()) return false
+
+        val client = bodyClientProvider(bodySettings) ?: return false
+        if (fetchStatus(client) == null) return false
+
+        val scanStart = nowMillis()
+        val deadline = scanStart + timeoutMs
+
+        usableGaze(nowMillis())?.let { return true }
+
+        var status = fetchStatus(client)
+        val homed = moveBasePan(client, status, AttentionCenteringPolicy.NEUTRAL_BASE_PAN)
+        status = homed.status ?: status
+        if (nowMillis() > deadline) return false
+
+        waitForFaceAfterPanMove(homed.moveStartedMs ?: nowMillis(), deadlineMs = deadline)?.let { return true }
+
+        for (targetPan in AttentionCenteringPolicy.expandScanTargets()) {
+            if (nowMillis() > deadline) return false
+            val moved = moveBasePan(client, status, targetPan)
+            status = moved.status ?: status
+            waitForFaceAfterPanMove(moved.moveStartedMs ?: nowMillis(), deadlineMs = deadline)?.let { return true }
+        }
+
+        return usableGaze(nowMillis()) != null
+    }
+
     private suspend fun scanForFace(
         client: AttentionBodyClient,
         startStatus: BodyStatus?,
@@ -112,7 +152,7 @@ class UserAttentionCentering(
         moves += homed.moves
         status = homed.status ?: status
 
-        waitForUsableGazeAfter(nowMillis())?.let { found ->
+        waitForFaceAfterPanMove(homed.moveStartedMs ?: nowMillis())?.let { found ->
             return ScanResult(found, status, moves)
         }
 
@@ -121,7 +161,7 @@ class UserAttentionCentering(
             moves += moved.moves
             status = moved.status ?: status
 
-            waitForUsableGazeAfter(nowMillis())?.let { found ->
+            waitForFaceAfterPanMove(moved.moveStartedMs ?: nowMillis())?.let { found ->
                 return ScanResult(found, status, moves)
             }
         }
@@ -158,9 +198,10 @@ class UserAttentionCentering(
             return MoveResult(status, 0)
         }
 
+        val moveStartedMs = nowMillis()
         pause(AttentionCenteringPolicy.SETTLE_AFTER_MOVE_MS)
         status = fetchStatus(client) ?: status
-        return MoveResult(status, 1)
+        return MoveResult(status, 1, moveStartedMs)
     }
 
     private suspend fun centerHorizontally(
@@ -185,17 +226,17 @@ class UserAttentionCentering(
             }
             moves++
 
+            val moveStartedMs = nowMillis()
             pause(AttentionCenteringPolicy.SETTLE_AFTER_MOVE_MS)
-            val afterMoveMs = nowMillis()
-            var newGaze = waitForUsableGazeAfter(afterMoveMs)
+            var newGaze = waitForUsableGazeAfter(moveStartedMs)
             if (newGaze == null) {
                 pause(AttentionCenteringPolicy.GAZE_RETRY_EXTRA_WAIT_MS)
-                newGaze = waitForUsableGazeAfter(afterMoveMs)
+                newGaze = waitForUsableGazeAfter(moveStartedMs)
             }
             if (newGaze == null && moves < AttentionCenteringPolicy.MIN_CENTERING_MOVES) {
                 Log.w(TAG, "Gaze not ready after move $moves — waiting another frame cycle")
                 pause(AttentionCenteringPolicy.SETTLE_AFTER_MOVE_MS)
-                newGaze = waitForUsableGazeAfter(afterMoveMs)
+                newGaze = waitForUsableGazeAfter(moveStartedMs)
             }
             if (newGaze == null) {
                 if (moves < AttentionCenteringPolicy.MIN_CENTERING_MOVES) {
@@ -220,10 +261,10 @@ class UserAttentionCentering(
                         return LoopResult(newGaze, status, moves, faceLost = false)
                     }
                     moves++
+                    val flipMoveStartedMs = nowMillis()
                     pause(AttentionCenteringPolicy.SETTLE_AFTER_MOVE_MS)
-                    val afterFlipMs = nowMillis()
-                    val afterFlipGaze = waitForUsableGazeAfter(afterFlipMs)
-                        ?: waitForUsableGazeAfter(afterFlipMs, extraWait = true)
+                    val afterFlipGaze = waitForUsableGazeAfter(flipMoveStartedMs)
+                        ?: waitForUsableGazeAfter(flipMoveStartedMs, extraWait = true)
                     if (afterFlipGaze == null) {
                         Log.i(TAG, "No fresh gaze after pan flip — keeping pose")
                         return LoopResult(newGaze, status, moves, faceLost = true)
@@ -252,14 +293,28 @@ class UserAttentionCentering(
     private fun isFresh(gaze: FaceGazeSnapshot, now: Long): Boolean =
         now - gaze.capturedAt <= AttentionCenteringPolicy.MAX_GAZE_AGE_MS
 
+    /**
+     * After a pan move: accept any face ML Kit saw since the move started (including during settle).
+     * The debug overlay can show a face while scan still timed out when [notBeforeMs] was taken
+     * after settle ended — that rejected frames captured mid-settle.
+     */
+    private suspend fun waitForFaceAfterPanMove(
+        moveStartedMs: Long,
+        deadlineMs: Long? = null,
+    ): FaceGazeSnapshot? {
+        usableGaze(nowMillis())?.takeIf { it.capturedAt >= moveStartedMs - 50L }?.let { return it }
+        return waitForUsableGazeAfter(notBeforeMs = moveStartedMs, deadlineMs = deadlineMs)
+    }
+
     private suspend fun waitForUsableGazeAfter(
         notBeforeMs: Long,
         extraWait: Boolean = false,
+        deadlineMs: Long? = null,
     ): FaceGazeSnapshot? {
         if (extraWait) {
             pause(AttentionCenteringPolicy.GAZE_RETRY_EXTRA_WAIT_MS)
         }
-        val deadline = nowMillis() + AttentionCenteringPolicy.GAZE_WAIT_TIMEOUT_MS
+        val deadline = deadlineMs ?: (nowMillis() + AttentionCenteringPolicy.GAZE_WAIT_TIMEOUT_MS)
         while (nowMillis() < deadline) {
             val gaze = FaceGazeStateStore.current()
             if (gaze != null &&
@@ -315,16 +370,20 @@ class UserAttentionCentering(
     private data class MoveResult(
         val status: BodyStatus?,
         val moves: Int,
+        val moveStartedMs: Long? = null,
     )
 
     companion object {
         private const val TAG = "UserAttention"
+        private const val DEFAULT_LOCATE_TIMEOUT_MS = 8_000L
     }
 }
 
 sealed interface AttentionCenteringResult {
     data object SkippedBodyDisabled : AttentionCenteringResult
     data object SkippedPresenceDisabled : AttentionCenteringResult
+    /** Body configured but status probe failed — skip moves to avoid stacked HTTP timeouts. */
+    data object SkippedBodyUnreachable : AttentionCenteringResult
     data object AlreadyCentered : AttentionCenteringResult
     data class Centered(val moveCount: Int) : AttentionCenteringResult
     data class PartialFailure(val message: String) : AttentionCenteringResult

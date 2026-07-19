@@ -1,6 +1,9 @@
 package com.example.mydeskrobot.integration.tool.local
 
 import android.content.Context
+import com.example.mydeskrobot.data.predictivity.HabitSlotRepository
+import com.example.mydeskrobot.domain.proactive.ProactivityConstants
+import com.example.mydeskrobot.integration.predictivity.PredictivityModule
 import com.example.mydeskrobot.integration.tool.Tool
 import com.example.mydeskrobot.integration.tool.ToolLocality
 import com.example.mydeskrobot.memory.UserMemoryRepository
@@ -13,15 +16,23 @@ import com.example.mydeskrobot.reasoning.tool.ToolParameter
 class DeleteMemoryTool private constructor(
     private val unifiedMemoryRepository: UnifiedMemoryRepository?,
     private val legacyTestRepository: UserMemoryRepository?,
+    private val habitSlotRepository: HabitSlotRepository?,
 ) : Tool {
 
-    constructor(unifiedMemoryRepository: UnifiedMemoryRepository) : this(unifiedMemoryRepository, null)
+    constructor(unifiedMemoryRepository: UnifiedMemoryRepository) : this(unifiedMemoryRepository, null, null)
 
-    constructor(legacyMemoryRepository: UserMemoryRepository) : this(null, legacyMemoryRepository)
+    /** Test hook: unified memory + habit slot cleanup. */
+    internal constructor(
+        unifiedMemoryRepository: UnifiedMemoryRepository,
+        habitSlotRepository: HabitSlotRepository,
+    ) : this(unifiedMemoryRepository, null, habitSlotRepository)
+
+    constructor(legacyMemoryRepository: UserMemoryRepository) : this(null, legacyMemoryRepository, null)
 
     constructor(context: Context) : this(
         com.example.mydeskrobot.memory.unified.UnifiedMemoryFactory.createRepository(context),
         null,
+        PredictivityModule.createHabitSlotRepository(context),
     )
 
     override val name: String = "delete_memory"
@@ -58,6 +69,8 @@ class DeleteMemoryTool private constructor(
             ?: (invocation.params["id"] as? Number)?.toLong()
 
         if (memoryId != null) {
+            val habitRepo = habitSlotRepository
+            val externalRef = unified?.getDocumentById(memoryId)?.externalRef
             val deleted = when {
                 unified != null -> unified.deleteById(memoryId)
                 legacy != null -> legacy.deleteById(memoryId)
@@ -69,6 +82,9 @@ class DeleteMemoryTool private constructor(
                     code = "NOT_FOUND",
                     recoverable = true,
                 )
+            }
+            if (habitRepo != null && externalRef != null) {
+                deleteHabitSlotFromExternalRef(habitRepo, externalRef)
             }
             return ToolResult.Success(
                 data = mapOf(
@@ -87,12 +103,18 @@ class DeleteMemoryTool private constructor(
             )
         }
 
+        var habitDeleted = 0
+        habitSlotRepository?.let { repo ->
+            habitDeleted = repo.deleteByCanonical(query)
+        }
+
         val result = when {
             unified != null -> unified.forgetByTopic(query)
             legacy != null -> legacy.forgetByTopic(query)
             else -> return ToolResult.Error(message = "Memoria non disponibile", code = "NOT_FOUND")
         }
-        if (result.deletedCount == 0) {
+        val totalDeleted = result.deletedCount + habitDeleted
+        if (totalDeleted == 0) {
             return ToolResult.Error(
                 message = "Nessuna memoria trovata per \"$query\"",
                 code = "NOT_FOUND",
@@ -103,10 +125,30 @@ class DeleteMemoryTool private constructor(
         return ToolResult.Success(
             data = mapOf(
                 "success" to true,
-                "deleted_count" to result.deletedCount,
+                "deleted_count" to totalDeleted,
                 "query" to query,
                 "deleted_memories" to result.deletedValues,
             ),
         )
+    }
+
+    private suspend fun deleteHabitSlotFromExternalRef(
+        habitRepo: HabitSlotRepository,
+        externalRef: String,
+    ) {
+        if (!externalRef.startsWith(ProactivityConstants.HABIT_SLOT_EXTERNAL_REF_PREFIX)) return
+        val slotKey = externalRef.removePrefix(ProactivityConstants.HABIT_SLOT_EXTERNAL_REF_PREFIX)
+        if (slotKey.isNotBlank()) {
+            habitRepo.deleteBySlotKey(slotKey)
+        }
+    }
+
+    companion object {
+        /** Test hook: decode slot key from stored external ref. */
+        internal fun slotKeyFromExternalRef(externalRef: String): String? {
+            if (!externalRef.startsWith(ProactivityConstants.HABIT_SLOT_EXTERNAL_REF_PREFIX)) return null
+            return externalRef.removePrefix(ProactivityConstants.HABIT_SLOT_EXTERNAL_REF_PREFIX)
+                .takeIf { it.isNotBlank() }
+        }
     }
 }

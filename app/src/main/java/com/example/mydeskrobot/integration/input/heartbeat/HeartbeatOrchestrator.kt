@@ -3,7 +3,7 @@ package com.example.mydeskrobot.integration.input.heartbeat
 import android.content.Context
 import android.util.Log
 import com.example.mydeskrobot.data.activitylog.ActivityLogRepository
-import com.example.mydeskrobot.data.awareness.UserAwarenessRepository
+import com.example.mydeskrobot.integration.predictivity.PredictivityModule
 import com.example.mydeskrobot.data.context.RobotContextRepository
 import com.example.mydeskrobot.data.heartbeat.AttentionDomainRepository
 import com.example.mydeskrobot.data.heartbeat.HeartbeatSettingsRepository
@@ -21,6 +21,7 @@ import com.example.mydeskrobot.domain.input.SystemInputDispatcher
 import com.example.mydeskrobot.domain.input.SystemInputEvent
 import com.example.mydeskrobot.data.hotword.VoiceSessionState
 import com.example.mydeskrobot.data.presence.DeskPresenceSettingsRepository
+import com.example.mydeskrobot.domain.proactive.GateDecision
 import com.example.mydeskrobot.domain.heartbeat.HeartbeatMicroTickPolicy
 import com.example.mydeskrobot.domain.input.HeartbeatMicroTick
 import com.example.mydeskrobot.domain.model.RobotEmotion
@@ -97,7 +98,7 @@ class HeartbeatOrchestrator(
         }
 
         val activeDomain = runBlocking {
-            domainScheduler.nextDueDomain(domainRepository.enabledDomains())
+            domainScheduler.nextDueDomain(domainRepository.enabledHeartbeatDomains())
         }
 
         if (activeDomain == null) {
@@ -122,12 +123,10 @@ class HeartbeatOrchestrator(
         settings: com.example.mydeskrobot.data.heartbeat.HeartbeatSettings,
     ): GateDecision {
         val workingMemoryRepo = WorkingMemoryRepository(context)
-        val userAwarenessRepo = UserAwarenessRepository(context)
         val robotContextRepo = RobotContextRepository(context)
         val gateContext = ProactiveGateContext(
             heartbeatSettings = settings,
             workingMemory = workingMemoryRepo.load(),
-            userAwareness = userAwarenessRepo.load(),
             robotContext = robotContextRepo.getStoredState(),
             isNightMode = false,
             deskPresenceMonitorEnabled = true,
@@ -136,7 +135,7 @@ class HeartbeatOrchestrator(
     }
 
     private suspend fun selectDomainForVoice(): AttentionDomainState? {
-        val enabled = domainRepository.enabledDomains()
+        val enabled = domainRepository.enabledHeartbeatDomains()
         return domainScheduler.nextDueDomain(enabled)
             ?: domainScheduler.nextDomainForDebug(enabled)
     }
@@ -189,9 +188,8 @@ class HeartbeatOrchestrator(
 
     private suspend fun unifiedMemoryPrune() {
         val unifiedMemoryRepo = UnifiedMemoryFactory.createRepository(context)
-        val activityLogRepo = ActivityLogRepository.create(context)
+        PredictivityModule.createLifecycleCoordinator(context).mineThenPrune()
         unifiedMemoryRepo.pruneExpired()
-        activityLogRepo.pruneExpired()
     }
 
     private suspend fun buildAndDispatch(
@@ -203,7 +201,6 @@ class HeartbeatOrchestrator(
         val unifiedMemoryRepo = UnifiedMemoryFactory.createRepository(context)
         val moodRepo = MoodRepository(context)
         val workingMemoryRepo = WorkingMemoryRepository(context)
-        val userAwarenessRepo = UserAwarenessRepository(context)
         val activityLogRepo = ActivityLogRepository.create(context)
         val spatialContextRepo = SpatialContextRepository(context)
         val spatialPlaceRepo = SpatialPlaceRepository.create(context)
@@ -214,7 +211,6 @@ class HeartbeatOrchestrator(
             lastInteractionProvider = { settings.lastInteractionMillis },
             currentMoodProvider = { moodRepo.load() },
             workingMemoryProvider = { workingMemoryRepo.load() },
-            userAwarenessProvider = { userAwarenessRepo.load() },
             activityLogRepository = activityLogRepo,
             spatialSnapshotProvider = { spatialContextRepo.load() },
             knownPlacesProvider = { spatialPlaceRepo.labelSummaries() },
@@ -228,7 +224,6 @@ class HeartbeatOrchestrator(
         val heartbeat = baseHeartbeat.copy(
             activeDomainId = activeDomain.id,
             activeDomainName = activeDomain.displayName,
-            activeDomainSensitivity = activeDomain.sensitivity.name,
             activeDomainUserPrompt = activeDomain.userPrompt,
             recentInterventionsOnDomain = interventions,
             deskOccupancyState = occupancy.state.name.lowercase(),

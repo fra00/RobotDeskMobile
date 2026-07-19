@@ -1,9 +1,15 @@
 package com.example.mydeskrobot.data.activitylog
 
 import com.example.mydeskrobot.domain.activitylog.ActivitySource
+import com.example.mydeskrobot.domain.activitylog.EpisodeConfidence
+import com.example.mydeskrobot.domain.activitylog.EpisodeKind
+import com.example.mydeskrobot.domain.predictivity.HabitSlot
+import com.example.mydeskrobot.domain.predictivity.HabitSlotKey
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -134,6 +140,114 @@ class ActivityLogRepositoryTest {
     fun `parseScheduledAtMs combines day and time`() {
         val ms = ActivityLogRepository.parseScheduledAtMs("2026-06-03", "20:30")
         assertNotNull(ms)
+    }
+
+    @Test
+    fun `hasMatchingEpisodeToday true when episode within tolerance`() = runBlocking {
+        val now = timestampAt(8, 35)
+        val todayKey = ActivityLogRepository.dayKeyFor(now)
+        val repo = ActivityLogRepository.createForTest(
+            FakeActivityLogDao(
+                listOf(
+                    confirmedPhysicalEpisode(
+                        dayKey = todayKey,
+                        label = "passeggiata cane",
+                        timestampMs = timestampAt(8, 45),
+                    ),
+                ),
+            ),
+        )
+        val slot = habitSlot(typicalTimeMinutes = HabitSlotKey.minutesSinceMidnight(now))
+
+        assertTrue(
+            repo.hasMatchingEpisodeToday(
+                slot = slot,
+                todayKey = todayKey,
+                toleranceMinutes = 45,
+            ),
+        )
+    }
+
+    @Test
+    fun `hasMatchingEpisodeToday false when episode outside tolerance`() = runBlocking {
+        val now = timestampAt(8, 35)
+        val todayKey = ActivityLogRepository.dayKeyFor(now)
+        val repo = ActivityLogRepository.createForTest(
+            FakeActivityLogDao(
+                listOf(
+                    confirmedPhysicalEpisode(
+                        dayKey = todayKey,
+                        label = "passeggiata cane",
+                        timestampMs = timestampAt(10, 30),
+                    ),
+                ),
+            ),
+        )
+        val slot = habitSlot(typicalTimeMinutes = HabitSlotKey.minutesSinceMidnight(now))
+
+        assertFalse(
+            repo.hasMatchingEpisodeToday(
+                slot = slot,
+                todayKey = todayKey,
+                toleranceMinutes = 45,
+            ),
+        )
+    }
+
+    @Test
+    fun `hasMatchingEpisodeToday false for different label`() = runBlocking {
+        val now = timestampAt(8, 35)
+        val todayKey = ActivityLogRepository.dayKeyFor(now)
+        val repo = ActivityLogRepository.createForTest(
+            FakeActivityLogDao(
+                listOf(
+                    confirmedPhysicalEpisode(
+                        dayKey = todayKey,
+                        label = "colazione",
+                        timestampMs = now,
+                    ),
+                ),
+            ),
+        )
+        val slot = habitSlot(typicalTimeMinutes = HabitSlotKey.minutesSinceMidnight(now))
+
+        assertFalse(
+            repo.hasMatchingEpisodeToday(
+                slot = slot,
+                todayKey = todayKey,
+                toleranceMinutes = 45,
+            ),
+        )
+    }
+
+    private fun habitSlot(typicalTimeMinutes: Int) = HabitSlot(
+        slotKey = "passeggiata_cane|510",
+        canonicalLabel = "passeggiata_cane",
+        displayLabel = "Passeggiata cane",
+        typicalTimeMinutes = typicalTimeMinutes,
+        rawLabels = setOf("passeggiata cane"),
+    )
+
+    private fun confirmedPhysicalEpisode(
+        dayKey: String,
+        label: String,
+        timestampMs: Long,
+    ) = com.example.mydeskrobot.data.activitylog.db.ActivityLogEventEntity(
+        dayKey = dayKey,
+        timestampMs = timestampMs,
+        label = label,
+        rawPhrase = null,
+        source = ActivitySource.TOOL,
+        eventKind = EpisodeKind.PHYSICAL_NOW,
+        confidence = EpisodeConfidence.CONFIRMED,
+    )
+
+    private fun timestampAt(hour: Int, minute: Int): Long {
+        val calendar = java.util.Calendar.getInstance(java.util.Locale.ITALY).apply {
+            set(2026, java.util.Calendar.JUNE, 11, hour, minute, 0)
+            set(java.util.Calendar.MILLISECOND, 0)
+        }
+        return calendar.timeInMillis
     }
 
     private fun tomorrowDayKey(): String {

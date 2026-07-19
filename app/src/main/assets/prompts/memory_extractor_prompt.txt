@@ -9,7 +9,8 @@ Schema:
     {
       "category": "IDENTITY | PREFERENCE | ROUTINE | FACT (never OBSERVATION, INTENT, or PATTERN)",
       "value": "short normalized statement",
-      "confidence": 0.0
+      "confidence": 0.0,
+      "pinned": false
     }
   ]
 }
@@ -27,3 +28,6 @@ Rules:
 - Keep weekday names inside recurring ROUTINE facts ("ogni martedì", "il venerdì", "dal lunedì al sabato"); do not resolve those to a single calendar date.
 - Bare weekday without article in one-off context → list/reminder or absolute date, NOT ROUTINE.
 - If nothing useful is found, return {"facts": []}.
+- pinned: true only for user-declared IDENTITY (name), allergies/emergencies, or explicit "ricordalo sempre". Default false.
+- Never set pinned for WhatsApp senders, phone contacts, episodic mentions, or homonym surnames inferred from third parties.
+- IDENTITY name comes only from the user's own statement — never merge a contact name (e.g. "Francesco Rossi contatto") with the user's name.

@@ -1,15 +1,11 @@
 package com.example.mydeskrobot.domain.heartbeat
 
-enum class DomainSensitivity {
-    LOW,
-    MEDIUM,
-    HIGH,
-}
-
 sealed interface DomainTrigger {
     data class TimeDaily(val hour: Int, val endHourExclusive: Int? = null) : DomainTrigger
     data class TimeWeekly(val dayOfWeek: Int) : DomainTrigger
     data class Event(val eventId: String) : DomainTrigger
+    /** Built-in or custom care domain: evaluated only in the unified Wellness tick. */
+    data object Wellness : DomainTrigger
 }
 
 data class AttentionDomain(
@@ -17,7 +13,6 @@ data class AttentionDomain(
     val displayName: String,
     val promptAsset: String,
     val trigger: DomainTrigger,
-    val sensitivity: DomainSensitivity,
     val isBuiltIn: Boolean = true,
     val requiresPresenceCheck: Boolean = false,
     val canUseCamera: Boolean = false,
@@ -30,7 +25,6 @@ data class AttentionDomainState(
     val isBuiltIn: Boolean,
     val userPrompt: String?,
     val trigger: DomainTrigger,
-    val sensitivity: DomainSensitivity,
     val lastCheckedAt: Long?,
     val requiresPresenceCheck: Boolean = false,
     val canUseCamera: Boolean = false,

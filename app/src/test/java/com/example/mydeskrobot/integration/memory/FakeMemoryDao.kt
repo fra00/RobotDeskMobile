@@ -119,9 +119,9 @@ class FakeMemoryDao(
             .filter { it.category !in excludeCategories }
             .sortedWith(
                 compareBy(
-                    { it.confidence },
                     { it.useCount },
                     { it.lastUsedAt },
+                    { it.confidence },
                     { it.updatedAt },
                 ),
             )

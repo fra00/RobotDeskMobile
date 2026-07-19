@@ -39,7 +39,7 @@ object BodyExpressionMapper {
                 } else {
                     null
                 }
-            MoodReason.POSITIVE_INTERACTION ->
+            MoodReason.LLM_EXPRESSION ->
                 if (current.baseEmotion == RobotEmotion.HAPPY) {
                     EmotionGestureMapper.resolve(RobotEmotion.HAPPY, current.intensity)
                 } else {

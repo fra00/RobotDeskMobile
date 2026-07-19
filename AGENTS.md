@@ -69,6 +69,8 @@ Le linee guida dettagliate sono in **`.cursor/rules/*.mdc`**:
 | Argomento | Guide (umano) | Spec (agente) |
 |-----------|---------------|---------------|
 | Memoria | `docs/guides/MEMORIA.md`, `docs/guides/MEMORIA_TECNICA.md` | `docs/MEMORY.md`, `docs/MEMORY_ACCESS.md` |
+| Proattività | `docs/guides/PROATTIVITA.md` | `docs/PROACTIVE_ARCHITECTURE.md` |
+| Umore | `docs/guides/UMORE.md` | `docs/MOOD.md`, `docs/ROBOT_EXPRESSIONS.md` |
 
 Indice guide: `docs/guides/README.md`.
 
@@ -94,11 +96,14 @@ Indice guide: `docs/guides/README.md`.
 | `docs/ACTIVITY_LOG.md` | Log Day episodico (7 giorni) | PHYSICAL_NOW, PLAN, SOCIAL_THREAD |
 | `docs/SPATIAL_MEMORY.md` | Stanze, landmark visivi, auto-localizzazione | |
 | `docs/ROBOT_CONTEXT.md` | Profili lavoro/call, silenzio notifiche | |
-| `docs/DESK_PRESENCE.md` | ML Kit presenza scrivania + attention centering corpo | |
+| `docs/PROACTIVE_ARCHITECTURE.md` | Predictivity + Wellness, ordine come input visivo | **SSOT proattività** |
+| `docs/HEARTBEAT_ARCHITECTURE.md` | Heartbeat alarm, micro-tick | Care + custom domains → Wellness toggles (H7) |
+| `docs/DESK_PRESENCE.md` | ML Kit presenza + centering; `UserPresencePolicy` | |
 | `docs/BODY_INTEGRATION.md` | ESP32 myDeskBody HTTP REST | Tool HARDWARE |
 | `docs/PROMPT_PHILOSOPHY.md` | Capability + vincoli, non playbook rigido | SSOT labels prompt |
 | `docs/AGENT_REASONING.md` | Tool diretto vs catena, persistent search | `ChainSpeechPolicy` |
-| `docs/ROBOT_EXPRESSIONS.md` | Token `emotion` → occhi | |
+| `docs/ROBOT_EXPRESSIONS.md` | Token `emotion` → occhi | Dettaglio token; architettura → `MOOD.md` |
+| `docs/MOOD.md` | Umore persistente + espressione effimera | **SSOT mood** — triggers, valence, prompt |
 | `docs/nextPromptv1.md` | Persona cognitiva v1.6 | Runtime: `llm_system_prompt.txt` |
 | `docs/LLM_SETTINGS.md` | LM Studio / Gemini | |
 | `docs/WEB_SEARCH.md` | SearXNG + `fetch_url` | |
@@ -106,11 +111,13 @@ Indice guide: `docs/guides/README.md`.
 | `docs/TODO.md` | Backlog H3–H6 e utility | **SSOT roadmap aperta** |
 | `docs/guides/MEMORIA.md` | Panoramica memoria (IT, umano) | |
 | `docs/guides/MEMORIA_TECNICA.md` | Flussi recall/write (IT, dev) | |
+| `docs/guides/PROATTIVITA.md` | Proattività panoramica (IT, umano) | |
+| `docs/guides/UMORE.md` | Umore robot panoramica (IT, umano) | |
+| `docs/guides/UMORE_SMOKE.md` | Smoke test occhi + corpo | |
 | `docs/Drafts/AUTONOMOUS_AGENT_VISION.md` | Visione OODA, 6 pilastri autonomia | Draft — vedi avvertenze sotto |
 | `docs/Drafts/SPEAKER_IDENTIFICATION.md` | Speaker ID embedding, privacy, `enroll_speaker` | Draft — §9 dubbi aperti, non implementato |
 | `docs/Drafts/AgentEvolution-GapAnalysis.md` | Gap vs draft Claude | **Obsoleto** (maggio 2026) |
 | `docs/Drafts/STT-Analysis.md` | Bug STT latenza storico | **Obsoleto** — fix in STT_ARCHITECTURE |
-| `docs/Drafts/UNIFIED_MEMORY_RAG_PLAN.md` | Piano RAG unificato | **Obsoleto** — Fase 0–2 done |
 
 ### Memoria (due livelli)
 
@@ -129,16 +136,17 @@ Indice guide: `docs/guides/README.md`.
 
 ### Autonomia e roadmap
 
-**Loop OODA:** OBSERVE (heartbeat) → ORIENT (`HeartbeatContextBuilder`) → DECIDE (LLM + `speak_confidence`) → ACT (TTS/tool/occhi/silenzio) → REFLECT (`weekly_reflection`).
+**Loop OODA (target):** OBSERVE (Log Day + room order in Wellness tick) → ORIENT → DECIDE (Wellness / Predictivity deviation) → ACT → REFLECT (`weekly_reflection` + habit miner).
 
 | Fase | Contenuto | Stato (`docs/TODO.md`) |
 |------|-----------|------------------------|
-| H1 | Heartbeat base (scheduler, playbook, domini, critic, micro-tick) | ✅ Completato |
+| H1 | Heartbeat base (scheduler, playbook, micro-tick) | ✅ Completato (shell; care → Wellness) |
 | H2 | `speak_confidence`, soglia invasività | ✅ Completato |
-| H3 | State machine emozioni (`MoodManager` + corpo ESP32) | 🟡 Parziale — checklist QA manuale |
+| **H7** | **Predictivity + Wellness unificato** | ✅ Completato (v1) — smoke manuale aperto |
+| H3 | State machine emozioni (`MoodManager` + corpo ESP32) | 🟡 Parziale — core ok, smoke `docs/guides/UMORE_SMOKE.md` |
 | H4 | Working memory giornaliera | 🟡 Parziale — prompt anti-ripetizione + ignoro utente |
 | H5 | Self-reflection settimanale | 🟡 Parziale — gate mic E2E + consolidamento PATTERN |
-| H6 | Theory of mind (awareness utente) | 🟡 Parziale — feedback loop proattività |
+| H6 | Theory of mind (awareness utente) | ❌ Rimosso keyword-based (`UserAwareness`); tono utente via LLM `user_tone` (solo mood robot) — redesign proattivo aperto |
 
 **Scala invasività:** 0 silenzio (80–95%) → 1 solo occhi → 2 voce breve → 3 tool info → 4 tool che modifica → 5 azione senza chiedere (whitelist).
 
@@ -146,14 +154,15 @@ Indice guide: `docs/guides/README.md`.
 
 ### Stato implementazione
 
-**Fatto:** architettura 3 layer, tool JSON + catene, STT unificato, input notifiche, memoria unificata RAG, recall planner LLM, activity log, spatial memory, robot context, web/meteo/Spotify, body ESP32 + espressione corpo (mood/ephemeral/speaking), desk presence ML Kit + attention centering, heartbeat H1–H2, domini attenzione + critic pass, liste strutturate.
+**Fatto:** architettura 3 layer, tool JSON + catene, STT unificato, input notifiche, memoria unificata RAG, recall planner LLM, activity log, spatial memory, robot context, web/meteo/Spotify, body ESP32 + espressione corpo (mood/ephemeral/speaking), desk presence ML Kit + attention centering, heartbeat H1–H2, proattività H7 v1, domini attenzione (Wellness), liste strutturate.
 
-**Backlog:** chiusura H3–H6 (vedi `docs/TODO.md`), news/traduttore/domotica, memory pin Level 2, tool note dedicato, speaker ID (draft).
+**Backlog:** chiusura H3–H5 (smoke, WM wellness, reflection memory), H6 redesign LLM-driven se serve umore utente in proattività, news/traduttore/domotica, memory pin Level 2, tool note dedicato, speaker ID (draft).
 
 ### Avvertenze documentazione
 
+- **`docs/PROACTIVE_ARCHITECTURE.md`** è SSOT per Predittività + Wellness (H7 v1 implementato); heartbeat resta per micro-tick.
 - **`docs/TODO.md`** è SSOT per roadmap aperta; `docs/Drafts/AUTONOMOUS_AGENT_VISION.md` segna H1–H6 come fatti — **disallineamento noto**, fidarsi di `TODO.md` per ciò che resta da fare.
-- **Draft obsoleti:** non usare `AgentEvolution-GapAnalysis.md`, `STT-Analysis.md`, `UNIFIED_MEMORY_RAG_PLAN.md` come SSOT — citano componenti rimossi o fix già applicati.
+- **Draft obsoleti:** non usare `AgentEvolution-GapAnalysis.md`, `STT-Analysis.md` come SSOT — citano componenti rimossi o fix già applicati. Memoria RAG unificata: SSOT `docs/MEMORY.md`, `docs/MEMORY_EMBEDDING.md`, `docs/MEMORY_ACCESS.md` (draft `UNIFIED_MEMORY_RAG_PLAN` rimosso giugno 2026).
 - **WhatsApp/telefono:** tool in tabella sotto, nessuna spec dedicata in `docs/` — comportamento da `AGENTS.md` + codice.
 
 ## Prima di implementare
@@ -169,14 +178,15 @@ Indice guide: `docs/guides/README.md`.
 7c. Per accesso unificato memoria (write path, recall, notifiche unread) → `docs/MEMORY_ACCESS.md`.
 7d. Per LLM recall planner (piano JSON per turno vocale, no fallback) → `docs/MEMORY_RECALL_PLANNER.md`.
 8. Per contesto robot / silenzio notifiche → `docs/ROBOT_CONTEXT.md`.
+8b. **Per proattività target (Predittività + Wellness, ordine come input)** → `docs/PROACTIVE_ARCHITECTURE.md`; guida umana → `docs/guides/PROATTIVITA.md`. Heartbeat shell (micro-tick) → `docs/HEARTBEAT_ARCHITECTURE.md`.
 9. Per corpo fisico ESP32 (myDeskBody) → `docs/BODY_INTEGRATION.md` + prompt dinamico `body_capabilities_prompt.txt` via `BodyPromptProviderImpl`.
 9b. **Assembly prompt runtime** (`ReasoningEngineImpl.buildPromptWithContext`): base `llm_system_prompt.txt` + AVAILABLE TOOLS + condizionali: `body_capabilities` (ESP32), `heartbeat_playbook` (solo tick heartbeat/weekly_reflection), memory/day/activity/robot/spatial/mood. SSOT labels: `docs/PROMPT_PHILOSOPHY.md`.
 10. **Per filosofia prompt (capability + vincoli, esempi illustrativi)** → `docs/PROMPT_PHILOSOPHY.md`.
 11. Per policy risoluzione autonoma (tool diretto vs catena) → `docs/AGENT_REASONING.md`.
-12. Per espressioni occhi (campo `emotion` LLM) → `docs/ROBOT_EXPRESSIONS.md`.
+12. Per espressioni occhi (campo `emotion` LLM) → `docs/ROBOT_EXPRESSIONS.md`; architettura umore → `docs/MOOD.md`; guida umana → `docs/guides/UMORE.md`.
 13. **Per visione agente autonomo (heartbeat, OODA, emozioni)** → `docs/Drafts/AUTONOMOUS_AGENT_VISION.md`.
 14. **Per persona cognitiva e policy autonome (spec concettuale + mapping JSON)** → `docs/nextPromptv1.md` (runtime: `llm_system_prompt.txt` + `body_capabilities_prompt.txt`).
-15. **Umore a due livelli (SSOT)** → `MoodManager`: **valenza persistente** (±1, solo eventi codificati) in `STATO ROBOT`; **emotion** LLM = espressione effimera (occhi/TTS, TTL ~30s, non modifica valenza).
+15. **Umore a due livelli (SSOT)** → `docs/MOOD.md`: **valenza persistente** (`MoodManager`, `STATO ROBOT`); **emotion** LLM = espressione effimera (occhi/TTS, TTL ~25–40 s) + delta valenza opzionale via `LlmEmotionValenceMapper`.
 16. **Per memoria spaziale / auto-localizzazione stanza** → `docs/SPATIAL_MEMORY.md`.
 17. **Per speaker identification (embedding vocale, privacy, enrollment)** → `docs/Drafts/SPEAKER_IDENTIFICATION.md` (draft).
 18. Scope minimo: una capability per volta.
@@ -186,6 +196,22 @@ Indice guide: `docs/guides/README.md`.
 ## Test (sintesi)
 
 ~110 unit test in `app/src/test`. Forte su domain/parser/memoria; debole su `ConversationViewModel`, `HeartbeatOrchestrator`, integrazione presenza/corpo runtime. Dettaglio: `docs/TODO.md`.
+
+## Regressioni (obbligo agente)
+
+Ogni modifica a runtime, prompt o recall deve **preservare i comportamenti documentati** salvo richiesta esplicita dell'utente.
+
+| Prima di chiudere | Azione |
+|-------------------|--------|
+| **Scope** | Toccare solo file e flussi del task; niente refactor o pulizie collaterali. |
+| **Contratto** | Se cambia comportamento visibile (voce, memoria, tool, UI), aggiornare **spec** (`docs/`) e, se serve, **guide** (`docs/guides/`). |
+| **Test automatici** | Eseguire unit test del modulo toccato (es. memoria → `UnifiedMemoryRepositoryTest`, `LlmMemoryRecallPlannerTest`, `MemoryRecallPlanMappingTest`). Aggiungere/aggiornare test o golden fixture quando si cambia logica non banale. |
+| **Prompt** | Modifiche a `*_prompt.txt`: verificare che esempi JSON e tool notes non contraddicano il codice (es. shortcut rimosso ≠ esempio che lo richiama ancora). |
+| **Smoke umano** | Dove non c'è coverage (ViewModel, catena vocale E2E), indicare all'utente **1–3 frasi** da riprovare su device dopo rebuild APK. |
+
+**Segnali tipici di regressione:** percorso Kotlin parallelo al LLM; planner vs dialogo che si contraddicono; tool che bypassano `UnifiedMemoryWriter` / `recallForQuestion`; comportamento diverso tra frase esatta e frase naturale sulla stessa intenzione.
+
+Checklist estesa: `.cursor/rules/70-testing-and-quality.mdc`.
 
 ## Tool disponibili
 
@@ -211,7 +237,7 @@ Indice guide: `docs/guides/README.md`.
 | `set_reminder` | LOCAL | Schedula task (annuncio vocale + notifica a scadenza) |
 | `get_reminders` | LOCAL | Elenca promemoria attivi |
 | `delete_reminder` | LOCAL | Cancella promemoria per id |
-| `save_memory` | LOCAL | Salva fatto utente (IDENTITY/PREFERENCE/ROUTINE/FACT) o memoria autonoma heartbeat (OBSERVATION/INTENT/PATTERN + `ttl_days`) |
+| `save_memory` | LOCAL | Salva fatto utente (IDENTITY/PREFERENCE/ROUTINE/FACT, optional `pinned`) o memoria autonoma heartbeat (OBSERVATION/INTENT/PATTERN + `ttl_days`) |
 | `log_daily_activity` | LOCAL | Registra attività effimera (pasto, passeggiata, pausa) nel log 7 giorni |
 | `list_memories` | LOCAL | Elenca memorie attive |
 | `delete_memory` | LOCAL | Dimentica per id o argomento (match fuzzy, più memorie correlate) |
@@ -231,7 +257,7 @@ Indice guide: `docs/guides/README.md`.
 
 | Input | Priorità | Descrizione |
 |-------|----------|-------------|
-| `notification` | DEFERRED | Notifiche da app (WhatsApp, SMS, etc.) |
+| `notification` | DEFERRED | Notifiche da app (WhatsApp, Teams, SMS, etc.) |
 | `scheduled_task` | DEFERRED | Promemoria utente a scadenza (voce + notifica) |
 | `hardware_button` | BLOCKING | Pulsante fisico ESP32 (futuro) |
 | `sensor_reading` | DEFERRED | Sensori ambientali (futuro) |

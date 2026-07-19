@@ -16,22 +16,25 @@ class MoodEngine(
             is MoodTrigger.NightMode -> transitionToSleeping(current, now)
             is MoodTrigger.DayMode -> transitionFromNight(current, now)
             is MoodTrigger.IdleTime -> evaluateIdleTransition(current, trigger.minutes, now)
-            is MoodTrigger.PositiveInteraction ->
+            is MoodTrigger.HotwordListeningIdle ->
+                evaluateHotwordListeningIdle(current, trigger.minutes, now)
+            is MoodTrigger.VoiceTurnPresence ->
                 applyDelta(
                     current = current,
-                    delta = valenceConfig.positiveInteraction,
-                    event = "interazione_positiva",
-                    reason = MoodReason.POSITIVE_INTERACTION,
+                    delta = trigger.delta,
+                    event = "presenza_vocale",
+                    reason = MoodReason.VOICE_TURN_PRESENCE,
                     now = now,
-                    guard = { !isAnnoyedFromEyePoke(current) },
+                    guard = { trigger.delta <= 0f || !isAnnoyedFromEyePoke(current) },
                 )
-            is MoodTrigger.NegativeInteraction ->
+            is MoodTrigger.ValenceDelta ->
                 applyDelta(
                     current = current,
-                    delta = valenceConfig.negativeInteraction,
-                    event = "interazione_negativa",
-                    reason = MoodReason.NEGATIVE_INTERACTION,
+                    delta = trigger.delta,
+                    event = trigger.event,
+                    reason = trigger.reason,
                     now = now,
+                    guard = { trigger.delta < 0f || !isAnnoyedFromEyePoke(current) },
                 )
             is MoodTrigger.TaskCompletedUseful ->
                 applyDelta(
@@ -42,10 +45,9 @@ class MoodEngine(
                     now = now,
                     guard = { !isAnnoyedFromEyePoke(current) },
                 )
+            is MoodTrigger.LlmEmotion -> evaluateLlmEmotion(current, trigger.emotion, trigger.tier, now)
             is MoodTrigger.UserApology -> transitionOnApology(current, now)
             is MoodTrigger.EyePoked -> transitionOnEyePoke(current, trigger.tier, now)
-            is MoodTrigger.ReminderSoon -> evaluateReminderUrgency(current, trigger.minutesUntil, now)
-            is MoodTrigger.HeartbeatSuppressed -> null
         }
     }
 
@@ -53,28 +55,55 @@ class MoodEngine(
         val minutesInMood = current.durationMinutes(now)
 
         return when {
-            current.reason == MoodReason.POSITIVE_INTERACTION &&
-                minutesInMood >= config.happyDecayMinutes &&
-                current.valence > current.baseline ->
-                driftTowardBaseline(current, now)
-
-            current.reason == MoodReason.REMINDER_URGENT &&
-                minutesInMood >= config.reminderUrgentMinutes ->
-                RobotMood.fromValence(
-                    valence = current.valence,
-                    baseline = current.baseline,
-                    since = now,
-                    reason = null,
-                    recentDeltas = current.recentDeltas,
-                )
-
             current.reason == MoodReason.EYE_POKE &&
                 isAnnoyedFromEyePoke(current) &&
                 minutesInMood >= config.eyePokeAnnoyanceDecayMinutes ->
                 driftTowardBaseline(current, now, clearReason = true)
 
+            canDriftTowardBaseline(current) &&
+                current.valence > current.baseline &&
+                minutesInMood >= config.happyDecayMinutes ->
+                driftTowardBaseline(current, now, clearReason = true)
+
+            canDriftTowardBaseline(current) &&
+                current.valence < current.baseline &&
+                minutesInMood >= config.sadDecayMinutes ->
+                driftTowardBaseline(current, now, clearReason = true)
+
             else -> null
         }
+    }
+
+    /**
+     * Generic drift applies to event-driven valence (LLM emotion, task, presence, fatigue).
+     * Excluded: night (forced sleeping), idle (managed by the idle loop), poke (own rule).
+     */
+    private fun canDriftTowardBaseline(current: RobotMood): Boolean = when (current.reason) {
+        MoodReason.NIGHT_TIME,
+        MoodReason.IDLE_LONG,
+        MoodReason.IDLE_VERY_LONG,
+        MoodReason.IDLE_LISTENING,
+        MoodReason.EYE_POKE,
+        -> false
+        else -> true
+    }
+
+    private fun evaluateLlmEmotion(
+        current: RobotMood,
+        emotion: RobotEmotion,
+        tier: LlmEmotionValenceTier,
+        now: Long,
+    ): RobotMood? {
+        val delta = LlmEmotionValenceMapper.valenceDelta(emotion, tier) ?: return null
+        if (kotlin.math.abs(delta) < 0.001f) return null
+        return applyDelta(
+            current = current,
+            delta = delta,
+            event = "llm_emotion_${emotion.name.lowercase()}",
+            reason = MoodReason.LLM_EXPRESSION,
+            now = now,
+            guard = { delta < 0f || !isAnnoyedFromEyePoke(current) },
+        )
     }
 
     private fun applyDelta(
@@ -159,6 +188,25 @@ class MoodEngine(
         )
     }
 
+    private fun evaluateHotwordListeningIdle(
+        current: RobotMood,
+        idleMinutes: Long,
+        now: Long,
+    ): RobotMood? {
+        if (current.baseEmotion == RobotEmotion.SLEEPING) return null
+        if (idleMinutes < config.hotwordIdleToBoredMinutes) return null
+        if (current.reason == MoodReason.IDLE_LISTENING) return null
+        if (isAnnoyedFromEyePoke(current)) return null
+
+        return applyDelta(
+            current = current,
+            delta = valenceConfig.hotwordIdleBored,
+            event = "hotword_idle",
+            reason = MoodReason.IDLE_LISTENING,
+            now = now,
+        )
+    }
+
     private fun evaluateIdleTransition(current: RobotMood, idleMinutes: Long, now: Long): RobotMood? {
         if (current.baseEmotion == RobotEmotion.SLEEPING) return null
         if (current.valence >= 0.35f) return null
@@ -213,22 +261,6 @@ class MoodEngine(
             event = "scusa_utente",
             reason = MoodReason.USER_APOLOGY,
             now = now,
-        )
-    }
-
-    private fun evaluateReminderUrgency(current: RobotMood, minutesUntil: Int, now: Long): RobotMood? {
-        if (minutesUntil > config.reminderUrgentMinutes) return null
-        if (current.baseEmotion == RobotEmotion.SLEEPING) return null
-        if (current.reason == MoodReason.REMINDER_URGENT) return null
-
-        return RobotMood.fromValence(
-            valence = current.valence,
-            baseline = current.baseline,
-            since = now,
-            reason = MoodReason.REMINDER_URGENT,
-            recentDeltas = current.recentDeltas,
-            forceEmotion = RobotEmotion.SURPRISED,
-            forceIntensity = 0.6f,
         )
     }
 

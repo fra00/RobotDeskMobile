@@ -7,7 +7,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [MemoryDocumentEntity::class],
-    version = 2,
+    version = 3,
     exportSchema = false,
 )
 abstract class MemoryDocumentDatabase : RoomDatabase() {
@@ -21,6 +21,14 @@ abstract class MemoryDocumentDatabase : RoomDatabase() {
                 )
                 db.execSQL(
                     "ALTER TABLE memory_documents ADD COLUMN linkedActivityLogId INTEGER DEFAULT NULL",
+                )
+            }
+        }
+
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE memory_documents ADD COLUMN isPinned INTEGER NOT NULL DEFAULT 0",
                 )
             }
         }

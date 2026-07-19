@@ -27,7 +27,7 @@ object AttentionCenteringPolicy {
     const val MAX_LOOP_ITERATIONS = 5
     /** Minimum horizontal moves when face is visible before stopping (even if gaze lags). */
     const val MIN_CENTERING_MOVES = 2
-    const val SETTLE_AFTER_MOVE_MS = 1_000L
+    const val SETTLE_AFTER_MOVE_MS = 1_200L
     const val GAZE_WAIT_TIMEOUT_MS = 1_800L
     /** Extra beat when ML Kit has not refreshed yet after a joint move. */
     const val GAZE_RETRY_EXTRA_WAIT_MS = 700L

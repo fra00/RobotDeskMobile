@@ -75,6 +75,12 @@ fun AttentionDomainsSettingsDialog(
                                         style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
+                                } else {
+                                    Text(
+                                        text = stringResource(R.string.attention_domain_custom),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
                                 }
                             }
                             Text(

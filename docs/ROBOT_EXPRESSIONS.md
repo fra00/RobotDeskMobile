@@ -1,5 +1,7 @@
 # Robot face expressions
 
+**Architecture (wellbeing vs ephemeral, triggers, prompt):** [`MOOD.md`](MOOD.md) · human guide: [`guides/UMORE.md`](guides/UMORE.md).
+
 The LLM sets `"emotion"` in every JSON response. `LlmEmotionMapper` maps tokens to `RobotEmotion` for `RobotEyes`.
 
 Rendering uses [`EyeExpressionMapper`](app/src/main/java/com/example/mydeskrobot/ui/eyes/EyeExpressionMapper.kt): sclera shape + **pupil** + **eyebrow** + optional **micro-motion**, amplified by `emotionIntensity` (0–1) from `RobotMood`.
@@ -54,3 +56,15 @@ Five behavioral personas from `docs/nextPromptv1.md` map to existing LLM tokens 
 | SLEEPY | `drowsy` / `sleeping` | Night mode |
 
 `STATO ROBOT` (injected) overrides generic examples. Body gestures: `EmotionGestureMapper` + `docs/BODY_INTEGRATION.md` when ESP32 is configured.
+
+## Reply style (MOOD_REPLY_STYLE)
+
+`MoodReplyStyleResolver` adds a **STILE RISPOSTA** block to injected `STATO ROBOT`:
+
+| Profile | Mood | Spoken `reply` |
+|---------|------|----------------|
+| `terse` | sad, angry, low valence | 1–2 frasi essenziali, tono basso/secco |
+| `normal` | neutral | Breve colloquiale (default attuale) |
+| `warm` | happy, loving, high valence | Più caldo da coinquilino ("dai", "figurati"), non da call center; sempre conciso |
+
+Spec: `llm_system_prompt.txt` §9 **MOOD_REPLY_STYLE** + §6 **HUMAN_VOICE**; code: `MoodReplyStyle.kt`, `HumanVoicePrompt.kt` (injected ogni turno utente).

@@ -23,9 +23,11 @@ import com.google.mlkit.vision.common.InputImage
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -44,9 +46,13 @@ class DeskPresenceMonitor(
     private var fusionPolicy = PresenceFusionPolicy()
     private var faceConfidenceThreshold = 0.6f
     private var analysisJob: Job? = null
+    private var watchdogJob: Job? = null
     private val running = AtomicBoolean(false)
+    private val binding = AtomicBoolean(false)
     private val frameMutex = Mutex()
     private var lastFrameProcessedAt = 0L
+    private var lastBindAt = 0L
+    private var lastResumeAttemptAt = 0L
     private var minFrameIntervalMs = 200L
 
     private val _occupancy = MutableStateFlow(DeskOccupancy.UNKNOWN)
@@ -72,7 +78,7 @@ class DeskPresenceMonitor(
             val activity = VisionCaptureActivityProvider.getCaptureActivity()
             if (activity == null) {
                 Log.w(TAG, "No foreground activity for camera analysis")
-                running.set(false)
+                markUnknownAndStop()
                 return@launch
             }
 
@@ -80,20 +86,26 @@ class DeskPresenceMonitor(
                 != PackageManager.PERMISSION_GRANTED
             ) {
                 Log.w(TAG, "Camera permission missing for desk presence")
-                running.set(false)
+                markUnknownAndStop()
                 return@launch
             }
 
             bindAnalysis(activity)
+            startWatchdog()
         }
     }
 
     fun stop() {
         if (!running.compareAndSet(true, false)) return
+        watchdogJob?.cancel()
+        watchdogJob = null
         analysisJob?.cancel()
         analysisJob = null
         fusionPolicy.reset()
         detector.resetFilters()
+        lastFrameProcessedAt = 0L
+        lastBindAt = 0L
+        lastResumeAttemptAt = 0L
         val unknown = DeskOccupancy.UNKNOWN
         _occupancy.value = unknown
         DeskPresenceStateStore.update(unknown)
@@ -105,38 +117,106 @@ class DeskPresenceMonitor(
         Log.d(TAG, "Desk presence monitor stopped")
     }
 
+    /** Rebind ImageAnalysis after a one-shot vision capture unbinds the shared camera. */
+    fun resumeAnalysisIfNeeded() {
+        if (!running.get()) return
+        val now = System.currentTimeMillis()
+        if (now - lastResumeAttemptAt < RESUME_COOLDOWN_MS) return
+        lastResumeAttemptAt = now
+
+        scope.launch(Dispatchers.Main) {
+            if (!running.get()) return@launch
+            val activity = VisionCaptureActivityProvider.getCaptureActivity()
+            if (activity == null) {
+                Log.w(TAG, "Cannot resume presence analysis — no foreground activity")
+                markUncertainStale()
+                return@launch
+            }
+            bindAnalysis(activity)
+        }
+    }
+
+    private fun startWatchdog() {
+        watchdogJob?.cancel()
+        watchdogJob = scope.launch {
+            while (isActive && running.get()) {
+                delay(WATCHDOG_INTERVAL_MS)
+                if (!running.get()) break
+                val now = System.currentTimeMillis()
+                if (lastBindAt == 0L) continue
+                val lastSignal = maxOf(lastFrameProcessedAt, lastBindAt)
+                if (lastFrameProcessedAt == 0L && now - lastBindAt < FRAME_STALE_MS) continue
+                if (now - lastSignal < FRAME_STALE_MS) continue
+
+                Log.w(TAG, "Presence frames stale for ${now - lastSignal}ms — rebinding camera")
+                markUncertainStale()
+                resumeAnalysisIfNeeded()
+            }
+        }
+    }
+
+    private fun markUncertainStale() {
+        val now = System.currentTimeMillis()
+        val uncertain = DeskOccupancy(
+            state = DeskOccupancyState.UNCERTAIN,
+            confidence = 0f,
+            updatedAt = now,
+        )
+        _occupancy.value = uncertain
+        DeskPresenceStateStore.update(uncertain)
+        FaceGazeStateStore.reset()
+        PresenceDebugStateStore.reset()
+        fusionPolicy.reset()
+        detector.resetFilters()
+    }
+
+    private fun markUnknownAndStop() {
+        val unknown = DeskOccupancy.UNKNOWN
+        _occupancy.value = unknown
+        DeskPresenceStateStore.update(unknown)
+        running.set(false)
+    }
+
     private fun bindAnalysis(activity: ComponentActivity) {
+        if (!running.get()) return
+        if (!binding.compareAndSet(false, true)) return
+
         val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
         val mainExecutor = ContextCompat.getMainExecutor(context)
 
         cameraProviderFuture.addListener({
-            if (!running.get()) return@addListener
+            try {
+                if (!running.get()) return@addListener
 
-            runCatching {
-                val cameraProvider = cameraProviderFuture.get()
-                val analysis = ImageAnalysis.Builder()
-                    .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                    .build()
+                runCatching {
+                    val cameraProvider = cameraProviderFuture.get()
+                    val analysis = ImageAnalysis.Builder()
+                        .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                        .build()
 
-                analysis.setAnalyzer(mainExecutor) { imageProxy ->
-                    if (!running.get()) {
-                        imageProxy.close()
-                        return@setAnalyzer
+                    analysis.setAnalyzer(mainExecutor) { imageProxy ->
+                        if (!running.get()) {
+                            imageProxy.close()
+                            return@setAnalyzer
+                        }
+                        scope.launch(Dispatchers.Default) {
+                            processFrame(imageProxy)
+                        }
                     }
-                    scope.launch(Dispatchers.Default) {
-                        processFrame(imageProxy)
-                    }
+
+                    val cameraSelector = selectCamera(cameraProvider)
+                        ?: throw IllegalStateException("No camera available")
+
+                    cameraProvider.unbindAll()
+                    cameraProvider.bindToLifecycle(activity, cameraSelector, analysis)
+                    lastBindAt = System.currentTimeMillis()
+                    Log.i(TAG, "Desk presence camera analysis started")
+                }.onFailure { error ->
+                    Log.e(TAG, "Failed to bind presence analysis", error)
+                    markUnknownAndStop()
                 }
-
-                val cameraSelector = selectCamera(cameraProvider)
-                    ?: throw IllegalStateException("No camera available")
-
-                cameraProvider.unbindAll()
-                cameraProvider.bindToLifecycle(activity, cameraSelector, analysis)
-                Log.i(TAG, "Desk presence camera analysis started")
-            }.onFailure { error ->
-                Log.e(TAG, "Failed to bind presence analysis", error)
-                running.set(false)
+            } finally {
+                binding.set(false)
             }
         }, mainExecutor)
     }
@@ -214,5 +294,8 @@ class DeskPresenceMonitor(
 
     companion object {
         private const val TAG = "DeskPresenceMonitor"
+        private const val FRAME_STALE_MS = 4_000L
+        private const val WATCHDOG_INTERVAL_MS = 1_500L
+        private const val RESUME_COOLDOWN_MS = 2_000L
     }
 }

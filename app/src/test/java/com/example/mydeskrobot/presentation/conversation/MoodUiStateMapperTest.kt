@@ -14,7 +14,7 @@ class MoodUiStateMapperTest {
         val mood = RobotMood.fromValence(
             valence = 0.3f,
             since = 1_000L,
-            reason = MoodReason.POSITIVE_INTERACTION,
+            reason = MoodReason.LLM_EXPRESSION,
             forceEmotion = RobotEmotion.HAPPY,
             forceIntensity = 0.7f,
         )

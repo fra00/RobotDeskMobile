@@ -118,6 +118,35 @@ class LlmMemoryRecallPlannerTest {
     }
 
     @Test
+    fun golden_fixture_accendi_la_luce_skips_recall() {
+        val raw = loadFixture("accendi_la_luce")
+        val plan = MemoryRecallPlanParser.parse(raw)
+
+        assertTrue(plan!!.skipRecall)
+    }
+
+    @Test
+    fun golden_fixture_ripeti_tutto_uses_general_week_recall() {
+        val raw = loadFixture("ripeti_tutto_cosa_sai")
+        val plan = MemoryRecallPlanParser.parse(raw)
+
+        assertEquals(RecallFocus.GENERAL, plan!!.recallFocus)
+        assertEquals(TemporalScope.WEEK, plan.temporalScope)
+        assertTrue(plan.includeHabitSummary)
+    }
+
+    @Test
+    fun golden_fixture_cosa_sai_di_me_uses_general_recall() {
+        val raw = loadFixture("cosa_sai_di_me")
+        val plan = MemoryRecallPlanParser.parse(raw)
+
+        assertTrue(plan != null)
+        assertEquals(RecallFocus.GENERAL, plan!!.recallFocus)
+        assertTrue(plan.includeHabitSummary)
+        assertTrue(plan.searchQueries.isNotEmpty())
+    }
+
+    @Test
     fun golden_fixture_buona_notte_skips_recall() {
         val raw = loadFixture("buona_notte")
         val plan = MemoryRecallPlanParser.parse(raw)
@@ -136,6 +165,7 @@ class LlmMemoryRecallPlannerTest {
             "tapis_roulant" to RecallFocus.EPISODIC,
             "cosa_devo_fare_domani" to RecallFocus.PLANNING,
             "motogp" to RecallFocus.USER_FACTS,
+            "come_mi_chiamo" to RecallFocus.USER_FACTS,
         )
         cases.forEach { (name, expectedFocus) ->
             val raw = loadFixture(name)

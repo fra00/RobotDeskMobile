@@ -21,6 +21,8 @@ data class ParsedLlmResponse(
     val speakConfidence: Double? = null,
     /** Internal chain-of-thought; never spoken — preserved in raw history for multi-turn reasoning. */
     val think: String? = null,
+    /** LLM-judged tone of the user's last utterance: positive | negative | apology | neutral. */
+    val userTone: String? = null,
 )
 
 /**
@@ -36,6 +38,8 @@ internal data class LlmResponseJson(
     val action: ActionJson? = null,
     @Json(name = "speak_confidence")
     val speakConfidence: Double? = null,
+    @Json(name = "user_tone")
+    val userTone: String? = null,
 ) {
     fun spokenText(): String = reply?.trim().orEmpty().ifBlank { text?.trim().orEmpty() }
 }
@@ -84,6 +88,7 @@ class LlmResponseParser(
                     action = parseAction(json),
                     speakConfidence = json.speakConfidence?.coerceIn(0.0, 1.0),
                     think = json.think?.trim()?.takeIf { it.isNotBlank() },
+                    userTone = json.userTone?.trim()?.lowercase()?.takeIf { it.isNotBlank() },
                 )
             }
             // JSON extraction found something but Moshi parsing failed

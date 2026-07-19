@@ -1,6 +1,8 @@
-# Desk Presence (ML Kit gate)
+# Desk Presence (ML Kit)
 
-Kotlin-only on-device presence detection before proactive LLM ticks.
+Kotlin-only on-device presence detection and face offset for attention centering.
+
+> **Wellness / unified proactive speak:** target architecture uses [`UserPresencePolicy`](PROACTIVE_ARCHITECTURE.md#userpresencepolicy) (recent user interaction **OR** recent face via `FaceGazeStateStore`) — **not** mandatory ML Kit `DeskPresenceGate`. See [PROACTIVE_ARCHITECTURE.md](PROACTIVE_ARCHITECTURE.md).
 
 ## Components
 
@@ -16,7 +18,9 @@ Kotlin-only on-device presence detection before proactive LLM ticks.
 
 ## Scope
 
-- **Blocks**: heartbeat / proactive bot initiatives
+- **Legacy blocks**: heartbeat / proactive bot initiatives via `ProactiveGatePolicy` + `DeskPresenceGate` (until H7 migration)
+- **Target Wellness speak**: `UserPresencePolicy` — interaction within W min OR face seen within W min; body connected alone does **not** count as presence
+- **Room order capture (Wellness phase 2)**: does **not** require ML Kit presence; requires ESP32 body configured and reachable
 - **Does not block**: user speech, STT, DEFERRED notifications/reminders
 
 ## Settings
@@ -28,6 +32,10 @@ Impostazioni → **Presenza scrivania**: enable, fps (2–10), face threshold.
 Filtri volto (on-device): dimensione minima 5% frame, esclusione box statici (poster/foto), smoothing fusione 3 frame.
 
 Device is expected **always on charger** — default 5 fps, accurate ML Kit models.
+
+## Camera sharing with vision tools
+
+`take_photo`, `detect_presence`, and `analyze_room_scene` use the same `ProcessCameraProvider` as the monitor. After each capture, `VisionCameraLifecycleCoordinator` rebinds `ImageAnalysis`. If frames stall >4s, the watchdog marks `UNCERTAIN`, clears the debug overlay, and retries bind.
 
 ## Attention centering (conversational)
 
@@ -46,6 +54,14 @@ Does **not** require ML Kit `PRESENT` — centering runs precisely when the user
 
 Requires **corpo ESP32** + **presenza scrivania** enabled.
 
-## vs Heartbeat
+If the first `getStatus()` fails (ESP32 offline / timeout), centering **aborts immediately** (`SkippedBodyUnreachable`) — no pan scan and no stacked move timeouts — so the LLM turn is not delayed by tens of seconds.
 
-Separate module; consumed by `ProactiveGatePolicy` and `HeartbeatOrchestrator`.
+## FaceGazeStateStore and UserPresencePolicy
+
+`FaceGazeStateStore` holds the latest face-in-frame offset from `DeskPresenceMonitor` (updated on analysis frames, reset when monitor stops).
+
+**Target use:** `lastFaceSeenWithin(W minutes)` leg of `UserPresencePolicy` for Wellness TTS — alongside `lastUserInteractionWithin(W minutes)`. Not continuous tracking; snapshot at last frame with a valid face.
+
+## vs Heartbeat (legacy)
+
+Consumed by `ProactiveGatePolicy` and `HeartbeatOrchestrator` today. After Wellness migration, ML Kit remains for **centering** and optional face timestamp for presence OR; not the sole proactive gate.

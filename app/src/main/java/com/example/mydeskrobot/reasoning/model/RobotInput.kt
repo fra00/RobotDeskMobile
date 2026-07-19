@@ -91,10 +91,6 @@ sealed class RobotInput {
         val topicsDiscussedToday: List<String> = emptyList(),
         /** Minutes since last proactive speak (cooldown). */
         val minutesSinceLastProactiveSpeak: Long? = null,
-        /** Inferred user mood (Theory of Mind). */
-        val userMood: String? = null,
-        /** Topics the user probably already knows about. */
-        val userProbablyKnows: List<String> = emptyList(),
         /** Active autonomous goals (INTENT category), injected by the app. */
         val activeIntents: List<String> = emptyList(),
         /** Recent contextual observations (OBSERVATION category), injected by the app. */
@@ -114,7 +110,6 @@ sealed class RobotInput {
         /** Active attention domain for this tick (round-robin). */
         val activeDomainId: String? = null,
         val activeDomainName: String? = null,
-        val activeDomainSensitivity: String? = null,
         /** Custom domain user prompt; built-in domains use asset files. */
         val activeDomainUserPrompt: String? = null,
         /** Recent proactive interventions on the active domain. */
@@ -151,6 +146,41 @@ sealed class RobotInput {
         override val timestamp: Long = System.currentTimeMillis(),
     ) : RobotInput() {
         override val sourceId: String = "weekly_reflection"
+        override val priority: InputPriority = InputPriority.DEFERRED
+    }
+
+    /**
+     * Predictivity deviation: habitual activity missing today at the expected time window.
+     */
+    data class PredictivityDeviation(
+        val slotKey: String,
+        val displayLabel: String,
+        val typicalTimeMinutes: Int,
+        val hitCount: Int,
+        val confidence: Float,
+        override val timestamp: Long = System.currentTimeMillis(),
+    ) : RobotInput() {
+        override val sourceId: String = "predictivity_deviation"
+        override val priority: InputPriority = InputPriority.DEFERRED
+    }
+
+    /**
+     * Daily wellness check: score enabled domains (built-in + custom) and optionally speak once.
+     */
+    data class WellnessCheck(
+        val phase: com.example.mydeskrobot.domain.wellness.WellnessPhase,
+        val enabledDomainIds: Set<String> = emptySet(),
+        val customDomains: List<com.example.mydeskrobot.domain.wellness.WellnessCustomDomain> = emptyList(),
+        val habitProfileSummary: String? = null,
+        val recentDailyActivities: List<String> = emptyList(),
+        val activePatterns: List<String> = emptyList(),
+        val recentObservations: List<String> = emptyList(),
+        val orderObservationFresh: String? = null,
+        val bodyConfigured: Boolean = false,
+        val bodyReachable: Boolean = false,
+        override val timestamp: Long = System.currentTimeMillis(),
+    ) : RobotInput() {
+        override val sourceId: String = "wellness_check"
         override val priority: InputPriority = InputPriority.DEFERRED
     }
 }

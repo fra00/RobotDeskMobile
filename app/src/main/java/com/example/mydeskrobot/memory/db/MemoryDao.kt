@@ -181,7 +181,7 @@ interface MemoryDao {
         WHERE isDeleted = 0
         AND category NOT IN (:excludeCategories)
         AND (expiresAt IS NULL OR expiresAt > :now)
-        ORDER BY confidence ASC, useCount ASC, lastUsedAt ASC, updatedAt ASC
+        ORDER BY useCount ASC, lastUsedAt ASC, confidence ASC, updatedAt ASC
         LIMIT :limit
         """
     )

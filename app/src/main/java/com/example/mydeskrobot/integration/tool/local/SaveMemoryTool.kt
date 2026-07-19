@@ -61,9 +61,15 @@ class SaveMemoryTool private constructor(
                     description = "Optional TTL in days for OBSERVATION (default 7), INTENT (default 1), PATTERN (default 30). Ignored for user-facing categories.",
                     required = false,
                 ),
+                ToolParameter(
+                    name = "pinned",
+                    type = "boolean",
+                    description = "If true, fact is never pruned (user name, allergies, emergencies, explicit \"ricordalo sempre\"). Default false.",
+                    required = false,
+                ),
             ),
             returns = "memory_id (integer), category, value",
-            example = """{"name": "save_memory", "params": {"value": "L'utente si chiama Francesco", "category": "IDENTITY"}, "await_result": true}""",
+            example = """{"name": "save_memory", "params": {"value": "L'utente si chiama Francesco", "category": "IDENTITY", "pinned": true}, "await_result": true}""",
         )
     }
 
@@ -84,6 +90,7 @@ class SaveMemoryTool private constructor(
         val category = MemoryToolSupport.parseCategory(invocation.params["category"]) ?: MemoryCategory.FACT
         val confidence = MemoryToolSupport.parseConfidence(invocation.params["confidence"])
         val ttlDays = MemoryToolSupport.parseTtlDays(invocation.params["ttl_days"])
+        val pinned = MemoryToolSupport.parsePinned(invocation.params["pinned"])
 
         if (MemoryCategory.isUserFacing(category) && ttlDays != null) {
             return ToolResult.Error(
@@ -126,11 +133,12 @@ class SaveMemoryTool private constructor(
             value = value,
             confidence = confidence,
             source = MemoryDocumentSource.TOOL,
+            isPinned = pinned,
         )
         if (id < 0L) {
             return ToolResult.Error(message = "Impossibile salvare la memoria", code = "SAVE_FAILED")
         }
-        unified.pruneIfNeeded(DEFAULT_MAX_ITEMS)
+        unified.pruneIfNeeded(UnifiedMemoryRepository.USER_FACING_MAX_ITEMS)
         return ToolResult.Success(
             data = mapOf(
                 "success" to true,
@@ -185,6 +193,6 @@ class SaveMemoryTool private constructor(
     }
 
     companion object {
-        private const val DEFAULT_MAX_ITEMS = 300
+        private const val DEFAULT_MAX_ITEMS = UnifiedMemoryRepository.USER_FACING_MAX_ITEMS
     }
 }

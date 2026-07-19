@@ -4,7 +4,8 @@ import com.example.mydeskrobot.domain.model.RobotEmotion
 
 /**
  * Autonomous emotional wellbeing of the robot (persistent valence + derived standby expression).
- * LLM [emotion] JSON is handled separately as [EphemeralExpression] (not stored here).
+ * LLM [emotion] on a completed turn updates [EphemeralExpression] and may shift persistent valence
+ * via [LlmEmotionValenceMapper] (see [MoodTrigger.LlmEmotion]).
  */
 data class RobotMood(
     val valence: Float,
@@ -90,34 +91,56 @@ data class RobotMood(
 enum class MoodReason {
     IDLE_LONG,
     IDLE_VERY_LONG,
+    IDLE_LISTENING,
+    CONVERSATION_FATIGUE,
+    VOICE_TURN_PRESENCE,
     NIGHT_TIME,
-    POSITIVE_INTERACTION,
-    NEGATIVE_INTERACTION,
     TASK_COMPLETED,
     EYE_POKE,
     USER_APOLOGY,
-    REMINDER_URGENT,
-    USER_RETURNED,
-    HEARTBEAT_SUPPRESSED,
+    LLM_EXPRESSION,
 }
 
 sealed interface MoodTrigger {
     data class IdleTime(val minutes: Long) : MoodTrigger
+    data class HotwordListeningIdle(val minutes: Long) : MoodTrigger
+    data class VoiceTurnPresence(val delta: Float) : MoodTrigger
+    data class ValenceDelta(
+        val delta: Float,
+        val event: String,
+        val reason: MoodReason?,
+    ) : MoodTrigger
     data object NightMode : MoodTrigger
     data object DayMode : MoodTrigger
-    data object PositiveInteraction : MoodTrigger
-    data object NegativeInteraction : MoodTrigger
     data object TaskCompletedUseful : MoodTrigger
+    data class LlmEmotion(
+        val emotion: RobotEmotion,
+        val tier: LlmEmotionValenceTier = LlmEmotionValenceTier.FULL,
+    ) : MoodTrigger
     data object UserApology : MoodTrigger
     data class EyePoked(val tier: Int, val count: Int) : MoodTrigger
-    data class ReminderSoon(val minutesUntil: Int) : MoodTrigger
-    data object HeartbeatSuppressed : MoodTrigger
 }
 
 data class MoodConfig(
-    val idleToBoredMinutes: Int = 30,
+    val idleToBoredMinutes: Int = DEFAULT_IDLE_TO_BORED_MINUTES,
+    val hotwordIdleToBoredMinutes: Int = DEFAULT_HOTWORD_IDLE_TO_BORED_MINUTES,
     val boredToDrowsyMinutes: Int = 90,
     val happyDecayMinutes: Int = 20,
+    val sadDecayMinutes: Int = 45,
     val eyePokeAnnoyanceDecayMinutes: Int = 8,
-    val reminderUrgentMinutes: Int = 15,
-)
+    val burstTurnCount: Int = DEFAULT_BURST_TURN_COUNT,
+    val burstWindowMinutes: Int = DEFAULT_BURST_WINDOW_MINUTES,
+    val repeatedPhraseThreshold: Int = DEFAULT_REPEATED_PHRASE_THRESHOLD,
+    val shortPhraseWordLimit: Int = DEFAULT_SHORT_PHRASE_WORD_LIMIT,
+    val positiveBoostCap: Int = DEFAULT_POSITIVE_BOOST_CAP,
+) {
+    companion object {
+        const val DEFAULT_IDLE_TO_BORED_MINUTES = 30
+        const val DEFAULT_HOTWORD_IDLE_TO_BORED_MINUTES = 10
+        const val DEFAULT_BURST_TURN_COUNT = 4
+        const val DEFAULT_BURST_WINDOW_MINUTES = 3
+        const val DEFAULT_REPEATED_PHRASE_THRESHOLD = 3
+        const val DEFAULT_SHORT_PHRASE_WORD_LIMIT = 4
+        const val DEFAULT_POSITIVE_BOOST_CAP = 3
+    }
+}

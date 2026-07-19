@@ -3,6 +3,7 @@ package com.example.mydeskrobot.memory
 import com.example.mydeskrobot.integration.memory.FakeMemoryDao
 import com.example.mydeskrobot.memory.db.MemoryCategory
 import com.example.mydeskrobot.memory.db.MemoryItemEntity
+import com.example.mydeskrobot.memory.unified.UnifiedMemoryRepository
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -11,7 +12,7 @@ import org.junit.Test
 class UserMemoryRepositoryReorganizeTest {
 
     @Test
-    fun reorganize_removesSemanticDuplicates() = runBlocking {
+    fun reorganize_underCap_doesNotRemoveDuplicates() = runBlocking {
         val dao = FakeMemoryDao(
             listOf(
                 entity(1L, "L'utente si chiama Francesco", MemoryCategory.IDENTITY, 0.9f),
@@ -23,14 +24,46 @@ class UserMemoryRepositoryReorganizeTest {
 
         val removed = repository.reorganize()
 
-        assertEquals(1, removed)
-        val active = repository.getAllActive()
-        assertEquals(2, active.size)
-        assertTrue(active.any { it.value.contains("Francesco", ignoreCase = true) })
+        assertEquals(0, removed)
+        assertEquals(3, repository.getAllActive().size)
     }
 
     @Test
-    fun upsert_mergesSemanticDuplicateInsteadOfInserting() = runBlocking {
+    fun reorganize_overCap_prunesLeastUsedRows() = runBlocking {
+        val max = UnifiedMemoryRepository.USER_FACING_MAX_ITEMS
+        val items = buildList {
+            repeat(max) { index ->
+                add(
+                    entity(
+                        id = index + 1L,
+                        value = "Fatto archivio $index",
+                        category = MemoryCategory.FACT,
+                        confidence = 0.9f,
+                        useCount = 3,
+                    ),
+                )
+            }
+            add(
+                entity(
+                    id = max + 1L,
+                    value = "Fatto raramente richiamato",
+                    category = MemoryCategory.FACT,
+                    confidence = 0.9f,
+                    useCount = 0,
+                ),
+            )
+        }
+        val repository = UserMemoryRepository.createForTest(FakeMemoryDao(items))
+
+        val removed = repository.reorganize()
+
+        assertEquals(1, removed)
+        assertEquals(max, repository.getAllActive().size)
+        assertTrue(repository.getAllActive().none { it.value.contains("raramente") })
+    }
+
+    @Test
+    fun upsert_insertsParafraseAsSeparateRow() = runBlocking {
         val dao = FakeMemoryDao(
             listOf(
                 entity(1L, "L'utente si chiama Francesco", MemoryCategory.IDENTITY, 0.8f),
@@ -45,8 +78,7 @@ class UserMemoryRepositoryReorganizeTest {
             sourceMessageId = 99L,
         )
 
-        assertEquals(1, repository.getAllActive().size)
-        assertEquals(0.9f, repository.getAllActive().first().confidence, 0.001f)
+        assertEquals(2, repository.getAllActive().size)
     }
 
     private fun entity(
@@ -54,11 +86,13 @@ class UserMemoryRepositoryReorganizeTest {
         value: String,
         category: MemoryCategory,
         confidence: Float,
+        useCount: Int = 0,
     ) = MemoryItemEntity(
         id = id,
         category = category,
         value = value,
         confidence = confidence,
+        useCount = useCount,
         createdAt = 1L,
         updatedAt = 1L,
         sourceMessageId = 0L,

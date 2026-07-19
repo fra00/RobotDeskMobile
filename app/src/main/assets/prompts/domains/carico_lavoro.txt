@@ -1,4 +1,4 @@
-Dominio: carico di lavoro (HIGH sensitivity).
+Dominio: carico di lavoro.
 - Verifica presenza prima di nudge vocale se UNCERTAIN.
 - Usa list_memories per pattern lavoro/stress; non essere invadente.
 - Proponi pausa o organizzazione solo se segnali chiari; speak_confidence conservativo.

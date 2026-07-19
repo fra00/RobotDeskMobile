@@ -204,7 +204,6 @@ object ReasoningModule {
             settingsRepository = BodySettingsRepository(context),
         )
         val heartbeatPlaybookProvider = HeartbeatPlaybookProviderImpl(context)
-        val heartbeatCriticPrompt = LlmPromptLoader.loadHeartbeatCriticPrompt(context)
 
         spatialBindings?.contextProvider?.unifiedMemoryRepository = unifiedMemoryRepository
 
@@ -217,7 +216,6 @@ object ReasoningModule {
             spatialContextProvider = spatialBindings?.contextProvider,
             bodyCapabilitiesProvider = bodyCapabilitiesProvider,
             heartbeatPlaybookProvider = heartbeatPlaybookProvider,
-            heartbeatCriticPrompt = heartbeatCriticPrompt,
             robotContextProvider = robotContextProvider,
             moodContextProvider = moodContextProvider,
             maxChainSteps = 10,

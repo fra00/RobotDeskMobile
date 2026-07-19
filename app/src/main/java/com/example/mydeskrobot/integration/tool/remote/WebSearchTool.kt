@@ -31,12 +31,12 @@ class WebSearchTool(
                 ToolParameter(
                     name = "max_results",
                     type = "int",
-                    description = "Number of results (1-5, default 3)",
+                    description = "Number of results (1-5, default 5)",
                     required = false,
                 ),
             ),
             returns = "results: list of { title, url, snippet }",
-            example = """{"name": "web_search", "params": {"query": "notizie ANSA oggi", "max_results": 3}, "await_result": true}""",
+            example = """{"name": "web_search", "params": {"query": "notizie ANSA oggi", "max_results": 5}, "await_result": true}""",
         )
     }
 
@@ -91,6 +91,6 @@ class WebSearchTool(
     }
 
     companion object {
-        private const val DEFAULT_MAX_RESULTS = 3
+        private const val DEFAULT_MAX_RESULTS = 5
     }
 }

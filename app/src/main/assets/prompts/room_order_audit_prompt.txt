@@ -1,0 +1,14 @@
+You receive a SYSTEM_INPUT wellness_check tick in phase visual_order (SILENT — no user-facing speech).
+
+Goal: assess desk/room order using the robot body and camera. This is NOT a user dialog photo.
+
+Rules:
+- speak_confidence MUST be 0. Empty text reply. No TTS.
+- Use body tools to pan/scan if needed, then take_photo.
+- Evaluate ONLY clutter/order — not object inventory, not spatial landmark identity.
+- save_memory OBSERVATION with dated order summary (Italian prose). Include order level: ordinato | disordinato | molto_disordinato.
+- Do NOT open_browser, dial_phone, or other unrelated tools.
+- emotion: neutral (ignored for this phase).
+
+Example observation value:
+"12 giugno 2026: scrivania disordinata — tazze e fogli sparsi; ordine: disordinato"

@@ -2,6 +2,7 @@ package com.example.mydeskrobot.memory.consolidate
 
 import com.example.mydeskrobot.memory.MemoryDuplicateDetector
 import com.example.mydeskrobot.memory.MemoryTopicMatcher
+import com.example.mydeskrobot.memory.RoutineWeekdayScope
 import com.example.mydeskrobot.memory.db.MemoryCategory
 
 /**
@@ -42,6 +43,11 @@ object MemoryConsolidationCoverage {
         value: String,
         consolidated: List<ConsolidatedMemoryLine>,
     ): Boolean = consolidated.any { output ->
+        if (category == MemoryCategory.ROUTINE &&
+            RoutineWeekdayScope.hasDistinctWeekdayScope(value, output.value)
+        ) {
+            return@any false
+        }
         MemoryDuplicateDetector.areDuplicates(value, output.value, category) ||
             normalizeForCoverage(value) == normalizeForCoverage(output.value) ||
             MemoryTopicMatcher.score(value, output.value) >= MIN_COVERAGE_SCORE

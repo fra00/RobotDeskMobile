@@ -32,6 +32,7 @@ fun MemorySettingsDialog(
     form: MemorySettingsFormState,
     memoryItems: List<MemoryItemUi>,
     isReorganizing: Boolean,
+    reorganizeHint: String? = null,
     feedbackMessage: String?,
     feedbackIsError: Boolean,
     onFormChange: (MemorySettingsFormState) -> Unit,
@@ -67,6 +68,37 @@ fun MemorySettingsDialog(
                         }
                     },
                     label = { Text(stringResource(R.string.memory_interval_seconds_label)) },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    stringResource(R.string.memory_auto_reorganize_label),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Switch(
+                    checked = form.autoReorganizeEnabled,
+                    onCheckedChange = { onFormChange(form.copy(autoReorganizeEnabled = it)) },
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = form.reorganizeMinRows.toString(),
+                    onValueChange = { raw ->
+                        raw.toIntOrNull()?.let { onFormChange(form.copy(reorganizeMinRows = it)) }
+                    },
+                    label = { Text(stringResource(R.string.memory_reorganize_min_rows_label)) },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = form.reorganizeCooldownDays.toString(),
+                    onValueChange = { raw ->
+                        raw.toLongOrNull()?.let { onFormChange(form.copy(reorganizeCooldownDays = it)) }
+                    },
+                    label = { Text(stringResource(R.string.memory_reorganize_cooldown_days_label)) },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
@@ -115,6 +147,14 @@ fun MemorySettingsDialog(
                 }
                 TextButton(onClick = onResetMemory, modifier = Modifier.fillMaxWidth()) {
                     Text(stringResource(R.string.memory_reset_button))
+                }
+                if (!reorganizeHint.isNullOrBlank()) {
+                    Text(
+                        text = reorganizeHint,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
                 }
                 TextButton(
                     onClick = onReorganizeNow,

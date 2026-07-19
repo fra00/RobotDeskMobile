@@ -41,6 +41,7 @@ data class MemoryDocumentEntity(
     val externalRef: String? = null,
     val isUnread: Boolean = false,
     val linkedActivityLogId: Long? = null,
+    val isPinned: Boolean = false,
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
@@ -66,7 +67,8 @@ data class MemoryDocumentEntity(
             episodeConfidence == other.episodeConfidence &&
             externalRef == other.externalRef &&
             isUnread == other.isUnread &&
-            linkedActivityLogId == other.linkedActivityLogId
+            linkedActivityLogId == other.linkedActivityLogId &&
+            isPinned == other.isPinned
     }
 
     override fun hashCode(): Int {
@@ -92,6 +94,7 @@ data class MemoryDocumentEntity(
         result = 31 * result + (externalRef?.hashCode() ?: 0)
         result = 31 * result + isUnread.hashCode()
         result = 31 * result + (linkedActivityLogId?.hashCode() ?: 0)
+        result = 31 * result + isPinned.hashCode()
         return result
     }
 }

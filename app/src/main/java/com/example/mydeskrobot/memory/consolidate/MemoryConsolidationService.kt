@@ -2,7 +2,8 @@ package com.example.mydeskrobot.memory.consolidate
 
 import android.util.Log
 import com.example.mydeskrobot.integration.llm.LlmHttpErrors
-import com.example.mydeskrobot.memory.MemorySettingsRepository
+import com.example.mydeskrobot.memory.MemoryConsolidationSettingsStore
+import com.example.mydeskrobot.memory.MemoryReorganizePolicy
 import com.example.mydeskrobot.memory.db.MemoryCategory
 import com.example.mydeskrobot.memory.db.MemoryItemEntity
 import com.example.mydeskrobot.memory.unified.UnifiedMemoryRepository
@@ -18,12 +19,15 @@ import kotlinx.coroutines.sync.withLock
 class MemoryConsolidationService(
     private val llmClient: LlmClient,
     private val unifiedMemoryRepository: UnifiedMemoryRepository,
-    private val settingsRepository: MemorySettingsRepository,
+    private val settingsRepository: MemoryConsolidationSettingsStore,
     private val systemPrompt: String,
 ) {
     private val consolidationMutex = Mutex()
 
-    suspend fun consolidateIfNeeded(force: Boolean = false): MemoryConsolidationResult {
+    suspend fun consolidateIfNeeded(
+        force: Boolean = false,
+        minRowsToConsolidate: Int = DEFAULT_MIN_ROWS_TO_CONSOLIDATE,
+    ): MemoryConsolidationResult {
         if (!llmClient.isConfigured()) {
             return MemoryConsolidationResult.SkippedNotConfigured
         }
@@ -31,8 +35,9 @@ class MemoryConsolidationService(
         return consolidationMutex.withLock {
             unifiedMemoryRepository.ensureMigrated()
             val active = unifiedMemoryRepository.getUserFacingActiveDocuments()
-            if (active.size <= MIN_ROWS_TO_CONSOLIDATE) {
-                return@withLock MemoryConsolidationResult.SkippedTooFew(active.size)
+            val consolidatable = active.filterNot { it.isPinned }
+            if (consolidatable.size < minRowsToConsolidate) {
+                return@withLock MemoryConsolidationResult.SkippedTooFew(consolidatable.size)
             }
 
             val contentHash = unifiedMemoryRepository.computeUserFacingContentHash(active)
@@ -43,15 +48,16 @@ class MemoryConsolidationService(
                 }
             }
 
-            runConsolidation(active, contentHash)
+            runConsolidation(active, consolidatable, contentHash)
         }
     }
 
     private suspend fun runConsolidation(
         active: List<MemoryDocumentEntity>,
+        consolidatable: List<MemoryDocumentEntity>,
         contentHashBefore: String,
     ): MemoryConsolidationResult {
-        val userMessage = buildUserMessageFromUnified(active)
+        val userMessage = buildUserMessageFromUnified(consolidatable)
         val llmResult = llmClient.chat(
             messages = listOf(ConversationMessage.User(userMessage)),
             systemPrompt = systemPrompt,
@@ -72,7 +78,7 @@ class MemoryConsolidationService(
             return MemoryConsolidationResult.Failed("parse_empty")
         }
 
-        val inputLines = active.mapNotNull { doc ->
+        val inputLines = consolidatable.mapNotNull { doc ->
             val categoryName = doc.category?.trim().orEmpty()
             if (categoryName.isBlank()) return@mapNotNull null
             val category = runCatching { MemoryCategory.valueOf(categoryName) }.getOrNull()
@@ -88,7 +94,7 @@ class MemoryConsolidationService(
             Log.w(TAG, "Consolidation coverage guard re-appended $survivors input line(s)")
         }
 
-        val beforeCount = active.size
+        val beforeCount = consolidatable.size
         if (!isOutputRatioAcceptable(before = beforeCount, after = safeParsed.size)) {
             Log.w(
                 TAG,
@@ -169,7 +175,7 @@ class MemoryConsolidationService(
 
     companion object {
         private const val TAG = "MemoryConsolidation"
-        const val MIN_ROWS_TO_CONSOLIDATE = 3
+        const val DEFAULT_MIN_ROWS_TO_CONSOLIDATE = MemoryReorganizePolicy.DEFAULT_MIN_USER_FACING_ROWS
         private const val MIN_OUTPUT_RATIO = 0.15f
     }
 }

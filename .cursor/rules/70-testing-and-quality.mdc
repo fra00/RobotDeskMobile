@@ -33,6 +33,8 @@ alwaysApply: false
 ## Checklist pre-commit (manuale)
 
 - [ ] Build `./gradlew assembleDebug` ok
+- [ ] Unit test del package/modulo toccato ok (no regressioni silenziose)
+- [ ] Se comportamento runtime cambia: spec `docs/` (+ `docs/guides/` se utente) aggiornate
 - [ ] Nessuna API key nel diff
 - [ ] Stringhe utente in `strings.xml`
 - [ ] Preview Compose aggiornate per UI toccata

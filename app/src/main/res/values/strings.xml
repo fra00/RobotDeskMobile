@@ -86,14 +86,13 @@
     <string name="mood_reason_eye_poke">poke occhi</string>
     <string name="mood_reason_user_apology">scusa utente</string>
     <string name="mood_reason_idle_long">idle lungo</string>
+    <string name="mood_reason_idle_listening">ascolto hotword senza voce</string>
+    <string name="mood_reason_conversation_fatigue">fatica conversazione</string>
+    <string name="mood_reason_voice_turn_presence">presenza vocale</string>
     <string name="mood_reason_idle_very_long">idle molto lungo</string>
     <string name="mood_reason_night_time">notte</string>
-    <string name="mood_reason_positive_interaction">interazione positiva</string>
-    <string name="mood_reason_negative_interaction">interazione negativa</string>
+    <string name="mood_reason_llm_expression">espressione del turno</string>
     <string name="mood_reason_task_completed">task completato</string>
-    <string name="mood_reason_reminder_urgent">promemoria urgente</string>
-    <string name="mood_reason_user_returned">utente tornato</string>
-    <string name="mood_reason_heartbeat_suppressed">heartbeat soppresso</string>
 
     <string name="cd_service_off">Servizio di ascolto disattivato</string>
     <string name="cd_standby_on">In standby — in attesa della wake word</string>
@@ -192,6 +191,9 @@
     <string name="memory_settings_title">Impostazioni memoria</string>
     <string name="memory_enabled_label">Abilita estrazione memoria in standby</string>
     <string name="memory_interval_seconds_label">Intervallo analisi (secondi)</string>
+    <string name="memory_auto_reorganize_label">Riorganizza automaticamente (compattazione LLM in standby)</string>
+    <string name="memory_reorganize_min_rows_label">Minimo righe per Riorganizza</string>
+    <string name="memory_reorganize_cooldown_days_label">Giorni tra una Riorganizza e la successiva</string>
     <string name="memory_preview_title">Anteprima memoria</string>
     <string name="memory_edit_title">Memorie salvate (modifica manuale)</string>
     <string name="memory_preview_empty">Nessuna informazione memorizzata</string>
@@ -201,8 +203,11 @@
     <string name="memory_item_deleted">Memoria eliminata</string>
     <string name="memory_reset_button">Cancella tutta la memoria</string>
     <string name="memory_reorganize_button">Riorganizza ora</string>
-    <string name="memory_reorganize_done">Memoria riorganizzata: %1$d duplicati rimossi</string>
-    <string name="memory_reorganize_none">Nessun duplicato rilevato</string>
+    <string name="memory_reorganize_helper">%1$d memorie attive (minimo %2$d per Riorganizza)</string>
+    <string name="memory_reorganize_gate_few">Servono almeno %2$d memorie attive (attualmente: %1$d)</string>
+    <string name="memory_reorganize_gate_cooldown">Riorganizza disponibile dal %1$s</string>
+    <string name="memory_reorganize_done">Rimosse %1$d memorie poco usate (limite raggiunto)</string>
+    <string name="memory_reorganize_none">Memoria sotto il limite: nessuna riga rimossa</string>
     <string name="memory_consolidate_done">Memoria compattata: da %1$d a %2$d righe</string>
     <string name="memory_consolidate_unchanged">Memoria già compatta</string>
     <string name="memory_consolidate_already_running">Compattazione in corso, attendi qualche secondo e riprova</string>
@@ -315,6 +320,11 @@
     <string name="heartbeat_status_disabled">Disattivo</string>
     <string name="heartbeat_settings_saved">Impostazioni proattività salvate</string>
     <string name="heartbeat_manage_domains">Gestisci domini di attenzione</string>
+    <string name="proactivity_predictivity_enabled">Predittività (abitudini)</string>
+    <string name="proactivity_wellness_enabled">Wellness (check giornaliero)</string>
+    <string name="proactivity_wellness_anchor_label">Wellness: minuti dopo hotword: %1$d</string>
+    <string name="proactivity_wellness_idle_label">Wellness: minuti senza dialogo prima del check: %1$d</string>
+    <string name="proactivity_wellness_presence_label">Wellness: finestra presenza: %1$d min</string>
 
     <string name="settings_desk_presence">Presenza scrivania</string>
     <string name="desk_presence_settings_title">Presenza scrivania (ML Kit)</string>
@@ -328,9 +338,10 @@
 
     <string name="attention_domains_title">Domini di attenzione</string>
     <string name="attention_domain_builtin">Predefinito</string>
-    <string name="attention_domain_sensitivity_high">Sensibilità alta</string>
-    <string name="attention_domain_sensitivity_medium">Sensibilità media</string>
-    <string name="attention_domain_sensitivity_low">Sensibilità bassa</string>
+    <string name="attention_domain_custom">Personalizzato</string>
+    <string name="attention_domain_wellness_subtitle">Nel check wellness giornaliero</string>
+    <string name="attention_domain_order_subtitle">Fase visuale prima dello score (se corpo disponibile)</string>
+    <string name="attention_domain_wellness_editor_hint">Questo dominio viene valutato nel check wellness giornaliero (stesse regole di ingaggio degli ambiti predefiniti). Nessun orario o evento separato.</string>
     <string name="attention_domain_add_title">Nuovo dominio</string>
     <string name="attention_domain_edit_title">Modifica dominio</string>
     <string name="attention_domain_add_button">Aggiungi dominio</string>
@@ -341,7 +352,6 @@
     <string name="attention_domain_trigger_daily">Giornaliero</string>
     <string name="attention_domain_trigger_weekly">Settimanale</string>
     <string name="attention_domain_trigger_event_photo">Evento: nuova foto</string>
-    <string name="attention_domain_trigger_event_room">Evento: cambio stanza</string>
     <string name="attention_domain_trigger_hour">Ora: %1$d:00</string>
     <string name="attention_domain_weekday_label">Giorno della settimana</string>
     <string name="attention_domain_weekday_monday">Lunedì</string>
@@ -351,7 +361,6 @@
     <string name="attention_domain_weekday_friday">Venerdì</string>
     <string name="attention_domain_weekday_saturday">Sabato</string>
     <string name="attention_domain_weekday_sunday">Domenica</string>
-    <string name="attention_domain_sensitivity_label">Sensibilità</string>
     <string name="attention_domain_requires_presence">Richiede presenza alla scrivania</string>
     <string name="attention_domain_can_use_camera">Può usare la camera</string>
     <string name="attention_domain_enabled_label">Abilitato</string>

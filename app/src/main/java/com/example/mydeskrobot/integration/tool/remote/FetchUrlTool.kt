@@ -10,15 +10,14 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import org.jsoup.Jsoup
-import org.jsoup.nodes.Document
 import java.util.concurrent.TimeUnit
 
 /**
- * Fetches a web page and returns plain text (HTML stripped) for the LLM.
+ * Fetches a web page and returns plain article text for the LLM (Readability4J + legacy fallback).
  */
 class FetchUrlTool(
     private val httpClient: OkHttpClient = defaultHttpClient(),
+    private val articleExtractor: WebArticleExtractor = WebArticleExtractor(),
 ) : Tool {
 
     override val name: String = "fetch_url"
@@ -27,7 +26,7 @@ class FetchUrlTool(
     override fun getDefinition(): ToolDefinition {
         return ToolDefinition(
             name = name,
-            description = "Read a web page and return its main text content (no HTML). Use after web_search or when the user gives a URL.",
+            description = "Read a web page and return its main article text (no HTML). Use after web_search or when the user gives a URL.",
             parameters = listOf(
                 ToolParameter(
                     name = "url",
@@ -38,12 +37,18 @@ class FetchUrlTool(
                 ToolParameter(
                     name = "max_chars",
                     type = "int",
-                    description = "Max characters of extracted text (default 2000)",
+                    description = "Max characters of extracted text returned to the LLM (default 3500, max 4500)",
+                    required = false,
+                ),
+                ToolParameter(
+                    name = "start_char",
+                    type = "int",
+                    description = "Character offset into the full extracted article (default 0; use for next chunk when truncated)",
                     required = false,
                 ),
             ),
-            returns = "title (string), content (string)",
-            example = """{"name": "fetch_url", "params": {"url": "https://www.ansa.it/...", "max_chars": 2000}, "await_result": true}""",
+            returns = "title, content, excerpt, chars_total, chars_returned, start_char, truncated, extractor",
+            example = """{"name": "fetch_url", "params": {"url": "https://www.ansa.it/...", "max_chars": 4000}, "await_result": true}""",
         )
     }
 
@@ -62,7 +67,8 @@ class FetchUrlTool(
             )
         }
 
-        val maxChars = parseMaxChars(invocation.params["max_chars"])
+        val maxChars = FetchUrlContentSlice.parseMaxChars(invocation.params["max_chars"])
+        val startChar = FetchUrlContentSlice.parseStartChar(invocation.params["start_char"])
         val fetchUrl = uri.toString()
 
         return withContext(Dispatchers.IO) {
@@ -85,18 +91,18 @@ class FetchUrlTool(
                 val bytes = response.body?.bytes() ?: ByteArray(0)
                 if (bytes.size > MAX_DOWNLOAD_BYTES) {
                     return@withContext ToolResult.Error(
-                        message = "Pagina troppo grande",
+                        message = "Pagina troppo grande per il download (${bytes.size / 1024} KB, max ${MAX_DOWNLOAD_BYTES / 1024} KB)",
                         code = "PAGE_TOO_LARGE",
+                        recoverable = true,
                     )
                 }
 
                 val charset = response.body?.contentType()?.charset() ?: Charsets.UTF_8
                 val html = String(bytes, charset)
-                val doc = Jsoup.parse(html, fetchUrl)
-                val title = doc.title().trim()
-                val content = extractText(doc).take(maxChars)
+                val extraction = articleExtractor.extract(fetchUrl, html)
+                val slice = FetchUrlContentSlice.slice(extraction.fullText, startChar, maxChars)
 
-                if (content.isBlank()) {
+                if (slice.content.isBlank()) {
                     return@withContext ToolResult.Error(
                         message = "Nessun testo leggibile nella pagina (potrebbe richiedere JavaScript)",
                         code = "EMPTY_CONTENT",
@@ -104,12 +110,20 @@ class FetchUrlTool(
                     )
                 }
 
+                val title = extraction.title.ifBlank { fetchUrl }
+
                 ToolResult.Success(
-                    data = mapOf(
-                        "url" to fetchUrl,
-                        "title" to title,
-                        "content" to content,
-                    ),
+                    data = buildMap {
+                        put("url", fetchUrl)
+                        put("title", title)
+                        put("content", slice.content)
+                        extraction.excerpt?.let { put("excerpt", it) }
+                        put("chars_total", slice.charsTotal)
+                        put("chars_returned", slice.charsReturned)
+                        put("start_char", slice.startChar)
+                        put("truncated", slice.truncated)
+                        put("extractor", extraction.extractor.wireName)
+                    },
                 )
             } catch (e: Exception) {
                 ToolResult.Error(
@@ -121,25 +135,9 @@ class FetchUrlTool(
         }
     }
 
-    private fun extractText(doc: Document): String {
-        doc.select("script, style, nav, footer, header, aside, noscript").remove()
-        val main = doc.selectFirst("article, main, [role=main]")
-        val source = main ?: doc.body()
-        return source?.text()?.replace(Regex("\\s+"), " ")?.trim().orEmpty()
-    }
-
-    private fun parseMaxChars(raw: Any?): Int {
-        val value = when (raw) {
-            is Number -> raw.toInt()
-            is String -> raw.toIntOrNull()
-            else -> null
-        } ?: return DEFAULT_MAX_CHARS
-        return value.coerceIn(200, 8000)
-    }
-
     companion object {
-        private const val DEFAULT_MAX_CHARS = 2000
-        private const val MAX_DOWNLOAD_BYTES = 512 * 1024
+        /** Full HTML download cap; extraction runs on complete document, text-only truncated for LLM. */
+        private const val MAX_DOWNLOAD_BYTES = 4 * 1024 * 1024
         private const val USER_AGENT = "MyDeskRobot/1.0 (Android; fetch_url)"
 
         private fun defaultHttpClient(): OkHttpClient {

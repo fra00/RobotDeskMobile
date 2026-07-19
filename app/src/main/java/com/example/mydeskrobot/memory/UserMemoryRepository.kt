@@ -8,6 +8,7 @@ import com.example.mydeskrobot.memory.db.MemoryCategory
 import com.example.mydeskrobot.memory.db.MemoryDao
 import com.example.mydeskrobot.memory.db.MemoryDatabase
 import com.example.mydeskrobot.memory.db.MemoryItemEntity
+import com.example.mydeskrobot.memory.unified.UnifiedMemoryRepository
 import java.util.concurrent.TimeUnit
 import java.security.MessageDigest
 
@@ -28,7 +29,6 @@ class UserMemoryRepository(
         if (normalized.isBlank()) return -1L
         val now = System.currentTimeMillis()
         val existing = dao.findExact(category, normalized)
-            ?: findSemanticDuplicate(category, normalized)
         val item = if (existing != null) {
             existing.copy(
                 confidence = maxOf(existing.confidence, confidence),
@@ -386,59 +386,9 @@ class UserMemoryRepository(
         return lowPriority.size
     }
 
-    suspend fun reorganize(): Int {
-        val active = dao.getUserFacingActive(MemoryCategory.USER_FACING.toList())
-        val toDelete = mutableSetOf<Long>()
-        val now = System.currentTimeMillis()
-
-        active.groupBy { it.category }.values.forEach { categoryItems ->
-            val remaining = categoryItems.filter { it.id !in toDelete }
-            for (i in remaining.indices) {
-                val anchor = remaining[i]
-                if (anchor.id in toDelete) continue
-                val cluster = mutableListOf(anchor)
-                for (j in i + 1 until remaining.size) {
-                    val other = remaining[j]
-                    if (other.id in toDelete) continue
-                    if (MemoryDuplicateDetector.areDuplicates(anchor.value, other.value, anchor.category)) {
-                        cluster += other
-                    }
-                }
-                if (cluster.size <= 1) continue
-                val keeper = cluster.maxWithOrNull(
-                    compareBy<MemoryItemEntity> { it.useCount }
-                        .thenBy { it.confidence }
-                        .thenBy { it.updatedAt },
-                ) ?: continue
-                val mergedUseCount = cluster.sumOf { it.useCount }
-                val mergedLastUsed = cluster.maxOf { it.lastUsedAt }
-                if (mergedUseCount != keeper.useCount || mergedLastUsed != keeper.lastUsedAt) {
-                    dao.upsert(
-                        keeper.copy(
-                            useCount = mergedUseCount,
-                            lastUsedAt = mergedLastUsed,
-                            updatedAt = now,
-                        ),
-                    )
-                }
-                cluster.filter { it.id != keeper.id }.forEach { toDelete += it.id }
-            }
-        }
-
-        toDelete.forEach { dao.softDeleteById(it, now) }
-        return toDelete.size
-    }
-
-    private suspend fun findSemanticDuplicate(
-        category: MemoryCategory,
-        value: String,
-    ): MemoryItemEntity? =
-        dao.getByCategory(category, limit = 200)
-            .filter { MemoryDuplicateDetector.areDuplicates(value, it.value, category) }
-            .maxWithOrNull(
-                compareBy<MemoryItemEntity> { it.confidence }
-                    .thenBy { it.updatedAt },
-            )
+    suspend fun reorganize(
+        maxItems: Int = UnifiedMemoryRepository.USER_FACING_MAX_ITEMS,
+    ): Int = pruneIfNeeded(maxItems)
 
     private suspend fun findObservationDuplicate(value: String): MemoryItemEntity? {
         val dateKey = extractDateKey(value) ?: return null

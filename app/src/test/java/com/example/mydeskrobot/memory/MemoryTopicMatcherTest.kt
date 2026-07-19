@@ -41,4 +41,31 @@ class MemoryTopicMatcherTest {
         val score = MemoryTopicMatcher.score("gatto", "L'utente ha un cane di nome Brina")
         assertTrue(score < MemoryTopicMatcher.MIN_FORGET_SCORE)
     }
+
+    @Test
+    fun `come mi chiamo matches third person stored name`() {
+        val score = MemoryTopicMatcher.score(
+            "come mi chiamo",
+            "L'utente si chiama Francesco",
+        )
+        assertTrue(score >= MemoryTopicMatcher.MIN_RANK_SCORE)
+    }
+
+    @Test
+    fun `qual e il mio nome matches ti chiami phrasing`() {
+        val score = MemoryTopicMatcher.score(
+            "qual è il mio nome",
+            "Ti chiami Francesco",
+        )
+        assertTrue(score >= MemoryTopicMatcher.MIN_RANK_SCORE)
+    }
+
+    @Test
+    fun `nome query matches identity memory without word nome`() {
+        val score = MemoryTopicMatcher.score(
+            "nome identità utente",
+            "Ti chiami Francesco",
+        )
+        assertTrue(score >= MemoryTopicMatcher.MIN_RANK_SCORE)
+    }
 }

@@ -535,6 +535,7 @@ fun RobotScreen(
             form = settingsUiState.memoryForm,
             memoryItems = settingsUiState.memoryEditItems,
             isReorganizing = settingsUiState.memoryReorganizing,
+            reorganizeHint = settingsUiState.memoryReorganizeHint,
             feedbackMessage = settingsUiState.feedbackMessage,
             feedbackIsError = settingsUiState.feedbackIsError,
             onFormChange = { onEvent(ConversationUiEvent.OnMemoryFormChange(it)) },

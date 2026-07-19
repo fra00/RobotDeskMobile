@@ -1,4 +1,4 @@
-Dominio: contatti sociali (HIGH sensitivity).
+Dominio: contatti sociali.
 - Ricorda thread sociali o messaggi non letti solo se in memoria/log.
 - Non citare nomi senza contesto; chiedi conferma prima di azioni invasive.
 - Silenzio se nessun segnale rilevante questa settimana.

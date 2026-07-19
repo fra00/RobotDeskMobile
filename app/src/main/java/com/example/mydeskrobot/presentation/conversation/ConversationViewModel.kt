@@ -21,6 +21,7 @@ import com.example.mydeskrobot.domain.time.NightModeConfig
 import com.example.mydeskrobot.domain.time.NightModeHelper
 import kotlinx.coroutines.isActive
 import com.example.mydeskrobot.data.llm.LlmRepositoryImpl
+import com.example.mydeskrobot.data.vision.VisionCameraLifecycleCoordinator
 import com.example.mydeskrobot.domain.repository.LlmRepository
 import com.example.mydeskrobot.domain.repository.SpeechToTextRepository
 import com.example.mydeskrobot.domain.repository.TextToSpeechRepository
@@ -37,8 +38,11 @@ import com.example.mydeskrobot.domain.llm.LlmSettingsRepository
 import com.example.mydeskrobot.integration.ReasoningModule
 import com.example.mydeskrobot.integration.llm.LlmClientFactory
 import com.example.mydeskrobot.integration.llm.LlmHttpErrors
-import com.example.mydeskrobot.memory.ForgetByTopicResult
+import com.example.mydeskrobot.memory.MemoryReorganizeOutcome
+import com.example.mydeskrobot.memory.MemoryReorganizePolicy
+import com.example.mydeskrobot.memory.MemoryReorganizeService
 import com.example.mydeskrobot.memory.MemorySettingsRepository
+import com.example.mydeskrobot.memory.consolidate.MemoryConsolidationService
 import com.example.mydeskrobot.activity.extract.ActivityExtractionService
 import com.example.mydeskrobot.activity.extract.ActivityLogExtractionScheduler
 import com.example.mydeskrobot.activity.summary.ActivityHabitSummarizer
@@ -47,8 +51,7 @@ import com.example.mydeskrobot.data.activitylog.ActivityLogSettingsRepository
 import com.example.mydeskrobot.domain.activitylog.ActivitySource
 import com.example.mydeskrobot.domain.activitylog.EpisodeConfidence
 import com.example.mydeskrobot.domain.activitylog.EpisodeKind
-import com.example.mydeskrobot.memory.consolidate.MemoryConsolidationResult
-import com.example.mydeskrobot.memory.consolidate.MemoryConsolidationService
+import com.example.mydeskrobot.memory.unified.UnifiedMemoryRepository
 import com.example.mydeskrobot.memory.extract.MemoryExtractionScheduler
 import com.example.mydeskrobot.memory.extract.MemoryExtractionService
 import com.example.mydeskrobot.memory.unified.embedding.MemoryEmbeddingBootstrap
@@ -73,6 +76,7 @@ import com.example.mydeskrobot.presentation.settings.AttentionDomainEditorFormSt
 import com.example.mydeskrobot.presentation.settings.AttentionDomainUiState
 import com.example.mydeskrobot.presentation.settings.toDomainState
 import com.example.mydeskrobot.presentation.settings.toEditorForm
+import com.example.mydeskrobot.domain.heartbeat.AttentionDomainState
 import com.example.mydeskrobot.domain.heartbeat.AttentionDomainValidator
 import com.example.mydeskrobot.presentation.settings.toFormState
 import com.example.mydeskrobot.reasoning.ReasoningEngine
@@ -85,7 +89,6 @@ import com.example.mydeskrobot.reasoning.model.SystemInputEnvelope
 import com.example.mydeskrobot.integration.input.DeferredInputQueue
 import com.example.mydeskrobot.integration.input.InputRouter
 import com.example.mydeskrobot.integration.input.heartbeat.HeartbeatInputSource
-import com.example.mydeskrobot.reasoning.model.CriticResult
 import com.example.mydeskrobot.integration.input.InputPolicyEngine
 import com.example.mydeskrobot.data.check.FireAndCheckRepository
 import com.example.mydeskrobot.data.scheduled.ScheduledTaskAlarmScheduler
@@ -93,7 +96,6 @@ import com.example.mydeskrobot.data.scheduled.ScheduledTaskRepository
 import com.example.mydeskrobot.domain.pending.PendingInboxKind
 import com.example.mydeskrobot.data.context.RobotContextRepository
 import com.example.mydeskrobot.data.pending.UnannouncedNotificationRepository
-import com.example.mydeskrobot.memory.unified.UnifiedMemoryRepository
 import com.example.mydeskrobot.memory.unified.UnifiedMemoryWriter
 import com.example.mydeskrobot.data.body.BodySettings
 import com.example.mydeskrobot.data.body.BodySettingsRepository
@@ -108,18 +110,18 @@ import com.example.mydeskrobot.integration.body.BodyUrl
 import com.example.mydeskrobot.data.input.InputSettingsRepository
 import com.example.mydeskrobot.data.mood.MoodRepository
 import com.example.mydeskrobot.data.workingmemory.WorkingMemoryRepository
-import com.example.mydeskrobot.data.awareness.UserAwarenessRepository
 import com.example.mydeskrobot.data.reflection.WeeklyStatsRepository
-import com.example.mydeskrobot.domain.awareness.UserStateTracker
 import com.example.mydeskrobot.domain.context.RobotContextPolicy
 import com.example.mydeskrobot.domain.interaction.EyePokeSide
 import com.example.mydeskrobot.domain.interaction.EyePokeTracker
 import com.example.mydeskrobot.domain.mood.EphemeralExpression
+import com.example.mydeskrobot.domain.mood.LlmEmotionValenceMapper
 import com.example.mydeskrobot.domain.mood.MoodManager
+import com.example.mydeskrobot.domain.mood.MoodProsodyMapper
 import com.example.mydeskrobot.domain.mood.MoodTrigger
 import com.example.mydeskrobot.domain.mood.RobotMood
+import com.example.mydeskrobot.domain.mood.TtsProsody
 import com.example.mydeskrobot.domain.mood.UserInteractionTone
-import com.example.mydeskrobot.domain.mood.UserInteractionToneDetector
 import com.example.mydeskrobot.integration.mood.DelegatingMoodContextProvider
 import com.example.mydeskrobot.integration.spatial.SpatialRuntimeBindings
 import com.example.mydeskrobot.domain.spatial.SpatialIntentDetector
@@ -127,8 +129,23 @@ import com.example.mydeskrobot.domain.spatial.SpatialScanSession
 import com.example.mydeskrobot.domain.reflection.WeeklyStats
 import com.example.mydeskrobot.integration.input.heartbeat.VoiceHeartbeatTriggerResult
 import com.example.mydeskrobot.integration.input.heartbeat.HeartbeatModule
+import com.example.mydeskrobot.integration.predictivity.DeviationWatchContext
+import com.example.mydeskrobot.integration.predictivity.DeviationWatcher
+import com.example.mydeskrobot.integration.predictivity.PredictivityDeviationOrchestrator
+import com.example.mydeskrobot.integration.predictivity.PredictivityModule
+import com.example.mydeskrobot.data.proactive.ProactivitySettingsRepository
+import com.example.mydeskrobot.data.heartbeat.SensingKind
+import com.example.mydeskrobot.data.heartbeat.SensingLogRepository
+import com.example.mydeskrobot.domain.wellness.WellnessCustomDomain
+import com.example.mydeskrobot.domain.wellness.WellnessDomains
+import com.example.mydeskrobot.domain.wellness.WellnessPhase
+import com.example.mydeskrobot.integration.wellness.WellnessCheckOrchestrator
+import com.example.mydeskrobot.integration.wellness.WellnessModule
+import com.example.mydeskrobot.integration.wellness.WellnessWatchContext
+import com.example.mydeskrobot.integration.presence.BodyReachability
 import com.example.mydeskrobot.integration.input.heartbeat.HeartbeatScheduler
 import com.example.mydeskrobot.integration.presence.DeskPresenceMonitor
+import com.example.mydeskrobot.integration.presence.BodyLocateService
 import com.example.mydeskrobot.integration.presence.UserAttentionCentering
 import com.example.mydeskrobot.data.presence.DeskPresenceSettingsRepository
 import com.example.mydeskrobot.data.presence.DeskPresenceStateStore
@@ -137,8 +154,6 @@ import com.example.mydeskrobot.data.heartbeat.AttentionDomainRepository
 import com.example.mydeskrobot.data.heartbeat.ProactiveInterventionRepository
 import com.example.mydeskrobot.domain.presence.AttentionTriggerMatcher
 import com.example.mydeskrobot.domain.presence.DeskPresenceGate
-import com.example.mydeskrobot.domain.heartbeat.DomainSensitivity
-import com.example.mydeskrobot.domain.heartbeat.DomainTrigger
 import com.example.mydeskrobot.integration.input.heartbeat.ProactiveTracker
 import com.example.mydeskrobot.R
 import com.example.mydeskrobot.data.speech.SttSettingsRepository
@@ -195,6 +210,8 @@ class ConversationViewModel(
     private var lastAssistantResponse: String? = null
     /** Emozione suggerita dall'ultima risposta LLM (persiste fino al prossimo input utente). */
     private var lastLlmEmotion: RobotEmotion? = null
+    /** Tono utente giudicato dal LLM sull'ultimo turno (JSON user_tone). */
+    private var lastLlmUserTone: UserInteractionTone? = null
     private var ttsInterruptHandled = false
     /** Blocca nuove frasi STT mentre scatto + analisi visione sono in corso. */
     private var visionPipelineActive = false
@@ -209,14 +226,6 @@ class ConversationViewModel(
     private var voiceSessionActive = false
     private val unifiedMemoryRepository by lazy {
         com.example.mydeskrobot.memory.unified.UnifiedMemoryFactory.createRepository(appContext)
-    }
-    private val memoryConsolidationService by lazy {
-        MemoryConsolidationService(
-            llmClient = LlmClientFactory.create(runBlockingLoadSettings()),
-            unifiedMemoryRepository = unifiedMemoryRepository,
-            settingsRepository = memorySettingsRepository,
-            systemPrompt = LlmPromptLoader.loadMemoryConsolidationPrompt(appContext),
-        )
     }
 
     private val memoryExtractionScheduler by lazy {
@@ -240,9 +249,28 @@ class ConversationViewModel(
             onExtractingChanged = { extracting ->
                 _uiState.update { it.copy(isMemoryExtracting = extracting) }
             },
-            onAfterCycle = { runMemoryConsolidationIfNeeded(force = false) },
+            onAfterCycle = { runAutoMemoryReorganizeIfDue() },
         )
     }
+
+    private val memoryReorganizeService by lazy {
+        MemoryReorganizeService(
+            unifiedMemoryRepository = unifiedMemoryRepository,
+            consolidationService = memoryConsolidationService,
+            settingsRepository = memorySettingsRepository,
+            llmConfigured = { LlmClientFactory.create(runBlockingLoadSettings()).isConfigured() },
+        )
+    }
+
+    private val memoryConsolidationService by lazy {
+        MemoryConsolidationService(
+            llmClient = LlmClientFactory.create(runBlockingLoadSettings()),
+            unifiedMemoryRepository = unifiedMemoryRepository,
+            settingsRepository = memorySettingsRepository,
+            systemPrompt = LlmPromptLoader.loadMemoryConsolidationPrompt(appContext),
+        )
+    }
+
     private val memoryWriter by lazy {
         com.example.mydeskrobot.memory.unified.UnifiedMemoryFactory.createWriter(appContext)
     }
@@ -260,12 +288,18 @@ class ConversationViewModel(
     private val fireAndCheckRepository = FireAndCheckRepository.create(appContext)
     private val scheduledTaskRepository = ScheduledTaskRepository.create(appContext)
     private val heartbeatSettingsRepository = HeartbeatSettingsRepository(appContext)
+    private val proactivitySettingsRepository = ProactivitySettingsRepository(appContext)
+    private val sensingLogRepository = SensingLogRepository(appContext)
     private val deskPresenceSettingsRepository = DeskPresenceSettingsRepository(appContext)
     private val attentionDomainRepository = AttentionDomainRepository(appContext)
     private val proactiveInterventionRepository = ProactiveInterventionRepository(appContext)
     private val heartbeatOrchestrator by lazy { HeartbeatModule.createOrchestrator(appContext) }
     private val deskPresenceMonitor by lazy {
-        DeskPresenceMonitor(appContext, deskPresenceSettingsRepository, viewModelScope)
+        DeskPresenceMonitor(appContext, deskPresenceSettingsRepository, viewModelScope).also { monitor ->
+            VisionCameraLifecycleCoordinator.setPresenceResumeHandler {
+                monitor.resumeAnalysisIfNeeded()
+            }
+        }
     }
     private val userAttentionCentering by lazy {
         UserAttentionCentering(
@@ -273,12 +307,28 @@ class ConversationViewModel(
             deskPresenceSettingsProvider = { deskPresenceSettingsRepository.load() },
         )
     }
+    private val bodyLocateService by lazy {
+        BodyLocateService(
+            bodySettingsProvider = { bodySettingsRepository.load() },
+            attentionCentering = userAttentionCentering,
+        )
+    }
+    private val deviationWatcher by lazy {
+        DeviationWatcher(
+            habitSlotRepository = PredictivityModule.createHabitSlotRepository(appContext),
+            activityLogRepository = activityLogRepository,
+            bodyLocateService = bodyLocateService,
+        )
+    }
+    private val predictivityDeviationOrchestrator = PredictivityDeviationOrchestrator()
+    private val wellnessWatcher by lazy { WellnessModule.createWatcher() }
+    private val wellnessContextBuilder by lazy { WellnessModule.createContextBuilder(appContext) }
+    private val wellnessCheckOrchestrator = WellnessCheckOrchestrator()
     private val proactiveTracker by lazy {
         ProactiveTracker(
             workingMemoryRepository = workingMemoryRepository,
             weeklyStatsRepository = weeklyStatsRepository,
             interventionRepository = proactiveInterventionRepository,
-            moodManager = moodManager,
             scope = viewModelScope,
         )
     }
@@ -293,12 +343,15 @@ class ConversationViewModel(
 
     /** True when the current LLM turn was triggered by a heartbeat input. */
     private var currentInputIsHeartbeat = false
-    /** Active heartbeat domain context for critic pass and tracking. */
+    /** True when the current LLM turn was triggered by predictivity deviation. */
+    private var currentInputIsPredictivityDeviation = false
+    /** True when the current LLM turn was triggered by wellness check. */
+    private var currentInputIsWellnessCheck = false
+    private var currentWellnessPhase: WellnessPhase? = null
+    /** Active heartbeat domain context for tracking. */
     private var currentHeartbeatDomainId: String? = null
     private var currentHeartbeatDomainName: String? = null
-    private var currentHeartbeatDomainSensitivity: DomainSensitivity? = null
     private var currentHeartbeatInterventions: List<String> = emptyList()
-    private var lastObservedPlaceId: Long? = null
 
     private val inputRouter by lazy {
         InputRouter(
@@ -315,9 +368,9 @@ class ConversationViewModel(
         settingsProvider = { bodySettingsRepository.load() },
     )
     private var moodMonitorJob: Job? = null
+    private var moodTickJob: Job? = null
     private val workingMemoryRepository = WorkingMemoryRepository(appContext)
     private val weeklyStatsRepository = WeeklyStatsRepository(appContext)
-    private val userAwarenessRepository = UserAwarenessRepository(appContext)
     /** Last user phrase for working-memory topic extraction after a completed turn. */
     private var lastUserPhraseForTopic: String? = null
 
@@ -383,17 +436,9 @@ class ConversationViewModel(
 
     init {
         moodContextProvider.snapshotProvider = { moodManager.currentMood.value }
+        moodContextProvider.promptHintsProvider = { moodManager.currentPromptHints() }
         viewModelScope.launch {
             spatialContextManager.initialize()
-            spatialContextManager.snapshot.collect { snapshot ->
-                val placeId = snapshot.currentPlaceId
-                if (placeId != null && lastObservedPlaceId != null && placeId != lastObservedPlaceId) {
-                    heartbeatOrchestrator.onDomainEvent("cambio_stanza")
-                }
-                if (placeId != null) {
-                    lastObservedPlaceId = placeId
-                }
-            }
         }
         viewModelScope.launch {
             HotwordEventDispatcher.events.collect { event ->
@@ -438,7 +483,7 @@ class ConversationViewModel(
             )
         }
         viewModelScope.launch {
-            activityLogRepository.pruneExpired()
+            PredictivityModule.createLifecycleCoordinator(appContext).mineThenPrune()
             engineBodySettingsKey = bodySettingsKey(bodySettingsRepository.load())
         }
         viewModelScope.launch {
@@ -624,6 +669,9 @@ class ConversationViewModel(
             val notificationsEnabled = inputSettingsRepository.isNotificationsEnabled()
             val accessGranted = inputSettingsRepository.isNotificationAccessGranted()
             val allowedPackages = inputSettingsRepository.getAllowedPackages()
+            val heartbeatSettings = heartbeatSettingsRepository.load()
+            val proactivitySettings = proactivitySettingsRepository.load()
+            val deskPresenceSettings = deskPresenceSettingsRepository.load()
             refreshVoskModelState()
             val domains = attentionDomainRepository.listStates()
             val enabledDomains = domains.count { it.enabled }
@@ -635,6 +683,8 @@ class ConversationViewModel(
                     notificationsEnabled = notificationsEnabled,
                     notificationAccessGranted = accessGranted,
                     notificationAllowedPackages = allowedPackages,
+                    heartbeatForm = heartbeatSettings.toFormState(proactivitySettings),
+                    deskPresenceForm = deskPresenceSettings.toFormState(),
                     attentionDomainsSummary = appContext.getString(
                         R.string.attention_domains_summary,
                         enabledDomains,
@@ -670,15 +720,168 @@ class ConversationViewModel(
     private fun openMemorySettings() {
         viewModelScope.launch {
             val settings = memorySettingsRepository.load()
+            val userFacingCount = unifiedMemoryRepository.getUserFacingActiveDocuments().size
+            val lastReorganizeAt = memorySettingsRepository.getLastManualReorganizeAtMs()
             _settingsUiState.update {
                 it.copy(
                     showMainDialog = false,
                     showMemoryDialog = true,
                     memoryForm = settings.toFormState(),
                     memoryEditItems = loadMemoryEditItems(),
+                    memoryReorganizeHint = buildMemoryReorganizeHint(userFacingCount, lastReorganizeAt),
                     feedbackMessage = null,
                 )
             }
+        }
+    }
+
+    private suspend fun buildMemoryReorganizeHint(userFacingCount: Int, lastReorganizeAtMs: Long?): String {
+        val config = memorySettingsRepository.loadReorganizeConfig()
+        val minRows = config.minUserFacingRows
+        val base = appContext.getString(R.string.memory_reorganize_helper, userFacingCount, minRows)
+        if (lastReorganizeAtMs == null) return base
+        val gate = MemoryReorganizePolicy.evaluate(
+            userFacingCount = userFacingCount,
+            lastManualReorganizeAtMs = lastReorganizeAtMs,
+            llmConfigured = LlmClientFactory.create(runBlockingLoadSettings()).isConfigured(),
+            minUserFacingRows = minRows,
+            cooldownMs = config.cooldownMs,
+        )
+        return when (gate) {
+            is MemoryReorganizePolicy.GateResult.CooldownActive -> {
+                val date = java.text.SimpleDateFormat("d MMM yyyy", java.util.Locale.ITALIAN)
+                    .format(java.util.Date(gate.availableAtMs))
+                "$base · ${appContext.getString(R.string.memory_reorganize_gate_cooldown, date)}"
+            }
+            else -> base
+        }
+    }
+
+    private suspend fun runAutoMemoryReorganizeIfDue() {
+        try {
+            when (val outcome = memoryReorganizeService.runAutoIfDue()) {
+                is MemoryReorganizeOutcome.Success,
+                is MemoryReorganizeOutcome.Unchanged,
+                -> {
+                    if (_settingsUiState.value.showMemoryDialog) {
+                        val count = unifiedMemoryRepository.getUserFacingActiveDocuments().size
+                        val lastAt = memorySettingsRepository.getLastManualReorganizeAtMs()
+                        _settingsUiState.update {
+                            it.copy(
+                                memoryEditItems = loadMemoryEditItems(),
+                                memoryReorganizeHint = buildMemoryReorganizeHint(count, lastAt),
+                            )
+                        }
+                    }
+                }
+                else -> Unit
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "Auto memory reorganize failed", e)
+        }
+    }
+
+    private suspend fun applyReorganizeOutcomeToUi(outcome: MemoryReorganizeOutcome) {
+        val userFacingCount = unifiedMemoryRepository.getUserFacingActiveDocuments().size
+        val lastReorganizeAt = memorySettingsRepository.getLastManualReorganizeAtMs()
+        val hint = buildMemoryReorganizeHint(userFacingCount, lastReorganizeAt)
+        when (outcome) {
+            is MemoryReorganizeOutcome.Success -> {
+                val message = buildString {
+                    append(
+                        appContext.getString(
+                            R.string.memory_consolidate_done,
+                            outcome.before,
+                            outcome.after,
+                        ),
+                    )
+                    if (outcome.pruned > 0) {
+                        append(' ')
+                        append(appContext.getString(R.string.memory_reorganize_done, outcome.pruned))
+                    }
+                }
+                _settingsUiState.update {
+                    it.copy(
+                        memoryEditItems = loadMemoryEditItems(),
+                        memoryReorganizing = false,
+                        memoryReorganizeHint = hint,
+                        feedbackMessage = message,
+                        feedbackIsError = false,
+                    )
+                }
+            }
+            is MemoryReorganizeOutcome.Unchanged -> {
+                _settingsUiState.update {
+                    it.copy(
+                        memoryEditItems = loadMemoryEditItems(),
+                        memoryReorganizing = false,
+                        memoryReorganizeHint = hint,
+                        feedbackMessage = if (outcome.pruned > 0) {
+                            appContext.getString(R.string.memory_reorganize_done, outcome.pruned)
+                        } else {
+                            appContext.getString(R.string.memory_consolidate_unchanged)
+                        },
+                        feedbackIsError = false,
+                    )
+                }
+            }
+            MemoryReorganizeOutcome.GateLlmNotConfigured -> {
+                _settingsUiState.update {
+                    it.copy(
+                        memoryReorganizing = false,
+                        memoryReorganizeHint = hint,
+                        feedbackMessage = appContext.getString(R.string.memory_consolidate_not_configured),
+                        feedbackIsError = true,
+                    )
+                }
+            }
+            is MemoryReorganizeOutcome.GateTooFew -> {
+                _settingsUiState.update {
+                    it.copy(
+                        memoryReorganizing = false,
+                        memoryReorganizeHint = hint,
+                        feedbackMessage = appContext.getString(
+                            R.string.memory_reorganize_gate_few,
+                            outcome.count,
+                            outcome.minRequired,
+                        ),
+                        feedbackIsError = true,
+                    )
+                }
+            }
+            is MemoryReorganizeOutcome.GateCooldown -> {
+                val date = java.text.SimpleDateFormat("d MMM yyyy", java.util.Locale.ITALIAN)
+                    .format(java.util.Date(outcome.availableAtMs))
+                _settingsUiState.update {
+                    it.copy(
+                        memoryReorganizing = false,
+                        memoryReorganizeHint = hint,
+                        feedbackMessage = appContext.getString(R.string.memory_reorganize_gate_cooldown, date),
+                        feedbackIsError = true,
+                    )
+                }
+            }
+            MemoryReorganizeOutcome.AlreadyRunning -> {
+                _settingsUiState.update {
+                    it.copy(
+                        memoryReorganizing = false,
+                        feedbackMessage = appContext.getString(R.string.memory_consolidate_already_running),
+                        feedbackIsError = true,
+                    )
+                }
+            }
+            is MemoryReorganizeOutcome.Failed -> {
+                _settingsUiState.update {
+                    it.copy(
+                        memoryReorganizing = false,
+                        feedbackMessage = appContext.getString(R.string.memory_consolidate_failed),
+                        feedbackIsError = true,
+                    )
+                }
+            }
+            MemoryReorganizeOutcome.SkippedAutoDisabled -> Unit
         }
     }
 
@@ -698,6 +901,9 @@ class ConversationViewModel(
         viewModelScope.launch {
             memorySettingsRepository.setEnabled(form.enabled)
             memorySettingsRepository.setIntervalSeconds(form.intervalSeconds)
+            memorySettingsRepository.setAutoReorganizeEnabled(form.autoReorganizeEnabled)
+            memorySettingsRepository.setReorganizeMinRows(form.reorganizeMinRows)
+            memorySettingsRepository.setReorganizeCooldownDays(form.reorganizeCooldownDays)
             _settingsUiState.update {
                 it.copy(
                     showMemoryDialog = false,
@@ -733,16 +939,7 @@ class ConversationViewModel(
                 )
             }
             try {
-                val deduped = unifiedMemoryRepository.reorganize()
-                val result = memoryConsolidationService.consolidateIfNeeded(force = true)
-                _settingsUiState.update {
-                    it.copy(
-                        memoryEditItems = loadMemoryEditItems(),
-                        memoryReorganizing = false,
-                        feedbackMessage = buildMemoryReorganizeMessage(deduped, result),
-                        feedbackIsError = result is MemoryConsolidationResult.Failed,
-                    )
-                }
+                applyReorganizeOutcomeToUi(memoryReorganizeService.runManual(forceConsolidation = true))
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -756,54 +953,6 @@ class ConversationViewModel(
                 }
             }
         }
-    }
-
-    private suspend fun runMemoryConsolidationIfNeeded(force: Boolean) {
-        val state = _uiState.value
-        if (!state.isHotwordListeningActive) return
-        if (!force && state.phase !is ConversationPhase.WaitingForHotword) return
-
-        when (val result = memoryConsolidationService.consolidateIfNeeded(force = force)) {
-            is MemoryConsolidationResult.Success -> Log.i(
-                TAG,
-                "Memory consolidation: ${result.before} -> ${result.after} rows",
-            )
-            is MemoryConsolidationResult.Failed -> Log.w(
-                TAG,
-                "Memory consolidation failed: ${result.reason}",
-            )
-            else -> Unit
-        }
-    }
-
-    private fun buildMemoryReorganizeMessage(
-        deduped: Int,
-        result: MemoryConsolidationResult,
-    ): String = when (result) {
-        is MemoryConsolidationResult.Success ->
-            appContext.getString(R.string.memory_consolidate_done, result.before, result.after)
-        is MemoryConsolidationResult.SkippedUnchanged ->
-            if (deduped > 0) {
-                appContext.getString(R.string.memory_reorganize_done, deduped)
-            } else {
-                appContext.getString(R.string.memory_consolidate_unchanged)
-            }
-        is MemoryConsolidationResult.SkippedTooFew ->
-            if (deduped > 0) {
-                appContext.getString(R.string.memory_reorganize_done, deduped)
-            } else {
-                appContext.getString(R.string.memory_consolidate_skipped_few)
-            }
-        is MemoryConsolidationResult.Failed ->
-            if (deduped > 0) {
-                appContext.getString(R.string.memory_consolidate_failed_with_dedup, deduped)
-            } else {
-                appContext.getString(R.string.memory_consolidate_failed)
-            }
-        MemoryConsolidationResult.SkippedNotConfigured ->
-            appContext.getString(R.string.memory_consolidate_not_configured)
-        MemoryConsolidationResult.SkippedAlreadyRunning ->
-            appContext.getString(R.string.memory_consolidate_already_running)
     }
 
     private fun openSpatialSettings() {
@@ -1308,11 +1457,12 @@ class ConversationViewModel(
     private fun openHeartbeatSettings() {
         viewModelScope.launch {
             val settings = heartbeatSettingsRepository.load()
+            val proactivity = proactivitySettingsRepository.load()
             _settingsUiState.update {
                 it.copy(
                     showMainDialog = false,
                     showHeartbeatDialog = true,
-                    heartbeatForm = settings.toFormState(),
+                    heartbeatForm = settings.toFormState(proactivity),
                     feedbackMessage = null,
                 )
             }
@@ -1502,6 +1652,13 @@ class ConversationViewModel(
                 endHour = form.endHour,
                 proactiveThreshold = form.proactiveThreshold,
             )
+            proactivitySettingsRepository.update(
+                predictivityEnabled = form.predictivityEnabled,
+                wellnessEnabled = form.wellnessEnabled,
+                wellnessAnchorMinutes = form.wellnessAnchorMinutes,
+                wellnessIdleMinutes = form.wellnessIdleMinutes,
+                wellnessPresenceMinutes = form.wellnessPresenceMinutes,
+            )
 
             if (form.enabled && _uiState.value.isHotwordListeningActive) {
                 HeartbeatScheduler.schedule(appContext, form.intervalMinutes)
@@ -1513,6 +1670,7 @@ class ConversationViewModel(
                 it.copy(
                     showHeartbeatDialog = false,
                     showMainDialog = true,
+                    heartbeatForm = form,
                     feedbackMessage = appContext.getString(R.string.heartbeat_settings_saved),
                     feedbackIsError = false,
                 )
@@ -1563,6 +1721,7 @@ class ConversationViewModel(
                 it.copy(
                     showDeskPresenceDialog = false,
                     showMainDialog = true,
+                    deskPresenceForm = form,
                     feedbackMessage = appContext.getString(R.string.desk_presence_settings_saved),
                     feedbackIsError = false,
                 )
@@ -1591,7 +1750,7 @@ class ConversationViewModel(
                 id = domain.id,
                 displayName = domain.displayName,
                 enabled = toggles[domain.id] ?: domain.enabled,
-                subtitle = attentionDomainSubtitle(domain.sensitivity, domain.trigger),
+                subtitle = attentionDomainSubtitle(domain),
                 isBuiltIn = domain.isBuiltIn,
             )
         }
@@ -1651,21 +1810,12 @@ class ConversationViewModel(
         }
     }
 
-    private fun attentionDomainSubtitle(
-        sensitivity: DomainSensitivity,
-        trigger: DomainTrigger,
-    ): String {
-        val sensitivityLabel = when (sensitivity) {
-            DomainSensitivity.HIGH -> appContext.getString(R.string.attention_domain_sensitivity_high)
-            DomainSensitivity.MEDIUM -> appContext.getString(R.string.attention_domain_sensitivity_medium)
-            DomainSensitivity.LOW -> appContext.getString(R.string.attention_domain_sensitivity_low)
+    private fun attentionDomainSubtitle(domain: AttentionDomainState): String {
+        return if (domain.id == WellnessDomains.ORDER) {
+            appContext.getString(R.string.attention_domain_order_subtitle)
+        } else {
+            appContext.getString(R.string.attention_domain_wellness_subtitle)
         }
-        val triggerLabel = when (trigger) {
-            is DomainTrigger.TimeDaily -> "giornaliero"
-            is DomainTrigger.TimeWeekly -> "settimanale"
-            is DomainTrigger.Event -> "evento: ${trigger.eventId}"
-        }
-        return "$sensitivityLabel · $triggerLabel"
     }
 
     private fun openAddAttentionDomain() {
@@ -1990,11 +2140,13 @@ class ConversationViewModel(
             )
         }
         startNightModeMonitor()
+        moodManager.resetConversationSession()
         startMoodMonitor()
         memoryExtractionScheduler.start()
         activityLogExtractionScheduler.start()
         startHeartbeatIfEnabled()
         VoiceSessionState.setActive(true)
+        viewModelScope.launch { workingMemoryRepository.recordFirstHotwordOn() }
         viewModelScope.launch {
             val deskSettings = deskPresenceSettingsRepository.load()
             if (deskSettings.enabled) {
@@ -2025,6 +2177,7 @@ class ConversationViewModel(
         clearVisionPipeline()
         stopNightModeMonitor()
         stopMoodMonitor()
+        moodManager.resetConversationSession()
         ttsRepository.stop()
         HotwordServiceStarter.stop(appContext)
         HeartbeatScheduler.cancel(appContext)
@@ -2153,11 +2306,6 @@ class ConversationViewModel(
             }
         }
 
-        if (handleMemoryVoiceCommand(trimmed)) {
-            clearCurrentUtteranceDisplay()
-            return
-        }
-
         if (handleNotificationVoiceCommand(trimmed)) {
             clearCurrentUtteranceDisplay()
             return
@@ -2183,56 +2331,6 @@ class ConversationViewModel(
             if (state.currentUtterance.isEmpty()) state
             else state.copy(currentUtterance = "")
         }
-    }
-
-    private fun handleMemoryVoiceCommand(phrase: String): Boolean {
-        val normalized = phrase.trim().lowercase()
-        val command = when {
-            normalized == "cosa sai di me" || normalized.startsWith("cosa sai di me ") -> "show"
-            normalized == "reset memoria" -> "reset"
-            normalized.startsWith("dimentica ") -> "forget"
-            else -> null
-        } ?: return false
-
-        viewModelScope.launch {
-            when (command) {
-                "show" -> {
-                    val facts = unifiedMemoryRepository.getUserFacingActiveDocuments().take(8)
-                    val reply = if (facts.isEmpty()) {
-                        "Per ora non ho memorie personali salvate."
-                    } else {
-                        facts.joinToString(
-                            prefix = "Questo è quello che ricordo: ",
-                            separator = "; ",
-                        ) { it.value }
-                    }
-                    speakMemoryCommandReply(phrase, reply)
-                }
-                "reset" -> {
-                    unifiedMemoryRepository.resetUserFacingMemory()
-                    memorySettingsRepository.setLastProcessedEntryCount(0L)
-                    speakMemoryCommandReply(phrase, "Ho cancellato la memoria personale. Gli obiettivi interni del robot restano attivi.")
-                }
-                "forget" -> {
-                    val text = phrase.substringAfter("dimentica", "").trim()
-                    val result = if (text.isBlank()) {
-                        ForgetByTopicResult(0, emptyList(), emptyList())
-                    } else {
-                        unifiedMemoryRepository.forgetByTopic(text)
-                    }
-                    val reply = when {
-                        result.deletedCount == 0 ->
-                            "Non ho trovato memorie su \"$text\" da dimenticare."
-                        result.deletedCount == 1 ->
-                            "Fatto, ho dimenticato una memoria su $text."
-                        else ->
-                            "Fatto, ho dimenticato ${result.deletedCount} memorie su $text."
-                    }
-                    speakMemoryCommandReply(phrase, reply)
-                }
-            }
-        }
-        return true
     }
 
     private fun handleNotificationVoiceCommand(phrase: String): Boolean {
@@ -2436,15 +2534,13 @@ class ConversationViewModel(
         lastUserPhraseForTopic = phrase
 
         viewModelScope.launch { heartbeatSettingsRepository.recordInteraction() }
-        viewModelScope.launch { workingMemoryRepository.recordInteraction() }
+        viewModelScope.launch {
+            workingMemoryRepository.recordInteraction()
+            workingMemoryRepository.recordUserTurn()
+        }
         viewModelScope.launch {
             weeklyStatsRepository.recordInteraction()
             proactiveTracker.checkProactiveResponse(phrase)
-        }
-        viewModelScope.launch {
-            userAwarenessRepository.update { current ->
-                UserStateTracker.analyzeUserText(phrase, current)
-            }
         }
         applyMoodTriggerForUserPhrase(phrase)
         handleSpatialIntentBeforeLlm(phrase)
@@ -2498,9 +2594,6 @@ class ConversationViewModel(
      */
     private suspend fun handleIntermediateResponse(intermediate: IntermediateResponse) {
         if (intermediate.isToolExecuting) {
-            if (intermediate.toolName == "take_photo" || intermediate.toolName == "analyze_room_scene") {
-                heartbeatOrchestrator.onDomainEvent("nuova_foto")
-            }
             val toolStatus = toolStatusMessage(intermediate.toolName)
             val toolPhase = toolPhaseFor(intermediate.toolName)
             _uiState.update {
@@ -2548,7 +2641,7 @@ class ConversationViewModel(
         val textForTts = MarkdownStripper.strip(text)
         try {
             startSpeakingBodyLanguage()
-            ttsRepository.speak(textForTts).onFailure { error ->
+            ttsRepository.speak(textForTts, currentSpeechProsody()).onFailure { error ->
                 if (error !is TtsInterruptedException) {
                     // Don't switch to recoverable anger here: the chain will continue.
                 }
@@ -2597,24 +2690,7 @@ class ConversationViewModel(
             is ReasoningResult.Success -> {
                 var finalText = result.finalText
                 var emotion = result.emotion
-
-                if (currentInputIsHeartbeat) {
-                    val criticOutcome = applyCriticPassIfNeeded(finalText)
-                    when (criticOutcome) {
-                        CriticPassOutcome.Blocked -> {
-                            val domainId = currentHeartbeatDomainId ?: "heartbeat"
-                            clearHeartbeatDomainContext()
-                            currentInputIsHeartbeat = false
-                            viewModelScope.launch {
-                                proactiveTracker.recordSuppressed(domainId, "critic block")
-                            }
-                            finalizeTurnWithoutSpeech(LlmEmotionMapper.fromLlmValue(emotion))
-                            return
-                        }
-                        is CriticPassOutcome.Modified -> finalText = criticOutcome.text
-                        CriticPassOutcome.Unchanged -> Unit
-                    }
-                }
+                lastLlmUserTone = UserInteractionTone.fromLlmValue(result.userTone)
 
                 if (shouldSuppressHeartbeat(result.copy(finalText = finalText))) {
                     Log.i(TAG, "Heartbeat suppressed: confidence ${result.speakConfidence} below threshold")
@@ -2627,14 +2703,46 @@ class ConversationViewModel(
                     finalizeTurnWithoutSpeech(LlmEmotionMapper.fromLlmValue(emotion))
                     return
                 }
+
+                if (shouldSuppressPredictivity(result.copy(finalText = finalText))) {
+                    Log.i(TAG, "Predictivity deviation suppressed: confidence ${result.speakConfidence}")
+                    currentInputIsPredictivityDeviation = false
+                    viewModelScope.launch {
+                        proactiveTracker.recordSuppressed("predictivity", "low speak_confidence")
+                    }
+                    finalizeTurnWithoutSpeech(LlmEmotionMapper.fromLlmValue(emotion))
+                    return
+                }
+
+                if (shouldSuppressWellness(result.copy(finalText = finalText))) {
+                    Log.i(TAG, "Wellness check suppressed: confidence ${result.speakConfidence}")
+                    if (currentInputIsWellnessCheck && currentWellnessPhase == WellnessPhase.VISUAL_ORDER) {
+                        viewModelScope.launch {
+                            sensingLogRepository.record(SensingKind.ROOM_SCENE)
+                        }
+                    }
+                    currentInputIsWellnessCheck = false
+                    currentWellnessPhase = null
+                    viewModelScope.launch {
+                        proactiveTracker.recordSuppressed("wellness", "low speak_confidence")
+                    }
+                    finalizeTurnWithoutSpeech(LlmEmotionMapper.fromLlmValue(emotion))
+                    return
+                }
+
                 val wasHeartbeat = currentInputIsHeartbeat
+                val wasPredictivity = currentInputIsPredictivityDeviation
+                val wasWellness = currentInputIsWellnessCheck
+                val wellnessPhase = currentWellnessPhase
                 val domainId = currentHeartbeatDomainId
                 val domainName = currentHeartbeatDomainName
                 clearHeartbeatDomainContext()
                 currentInputIsHeartbeat = false
+                currentInputIsPredictivityDeviation = false
+                currentInputIsWellnessCheck = false
+                currentWellnessPhase = null
 
-                if (!wasHeartbeat) {
-                    moodManager.recordTaskCompletedUseful()
+                if (!wasHeartbeat && !wasPredictivity && !wasWellness) {
                     recordTopicFromUserTurn()
                     lastUserPhraseForTopic?.let { phrase ->
                         viewModelScope.launch {
@@ -2658,14 +2766,32 @@ class ConversationViewModel(
                     deliverAssistantReplyWithoutSpeech(
                         robotText = robotText,
                         emotion = LlmEmotionMapper.fromLlmValue(result.emotion),
+                        rewardTaskCompletion = !wasHeartbeat && !wasPredictivity && !wasWellness,
                     )
                     clearSilentNotificationTurnState()
                     return
                 }
 
+                if (wasWellness && wellnessPhase == WellnessPhase.VISUAL_ORDER) {
+                    viewModelScope.launch {
+                        sensingLogRepository.record(SensingKind.ROOM_SCENE)
+                    }
+                }
+
                 if (finalText.isBlank()) {
                     if (wasHeartbeat && domainId != null) {
                         viewModelScope.launch { proactiveTracker.recordSilent(domainId) }
+                    }
+                    if (wasPredictivity) {
+                        viewModelScope.launch { proactiveTracker.recordSilent("predictivity") }
+                    }
+                    if (wasWellness) {
+                        viewModelScope.launch { proactiveTracker.recordSilent("wellness") }
+                    }
+                    if (wasWellness && wellnessPhase == WellnessPhase.VISUAL_ORDER) {
+                        viewModelScope.launch {
+                            sensingLogRepository.record(SensingKind.ROOM_SCENE)
+                        }
                     }
                     finalizeTurnWithoutSpeech(LlmEmotionMapper.fromLlmValue(emotion))
                 } else {
@@ -2679,23 +2805,57 @@ class ConversationViewModel(
                             )
                         }
                     }
+                    if (wasPredictivity) {
+                        val topic = extractTopicFromText(finalText)
+                        viewModelScope.launch {
+                            proactiveTracker.recordSpeak(
+                                domainId = "predictivity",
+                                text = finalText,
+                                topic = topic.orEmpty(),
+                            )
+                        }
+                    }
+                    if (wasWellness) {
+                        val topic = extractTopicFromText(finalText)
+                        viewModelScope.launch {
+                            proactiveTracker.recordSpeak(
+                                domainId = "wellness",
+                                text = finalText,
+                                topic = topic.orEmpty(),
+                            )
+                        }
+                        if (wellnessPhase == WellnessPhase.VISUAL_ORDER) {
+                            viewModelScope.launch {
+                                sensingLogRepository.record(SensingKind.ROOM_SCENE)
+                            }
+                        }
+                    }
                     val reply = LlmAssistantReply(
                         text = finalText,
                         emotion = LlmEmotionMapper.fromLlmValue(emotion),
                         imageRequired = false,
                     )
-                    deliverAssistantReply(reply)
+                    deliverAssistantReply(
+                        reply,
+                        rewardTaskCompletion = !wasHeartbeat && !wasPredictivity && !wasWellness,
+                    )
                 }
             }
 
             is ReasoningResult.Error -> {
                 currentInputIsHeartbeat = false
+                currentInputIsPredictivityDeviation = false
+                currentInputIsWellnessCheck = false
+                currentWellnessPhase = null
                 clearSilentNotificationTurnState()
                 handleLlmFailure(result.message)
             }
 
             is ReasoningResult.MaxStepsReached -> {
                 currentInputIsHeartbeat = false
+                currentInputIsPredictivityDeviation = false
+                currentInputIsWellnessCheck = false
+                currentWellnessPhase = null
                 if (suppressTtsForCurrentTurn) {
                     val envelope = pendingSilentNotificationEnvelope
                     val text = result.lastText.trim()
@@ -2713,6 +2873,9 @@ class ConversationViewModel(
 
             is ReasoningResult.NeedsConfirmation -> {
                 currentInputIsHeartbeat = false
+                currentInputIsPredictivityDeviation = false
+                currentInputIsWellnessCheck = false
+                currentWellnessPhase = null
                 confirmationPending = true
                 val reply = LlmAssistantReply(
                     text = result.prompt,
@@ -2775,6 +2938,27 @@ class ConversationViewModel(
         }
     }
 
+    private suspend fun shouldSuppressWellness(result: ReasoningResult.Success): Boolean {
+        if (!currentInputIsWellnessCheck) return false
+        if (currentWellnessPhase == WellnessPhase.VISUAL_ORDER) return true
+
+        val confidence = result.speakConfidence ?: return true
+        if (result.finalText.isBlank()) return true
+
+        val settings = heartbeatSettingsRepository.load()
+        return confidence < settings.proactiveThreshold
+    }
+
+    private suspend fun shouldSuppressPredictivity(result: ReasoningResult.Success): Boolean {
+        if (!currentInputIsPredictivityDeviation) return false
+
+        val confidence = result.speakConfidence ?: return true
+        if (result.finalText.isBlank()) return true
+
+        val settings = heartbeatSettingsRepository.load()
+        return confidence < settings.proactiveThreshold
+    }
+
     private suspend fun shouldSuppressHeartbeat(result: ReasoningResult.Success): Boolean {
         if (!currentInputIsHeartbeat) return false
 
@@ -2799,7 +2983,7 @@ class ConversationViewModel(
         pendingAnnouncedNotificationDedupKey = null
         conversationLogBeforeCurrentTurn = null
         lastLlmEmotion = emotion ?: lastLlmEmotion
-        moodManager.setEphemeralExpression(lastLlmEmotion)
+        applyAssistantTurnEmotion(lastLlmEmotion)
         resumeListeningAfterAssistantTurn()
     }
 
@@ -2851,18 +3035,14 @@ class ConversationViewModel(
     private suspend fun deliverAssistantReplyWithoutSpeech(
         robotText: String,
         emotion: RobotEmotion?,
+        rewardTaskCompletion: Boolean = false,
     ) {
         conversationLogBeforeCurrentTurn = null
         lastLlmEmotion = emotion ?: lastLlmEmotion
-        moodManager.setEphemeralExpression(lastLlmEmotion)
+        applyAssistantTurnEmotion(lastLlmEmotion, rewardTaskCompletion = rewardTaskCompletion)
 
         if (robotText.isNotBlank()) {
             lastAssistantResponse = robotText
-            viewModelScope.launch {
-                userAwarenessRepository.update { current ->
-                    UserStateTracker.analyzeRobotResponse(robotText, current)
-                }
-            }
             _uiState.update {
                 it.copy(conversationLog = appendRobotLine(it.conversationLog, robotText))
             }
@@ -2929,6 +3109,7 @@ class ConversationViewModel(
     private suspend fun deliverAssistantReply(
         reply: LlmAssistantReply,
         fallbackEmotion: RobotEmotion? = null,
+        rewardTaskCompletion: Boolean = false,
     ) {
         val spokenText = reply.text.trim()
         if (spokenText.isBlank()) {
@@ -2938,14 +3119,8 @@ class ConversationViewModel(
 
         lastAssistantResponse = spokenText
         lastLlmEmotion = reply.emotion ?: fallbackEmotion
-        moodManager.setEphemeralExpression(lastLlmEmotion)
+        applyAssistantTurnEmotion(lastLlmEmotion, rewardTaskCompletion = rewardTaskCompletion)
         conversationLogBeforeCurrentTurn = null
-
-        viewModelScope.launch {
-            userAwarenessRepository.update { current ->
-                UserStateTracker.analyzeRobotResponse(spokenText, current)
-            }
-        }
 
         _uiState.update {
             it.copy(
@@ -2993,7 +3168,7 @@ class ConversationViewModel(
 
         try {
             startSpeakingBodyLanguage()
-            val speakResult = ttsRepository.speak(textForTts)
+            val speakResult = ttsRepository.speak(textForTts, currentSpeechProsody())
             if (speakResult.isSuccess && !ttsInterruptHandled) {
                 markPendingAnnouncedNotificationRead()
                 resumeListeningAfterAssistantTurn()
@@ -3011,6 +3186,12 @@ class ConversationViewModel(
             stopSpeakingBodyLanguage()
         }
     }
+
+    private fun currentSpeechProsody(): TtsProsody =
+        MoodProsodyMapper.forSpeech(
+            mood = moodManager.currentMood.value,
+            ephemeral = moodManager.ephemeralExpression.value,
+        )
 
     private fun isSpeakingPhase(): Boolean =
         _uiState.value.phase is ConversationPhase.Speaking
@@ -3183,11 +3364,24 @@ class ConversationViewModel(
     private fun isNightModeNow(): Boolean = NightModeHelper.isNightMode(nightModeConfig)
 
     private fun applyMoodTriggerForUserPhrase(phrase: String) {
-        when (UserInteractionToneDetector.detect(phrase)) {
-            UserInteractionTone.APOLOGY -> moodManager.recordApology()
-            UserInteractionTone.POSITIVE -> moodManager.recordPositiveInteraction()
-            UserInteractionTone.NEGATIVE -> moodManager.recordNegativeInteraction()
-            UserInteractionTone.NEUTRAL -> moodManager.touchLastInteraction()
+        lastLlmUserTone = null
+        moodManager.recordVoiceTurn(phrase)
+    }
+
+    private fun applyAssistantTurnEmotion(
+        emotion: RobotEmotion?,
+        rewardTaskCompletion: Boolean = false,
+    ) {
+        val resolvedEmotion = emotion ?: lastLlmEmotion
+        val hadToolSuccess = rewardTaskCompletion &&
+            !LlmEmotionValenceMapper.hasNegativeValenceImpact(resolvedEmotion)
+        if (hadToolSuccess) {
+            moodManager.recordToolSuccessInSession()
+        }
+        moodManager.applyLlmTurnEmotion(resolvedEmotion, userTone = lastLlmUserTone)
+        lastLlmUserTone = null
+        if (hadToolSuccess) {
+            moodManager.recordTaskCompletedUseful()
         }
     }
 
@@ -3311,22 +3505,99 @@ class ConversationViewModel(
             }
         }
         viewModelScope.launch {
-            while (true) {
+            while (isActive && _uiState.value.isHotwordListeningActive) {
                 delay(MOOD_RECHECK_MS)
+                if (!_uiState.value.isHotwordListeningActive) continue
+                val phase = _uiState.value.phase
+                if (phase is ConversationPhase.WaitingForHotword) {
+                    moodManager.checkHotwordListeningIdle()
+                }
                 moodManager.checkIdleTransition()
                 moodManager.checkDecay()
                 refreshUiEmotionFromMood()
                 workingMemoryRepository.checkAndResetIfNewDay()
-                userAwarenessRepository.checkAndResetIfNewDay()
                 proactiveTracker.recordIgnoredIfTimedOut()
                 checkAndTriggerReflection()
+                pollPredictivityDeviation()
+                pollWellnessCheck()
             }
+        }.also { moodTickJob = it }
+    }
+
+    private suspend fun pollWellnessCheck() {
+        if (!VoiceSessionState.isActive) return
+        val uiState = _uiState.value
+        if (uiState.phase is ConversationPhase.Thinking || uiState.phase is ConversationPhase.Speaking) return
+        if (llmJob?.isActive == true) return
+
+        val bodySettings = bodySettingsRepository.load()
+        val enabledWellness = attentionDomainRepository.enabledWellnessDomains()
+        val enabledDomainIds = enabledWellness.map { it.id }.toSet()
+        val customDomains = enabledWellness
+            .filter { !it.isBuiltIn }
+            .mapNotNull { domain ->
+                val prompt = domain.userPrompt?.trim().orEmpty()
+                if (prompt.isBlank()) return@mapNotNull null
+                WellnessCustomDomain(
+                    id = domain.id,
+                    displayName = domain.displayName,
+                    prompt = prompt,
+                )
+            }
+        val context = WellnessWatchContext(
+            heartbeatSettings = heartbeatSettingsRepository.load(),
+            proactivitySettings = proactivitySettingsRepository.load(),
+            workingMemory = workingMemoryRepository.load(),
+            robotContext = robotContextRepository.getStoredState(),
+            micSessionActive = VoiceSessionState.isActive,
+            bodyConfigured = bodySettings.isConfigured(),
+            bodyReachable = BodyReachability.isReachable(bodySettings),
+            llmBusy = llmJob?.isActive == true,
+            isNightMode = uiState.isNightMode,
+            enabledDomainIds = enabledDomainIds,
+        )
+        val phase = wellnessWatcher.nextPhase(context) ?: return
+        val input = wellnessContextBuilder.build(
+            phase = phase,
+            bodyConfigured = bodySettings.isConfigured(),
+            bodyReachable = BodyReachability.isReachable(bodySettings),
+            enabledDomainIds = enabledDomainIds,
+            customDomains = customDomains,
+        )
+        if (phase == WellnessPhase.VISUAL_ORDER) {
+            workingMemoryRepository.recordWellnessVisualDone()
+        } else {
+            workingMemoryRepository.recordWellnessCheckDone()
         }
+        wellnessCheckOrchestrator.dispatch(input)
+    }
+
+    private suspend fun pollPredictivityDeviation() {
+        if (!VoiceSessionState.isActive) return
+        val uiState = _uiState.value
+        if (uiState.phase is ConversationPhase.Thinking || uiState.phase is ConversationPhase.Speaking) return
+        if (llmJob?.isActive == true) return
+
+        val bodySettings = bodySettingsRepository.load()
+        val context = DeviationWatchContext(
+            heartbeatSettings = heartbeatSettingsRepository.load(),
+            proactivitySettings = proactivitySettingsRepository.load(),
+            workingMemory = workingMemoryRepository.load(),
+            robotContext = robotContextRepository.getStoredState(),
+            bodyConfigured = bodySettings.isConfigured(),
+            bodyReachable = BodyReachability.isReachable(bodySettings),
+            micSessionActive = VoiceSessionState.isActive,
+        )
+        val slot = deviationWatcher.findCandidate(context) ?: return
+        workingMemoryRepository.recordDeviationAsked(slot.slotKey)
+        predictivityDeviationOrchestrator.dispatch(slot)
     }
 
     private fun stopMoodMonitor() {
         moodMonitorJob?.cancel()
         moodMonitorJob = null
+        moodTickJob?.cancel()
+        moodTickJob = null
         bodyExpressionController.cancel()
     }
 
@@ -3559,13 +3830,13 @@ class ConversationViewModel(
         conversationLogBeforeCurrentTurn = state.conversationLog
 
         currentInputIsHeartbeat = envelope.input is RobotInput.Heartbeat
+        currentInputIsPredictivityDeviation = envelope.input is RobotInput.PredictivityDeviation
+        currentInputIsWellnessCheck = envelope.input is RobotInput.WellnessCheck
+        currentWellnessPhase = (envelope.input as? RobotInput.WellnessCheck)?.phase
         if (envelope.input is RobotInput.Heartbeat) {
             val hb = envelope.input
             currentHeartbeatDomainId = hb.activeDomainId
             currentHeartbeatDomainName = hb.activeDomainName
-            currentHeartbeatDomainSensitivity = hb.activeDomainSensitivity?.let { name ->
-                runCatching { DomainSensitivity.valueOf(name) }.getOrNull()
-            }
             currentHeartbeatInterventions = hb.recentInterventionsOnDomain
         } else {
             clearHeartbeatDomainContext()
@@ -3588,6 +3859,8 @@ class ConversationViewModel(
             is RobotInput.SensorReading -> input.sensorType
             is RobotInput.Heartbeat -> "Heartbeat"
             is RobotInput.WeeklyReflection -> "Riflessione"
+            is RobotInput.PredictivityDeviation -> "Predittività"
+            is RobotInput.WellnessCheck -> "Wellness"
         }
         val summaryText = when (val input = envelope.input) {
             is RobotInput.Notification -> input.text ?: input.title ?: "Nuova notifica"
@@ -3596,6 +3869,11 @@ class ConversationViewModel(
             is RobotInput.SensorReading -> "${input.value} ${input.unit}"
             is RobotInput.Heartbeat -> "tick autonomo"
             is RobotInput.WeeklyReflection -> "auto-analisi settimanale"
+            is RobotInput.PredictivityDeviation -> "deviazione abitudine"
+            is RobotInput.WellnessCheck -> when (input.phase) {
+                WellnessPhase.VISUAL_ORDER -> "controllo ordine (silenzioso)"
+                WellnessPhase.DOMAIN_SCORE -> "check wellness"
+            }
         }
 
         _uiState.update {
@@ -3651,39 +3929,7 @@ class ConversationViewModel(
     private fun clearHeartbeatDomainContext() {
         currentHeartbeatDomainId = null
         currentHeartbeatDomainName = null
-        currentHeartbeatDomainSensitivity = null
         currentHeartbeatInterventions = emptyList()
-    }
-
-    private sealed interface CriticPassOutcome {
-        data object Unchanged : CriticPassOutcome
-        data object Blocked : CriticPassOutcome
-        data class Modified(val text: String) : CriticPassOutcome
-    }
-
-    private suspend fun applyCriticPassIfNeeded(proposal: String): CriticPassOutcome {
-        if (proposal.isBlank()) return CriticPassOutcome.Unchanged
-        if (currentHeartbeatDomainSensitivity != DomainSensitivity.HIGH) {
-            return CriticPassOutcome.Unchanged
-        }
-        val domainId = currentHeartbeatDomainId ?: return CriticPassOutcome.Unchanged
-
-        val criticResult = reasoningEngine.processCriticPass(
-            proposal = proposal,
-            domainId = domainId,
-            domainName = currentHeartbeatDomainName,
-            recentInterventions = currentHeartbeatInterventions,
-        )
-
-        return when (criticResult) {
-            CriticResult.Block -> CriticPassOutcome.Blocked
-            is CriticResult.Modify -> CriticPassOutcome.Modified(criticResult.text)
-            is CriticResult.Approve -> CriticPassOutcome.Unchanged
-            is CriticResult.Failed -> {
-                Log.w(TAG, "Critic pass failed: ${criticResult.message}")
-                CriticPassOutcome.Unchanged
-            }
-        }
     }
 
     override fun onCleared() {
@@ -3697,6 +3943,7 @@ class ConversationViewModel(
         }
         memoryExtractionScheduler.stop()
         activityLogExtractionScheduler.stop()
+        VisionCameraLifecycleCoordinator.setPresenceResumeHandler(null)
         deskPresenceMonitor.stop()
         VoiceSessionState.setActive(false)
         super.onCleared()

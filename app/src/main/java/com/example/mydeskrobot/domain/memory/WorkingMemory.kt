@@ -8,8 +8,6 @@ package com.example.mydeskrobot.domain.memory
 data class WorkingMemory(
     /** Number of user interactions today. */
     val todayInteractions: Int = 0,
-    /** Inferred mood of the user from recent interactions (e.g., "stressed", "relaxed"). */
-    val lastUserMood: String? = null,
     /** Topics discussed today (to avoid repetition). */
     val topicsDiscussedToday: List<String> = emptyList(),
     /** Number of proactive (heartbeat) speaks today. */
@@ -18,6 +16,18 @@ data class WorkingMemory(
     val ignoredSuggestionsToday: Int = 0,
     /** Timestamp of the last proactive speak (to enforce cooldown). */
     val lastProactiveSpeakMillis: Long? = null,
+    /** Timestamp of the last completed user voice turn. */
+    val lastUserTurnMillis: Long? = null,
+    /** Habit slot keys already asked for deviation today (dedup). */
+    val deviationAskedSlotKeysToday: Set<String> = emptySet(),
+    /** Habit slots user confirmed skipping today (no repeat deviation ask). */
+    val deviationSuppressedSlotKeysToday: Set<String> = emptySet(),
+    /** Timestamp of first hotword-on today (wellness anchor). */
+    val firstHotwordOnTodayMs: Long? = null,
+    /** Wellness domain score check completed today (speak or silent). */
+    val wellnessCheckDoneToday: Boolean = false,
+    /** Silent room-order visual phase completed today (wellness + body). */
+    val wellnessVisualDoneToday: Boolean = false,
     /** The date this memory belongs to (YYYYMMDD format for easy comparison). */
     val dateKey: Int = 0,
 ) {
@@ -50,17 +60,38 @@ data class WorkingMemory(
             lastProactiveSpeakMillis = timestamp,
         )
 
+    fun withUserTurn(timestamp: Long = System.currentTimeMillis()): WorkingMemory =
+        copy(lastUserTurnMillis = timestamp)
+
+    fun withDeviationAsked(slotKey: String): WorkingMemory {
+        if (deviationAskedSlotKeysToday.contains(slotKey)) return this
+        return copy(deviationAskedSlotKeysToday = deviationAskedSlotKeysToday + slotKey)
+    }
+
+    fun withDeviationSuppressed(slotKey: String): WorkingMemory {
+        if (deviationSuppressedSlotKeysToday.contains(slotKey)) return this
+        return copy(deviationSuppressedSlotKeysToday = deviationSuppressedSlotKeysToday + slotKey)
+    }
+
+    fun withFirstHotwordOn(timestamp: Long): WorkingMemory {
+        if (firstHotwordOnTodayMs != null) return this
+        return copy(firstHotwordOnTodayMs = timestamp)
+    }
+
+    fun withWellnessCheckDone(): WorkingMemory = copy(wellnessCheckDoneToday = true)
+
+    fun withWellnessVisualDone(): WorkingMemory = copy(wellnessVisualDoneToday = true)
+
+    fun minutesSinceLastUserTurn(now: Long = System.currentTimeMillis()): Long? {
+        val last = lastUserTurnMillis ?: return null
+        return (now - last) / 60_000L
+    }
+
     /**
      * Record an ignored suggestion.
      */
     fun withIgnoredSuggestion(): WorkingMemory =
         copy(ignoredSuggestionsToday = ignoredSuggestionsToday + 1)
-
-    /**
-     * Update inferred user mood.
-     */
-    fun withUserMood(mood: String?): WorkingMemory =
-        copy(lastUserMood = mood)
 
     /**
      * Minutes since the last proactive speak.

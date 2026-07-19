@@ -30,6 +30,7 @@ class InputSettingsRepository(
          */
         val DEFAULT_ALLOWED_PACKAGES = setOf(
             "com.whatsapp",
+            "com.microsoft.teams",
             "org.telegram.messenger",
             "com.google.android.apps.messaging",
             "com.google.android.gm",
@@ -41,6 +42,7 @@ class InputSettingsRepository(
          */
         val KNOWN_APPS = mapOf(
             "com.whatsapp" to "WhatsApp",
+            "com.microsoft.teams" to "Microsoft Teams",
             "org.telegram.messenger" to "Telegram",
             "com.google.android.apps.messaging" to "Messaggi (Google)",
             "com.google.android.gm" to "Gmail",

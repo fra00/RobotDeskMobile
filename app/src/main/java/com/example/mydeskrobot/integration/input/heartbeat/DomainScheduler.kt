@@ -53,6 +53,7 @@ class DomainScheduler(
 
     private fun isDue(domain: AttentionDomainState, now: Calendar): Boolean {
         return when (val trigger = domain.trigger) {
+            is DomainTrigger.Wellness -> false
             is DomainTrigger.Event -> eventBus.consume(trigger.eventId)
             is DomainTrigger.TimeDaily -> isDailyDue(trigger, now)
             is DomainTrigger.TimeWeekly -> isWeeklyDue(trigger, now)

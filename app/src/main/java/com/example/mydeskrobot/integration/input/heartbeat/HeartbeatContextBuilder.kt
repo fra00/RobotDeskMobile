@@ -2,7 +2,6 @@ package com.example.mydeskrobot.integration.input.heartbeat
 
 import com.example.mydeskrobot.data.activitylog.ActivityLogRepository
 import com.example.mydeskrobot.data.scheduled.ScheduledTaskRepository
-import com.example.mydeskrobot.domain.awareness.UserAwarenessState
 import com.example.mydeskrobot.domain.memory.WorkingMemory
 import com.example.mydeskrobot.domain.mood.RobotMood
 import com.example.mydeskrobot.memory.db.MemoryCategory
@@ -21,7 +20,6 @@ class HeartbeatContextBuilder(
     private val lastInteractionProvider: () -> Long,
     private val currentMoodProvider: (suspend () -> RobotMood?)? = null,
     private val workingMemoryProvider: (suspend () -> WorkingMemory?)? = null,
-    private val userAwarenessProvider: (suspend () -> UserAwarenessState?)? = null,
     private val activityLogRepository: ActivityLogRepository? = null,
     private val spatialSnapshotProvider: (suspend () -> com.example.mydeskrobot.domain.spatial.SpatialContextSnapshot)? = null,
     private val knownPlacesProvider: (suspend () -> List<String>)? = null,
@@ -60,10 +58,6 @@ class HeartbeatContextBuilder(
 
         val workingMemory = workingMemoryProvider?.invoke()
 
-        val userAwareness = userAwarenessProvider?.invoke()
-        val userMood = userAwareness?.inferredMood?.name?.lowercase()
-        val userKnows = userAwareness?.userProbablyKnows?.toList()?.take(MAX_USER_KNOWS)
-
         val habitSummary = activityLogRepository?.getHabitSummary()?.summaryText
         val recentActivities = activityLogRepository
             ?.getRecentPhysicalForContext(maxEvents = MAX_RECENT_ACTIVITIES, daysBack = 1)
@@ -90,8 +84,6 @@ class HeartbeatContextBuilder(
             proactiveSpeaksToday = workingMemory?.proactiveSpeaksToday ?: 0,
             topicsDiscussedToday = workingMemory?.topicsDiscussedToday ?: emptyList(),
             minutesSinceLastProactiveSpeak = workingMemory?.minutesSinceLastProactiveSpeak(now),
-            userMood = userMood,
-            userProbablyKnows = userKnows ?: emptyList(),
             activeIntents = activeIntents,
             recentObservations = recentObservations,
             activePatterns = activePatterns,
@@ -111,7 +103,6 @@ class HeartbeatContextBuilder(
 
     companion object {
         private const val MAX_ROUTINES = 5
-        private const val MAX_USER_KNOWS = 10
         private const val MAX_INTENTS = 3
         private const val MAX_OBSERVATIONS = 8
         private const val MAX_PATTERNS = 3

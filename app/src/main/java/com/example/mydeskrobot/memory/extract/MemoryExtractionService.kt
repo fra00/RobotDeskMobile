@@ -26,13 +26,14 @@ internal data class MemoryFactPayload(
     val category: String? = null,
     val value: String? = null,
     val confidence: Float? = null,
+    val pinned: Boolean? = null,
 )
 
 class MemoryExtractionService(
     private val llmClient: LlmClient,
     private val unifiedMemoryRepository: UnifiedMemoryRepository,
     private val extractorPrompt: String,
-    private val maxMemoryItems: Int = 300,
+    private val maxMemoryItems: Int = UnifiedMemoryRepository.USER_FACING_MAX_ITEMS,
 ) {
     private val moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
     private val adapter = moshi.adapter(MemoryExtractionPayload::class.java)
@@ -91,6 +92,7 @@ class MemoryExtractionService(
                 confidence = confidence,
                 source = MemoryDocumentSource.EXTRACTOR,
                 sourceMessageId = sourceMessageId,
+                isPinned = fact.pinned == true,
             )
             if (id >= 0L) saved++
         }

@@ -7,7 +7,7 @@ import com.example.mydeskrobot.domain.model.RobotEmotion
  */
 object MoodPromptFormatter {
 
-    fun format(mood: RobotMood): String {
+    fun format(mood: RobotMood, promptHints: List<String> = emptyList()): String {
         val emotion = mood.baseEmotion.name.lowercase()
         val intensityPct = (mood.intensity * 100).toInt()
         val reasonLine = mood.reason?.let { formatReason(it) }.orEmpty()
@@ -27,14 +27,21 @@ object MoodPromptFormatter {
                 }
                 appendLine("- Ultimi eventi: $events")
             }
-            appendLine("- Regola: il campo JSON emotion è espressione IMMEDIATA del turno (effimera); il benessere qui sopra è lo stato di fondo.")
-            appendLine("- Allinea tono e reply al benessere; emotion può divergere brevemente (es. angry teatrale con valenza positiva).")
+            appendLine("- Regola: emotion sul turno finale aggiorna occhi (effimero). Valenza di fondo sale con presenza utile, scende con noia/critiche; happy/loving routinari non alzano la valenza.")
+            appendLine("- Default conversazione: emotion neutral o thinking; happy solo per eventi emotivi reali (elogio, affetto, buona notizia).")
+            appendLine("- Critiche all'utente verso di te (imperfetto, deluso, arrabbiato): rispondi con tono adeguato e emotion sad o angry — non happy routinario.")
+            promptHints.forEach { hint ->
+                appendLine("- Contesto turno: $hint")
+            }
             if (mood.reason == MoodReason.NIGHT_TIME) {
                 appendLine("- Interazione notturna legittima: rispondi breve e stanco, senza tono colpevole verso l'utente.")
             }
             if (mood.reason == MoodReason.EYE_POKE) {
                 appendLine("- Scuse sincere dell'utente possono ammorbidire il tono; non diventare subito entusiasta.")
             }
+            val replyStyle = MoodReplyStyleResolver.resolve(mood)
+            appendLine("- Profilo stile: ${replyStyle.name.lowercase()}")
+            MoodReplyStyleResolver.promptLines(replyStyle).forEach { appendLine(it) }
         }.trim()
     }
 
@@ -42,13 +49,12 @@ object MoodPromptFormatter {
         MoodReason.EYE_POKE -> "poke_occhi"
         MoodReason.USER_APOLOGY -> "scusa_utente"
         MoodReason.IDLE_LONG -> "idle_lungo"
+        MoodReason.IDLE_LISTENING -> "ascolto_hotword_senza_voce"
+        MoodReason.CONVERSATION_FATIGUE -> "fatica_conversazione"
+        MoodReason.VOICE_TURN_PRESENCE -> "presenza_vocale"
         MoodReason.IDLE_VERY_LONG -> "idle_molto_lungo"
         MoodReason.NIGHT_TIME -> "notte"
-        MoodReason.POSITIVE_INTERACTION -> "interazione_positiva"
-        MoodReason.NEGATIVE_INTERACTION -> "interazione_negativa"
         MoodReason.TASK_COMPLETED -> "task_completato"
-        MoodReason.REMINDER_URGENT -> "promemoria_urgente"
-        MoodReason.USER_RETURNED -> "utente_tornato"
-        MoodReason.HEARTBEAT_SUPPRESSED -> "heartbeat_soppresso"
+        MoodReason.LLM_EXPRESSION -> "espressione_llm"
     }
 }

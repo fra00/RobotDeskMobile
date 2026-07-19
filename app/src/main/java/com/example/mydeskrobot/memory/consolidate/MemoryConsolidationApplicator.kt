@@ -2,6 +2,7 @@ package com.example.mydeskrobot.memory.consolidate
 
 import com.example.mydeskrobot.memory.MemoryDuplicateDetector
 import com.example.mydeskrobot.memory.MemoryTopicMatcher
+import com.example.mydeskrobot.memory.RoutineWeekdayScope
 import com.example.mydeskrobot.memory.db.MemoryCategory
 
 /**
@@ -23,6 +24,7 @@ object MemoryConsolidationApplicator {
         val lastUsedAt: Long = 0L,
         val updatedAt: Long = 0L,
         val createdAt: Long = 0L,
+        val isPinned: Boolean = false,
     )
 
     data class RowUpdate(
@@ -49,7 +51,8 @@ object MemoryConsolidationApplicator {
 
         for (line in consolidated) {
             val cluster = active.filter { row ->
-                row.id !in claimed &&
+                !row.isPinned &&
+                    row.id !in claimed &&
                     row.id !in deactivate &&
                     matches(row, line)
             }
@@ -99,6 +102,11 @@ object MemoryConsolidationApplicator {
     }
 
     private fun matches(row: MemoryRow, line: ConsolidatedMemoryLine): Boolean {
+        if (row.category == MemoryCategory.ROUTINE &&
+            RoutineWeekdayScope.hasDistinctWeekdayScope(row.value, line.value)
+        ) {
+            return false
+        }
         if (MemoryDuplicateDetector.areDuplicates(row.value, line.value, line.category)) return true
         if (MemoryDuplicateDetector.areDuplicates(row.value, line.value, row.category)) return true
         return topicMatchSameCategory(row, line) || isAbsorbedByConsolidatedLine(row, line)

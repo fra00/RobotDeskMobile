@@ -8,8 +8,8 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.example.mydeskrobot.domain.heartbeat.AttentionDomain
 import com.example.mydeskrobot.domain.heartbeat.AttentionDomainState
-import com.example.mydeskrobot.domain.heartbeat.DomainSensitivity
 import com.example.mydeskrobot.domain.heartbeat.DomainTrigger
+import com.example.mydeskrobot.domain.wellness.WellnessDomains
 import kotlinx.coroutines.flow.first
 import org.json.JSONArray
 import org.json.JSONObject
@@ -22,51 +22,42 @@ private val Context.attentionDomainsDataStore: DataStore<Preferences> by prefere
 class AttentionDomainRepository(
     private val context: Context,
 ) {
+    companion object {
+        private val KEY_JSON = stringPreferencesKey("attention_domains_json")
+    }
+
     val builtInCatalog: List<AttentionDomain> = listOf(
         AttentionDomain(
-            id = "pasti",
-            displayName = "Pasti",
+            id = WellnessDomains.MEALS,
+            displayName = WellnessDomains.DISPLAY_NAMES.getValue(WellnessDomains.MEALS),
             promptAsset = "prompts/domains/pasti.txt",
-            trigger = DomainTrigger.TimeDaily(hour = 12, endHourExclusive = 14),
-            sensitivity = DomainSensitivity.MEDIUM,
+            trigger = DomainTrigger.Wellness,
             requiresPresenceCheck = true,
         ),
         AttentionDomain(
-            id = "attivita_fisica",
-            displayName = "Attività fisica",
+            id = WellnessDomains.MOVEMENT,
+            displayName = WellnessDomains.DISPLAY_NAMES.getValue(WellnessDomains.MOVEMENT),
             promptAsset = "prompts/domains/attivita_fisica.txt",
-            trigger = DomainTrigger.TimeDaily(hour = 20),
-            sensitivity = DomainSensitivity.MEDIUM,
+            trigger = DomainTrigger.Wellness,
         ),
         AttentionDomain(
-            id = "carico_lavoro",
-            displayName = "Carico di lavoro",
+            id = WellnessDomains.WORKLOAD,
+            displayName = WellnessDomains.DISPLAY_NAMES.getValue(WellnessDomains.WORKLOAD),
             promptAsset = "prompts/domains/carico_lavoro.txt",
-            trigger = DomainTrigger.TimeDaily(hour = 19),
-            sensitivity = DomainSensitivity.HIGH,
+            trigger = DomainTrigger.Wellness,
             requiresPresenceCheck = true,
         ),
         AttentionDomain(
-            id = "contatti_sociali",
-            displayName = "Contatti sociali",
+            id = WellnessDomains.SOCIAL,
+            displayName = WellnessDomains.DISPLAY_NAMES.getValue(WellnessDomains.SOCIAL),
             promptAsset = "prompts/domains/contatti_sociali.txt",
-            trigger = DomainTrigger.TimeWeekly(dayOfWeek = Calendar.MONDAY),
-            sensitivity = DomainSensitivity.HIGH,
+            trigger = DomainTrigger.Wellness,
         ),
         AttentionDomain(
-            id = "ordine_ambiente",
-            displayName = "Ordine ambiente",
+            id = WellnessDomains.ORDER,
+            displayName = WellnessDomains.DISPLAY_NAMES.getValue(WellnessDomains.ORDER),
             promptAsset = "prompts/domains/ordine_ambiente.txt",
-            trigger = DomainTrigger.Event(eventId = "nuova_foto"),
-            sensitivity = DomainSensitivity.LOW,
-            canUseCamera = true,
-        ),
-        AttentionDomain(
-            id = "spatial",
-            displayName = "Stanze",
-            promptAsset = "prompts/domains/spatial.txt",
-            trigger = DomainTrigger.Event(eventId = "cambio_stanza"),
-            sensitivity = DomainSensitivity.LOW,
+            trigger = DomainTrigger.Wellness,
             canUseCamera = true,
         ),
     )
@@ -82,12 +73,32 @@ class AttentionDomainRepository(
                 userPrompt = persisted?.userPrompt,
             )
         }
-        val custom = saved.filter { !it.isBuiltIn }.map { it.toState() }
+        val custom = saved
+            .filter { !it.isBuiltIn && it.id !in WellnessDomains.ALL && it.id != "spatial" }
+            .map { persisted ->
+                persisted.toState().copy(trigger = DomainTrigger.Wellness)
+            }
         return builtInStates + custom
     }
 
     suspend fun enabledDomains(): List<AttentionDomainState> =
         listStates().filter { it.enabled }
+
+    /** Domains enabled for the unified Wellness check (built-in care + user custom). */
+    suspend fun enabledWellnessDomains(): List<AttentionDomainState> =
+        listStates().filter { it.enabled }
+
+    suspend fun enabledWellnessDomainIds(): Set<String> =
+        enabledWellnessDomains().map { it.id }.toSet()
+
+    /**
+     * Heartbeat no longer schedules attention domains — care and custom run on Wellness only.
+     * Kept for API compatibility; always empty.
+     */
+    suspend fun enabledHeartbeatDomains(): List<AttentionDomainState> = emptyList()
+
+    @Deprecated("Use enabledWellnessDomainIds()", ReplaceWith("enabledWellnessDomainIds()"))
+    suspend fun enabledCareDomainIds(): Set<String> = enabledWellnessDomainIds()
 
     suspend fun saveStates(states: List<AttentionDomainState>) {
         val array = JSONArray()
@@ -115,10 +126,6 @@ class AttentionDomainRepository(
             }
         }.getOrDefault(emptyList())
     }
-
-    companion object {
-        private val KEY_JSON = stringPreferencesKey("attention_domains_json")
-    }
 }
 
 private data class PersistedDomain(
@@ -132,13 +139,13 @@ private data class PersistedDomain(
     val triggerEndHour: Int?,
     val triggerDayOfWeek: Int,
     val triggerEventId: String?,
-    val sensitivity: String,
     val lastCheckedAt: Long?,
     val requiresPresenceCheck: Boolean,
     val canUseCamera: Boolean,
 ) {
     fun toState(): AttentionDomainState {
         val trigger = when (triggerType) {
+            "WELLNESS" -> DomainTrigger.Wellness
             "TIME_DAILY" -> DomainTrigger.TimeDaily(
                 hour = triggerHour,
                 endHourExclusive = triggerEndHour,
@@ -147,9 +154,6 @@ private data class PersistedDomain(
             "EVENT" -> DomainTrigger.Event(eventId = triggerEventId.orEmpty())
             else -> DomainTrigger.TimeDaily(hour = triggerHour)
         }
-        val sensitivityEnum = runCatching {
-            DomainSensitivity.valueOf(sensitivity)
-        }.getOrDefault(DomainSensitivity.MEDIUM)
 
         return AttentionDomainState(
             id = id,
@@ -158,7 +162,6 @@ private data class PersistedDomain(
             isBuiltIn = isBuiltIn,
             userPrompt = userPrompt,
             trigger = trigger,
-            sensitivity = sensitivityEnum,
             lastCheckedAt = lastCheckedAt,
             requiresPresenceCheck = requiresPresenceCheck,
             canUseCamera = canUseCamera,
@@ -177,7 +180,6 @@ private data class PersistedDomain(
             triggerEndHour = obj.optInt("triggerEndHour", -1).takeIf { it >= 0 },
             triggerDayOfWeek = obj.optInt("triggerDayOfWeek", Calendar.MONDAY),
             triggerEventId = obj.optString("triggerEventId").takeIf { it.isNotBlank() },
-            sensitivity = obj.optString("sensitivity", "MEDIUM"),
             lastCheckedAt = obj.optLong("lastCheckedAt").takeIf { it > 0L },
             requiresPresenceCheck = obj.optBoolean("requiresPresenceCheck", false),
             canUseCamera = obj.optBoolean("canUseCamera", false),
@@ -196,7 +198,6 @@ private fun AttentionDomain.toState(
     isBuiltIn = isBuiltIn,
     userPrompt = userPrompt,
     trigger = trigger,
-    sensitivity = sensitivity,
     lastCheckedAt = lastCheckedAt,
     requiresPresenceCheck = requiresPresenceCheck,
     canUseCamera = canUseCamera,
@@ -210,6 +211,9 @@ private fun AttentionDomainState.toJson(): JSONObject {
     obj.put("isBuiltIn", isBuiltIn)
     userPrompt?.let { obj.put("userPrompt", it) }
     when (val t = trigger) {
+        is DomainTrigger.Wellness -> {
+            obj.put("triggerType", "WELLNESS")
+        }
         is DomainTrigger.TimeDaily -> {
             obj.put("triggerType", "TIME_DAILY")
             obj.put("triggerHour", t.hour)
@@ -224,7 +228,6 @@ private fun AttentionDomainState.toJson(): JSONObject {
             obj.put("triggerEventId", t.eventId)
         }
     }
-    obj.put("sensitivity", sensitivity.name)
     lastCheckedAt?.let { obj.put("lastCheckedAt", it) }
     obj.put("requiresPresenceCheck", requiresPresenceCheck)
     obj.put("canUseCamera", canUseCamera)

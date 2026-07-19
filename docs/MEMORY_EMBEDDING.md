@@ -81,4 +81,4 @@ Developer benchmark on PC remains optional — see setup above.
 | Golden set | `memory/unified/embedding/MemoryEmbeddingGoldenSet.kt` |
 | Calibrator | `memory/unified/embedding/MemorySearchCalibrator.kt` |
 
-See also `docs/Drafts/UNIFIED_MEMORY_RAG_PLAN.md` §7 and §11 (Fase 0).
+See also `docs/MEMORY.md` (unified recall) and `docs/MEMORY_RECALL_PLANNER.md` (voice planner).

@@ -145,7 +145,7 @@ class BodyExpressionMapperTest {
         val current = RobotMood.fromValence(
             valence = -0.35f,
             since = now,
-            reason = MoodReason.NEGATIVE_INTERACTION,
+            reason = MoodReason.LLM_EXPRESSION,
             forceEmotion = RobotEmotion.SAD,
             forceIntensity = 0.55f,
         )

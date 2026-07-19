@@ -34,6 +34,7 @@
         </intent>
         <package android:name="com.spotify.music" />
         <package android:name="com.whatsapp" />
+        <package android:name="com.microsoft.teams" />
         <intent>
             <action android:name="android.intent.action.DIAL" />
             <data android:scheme="tel" />

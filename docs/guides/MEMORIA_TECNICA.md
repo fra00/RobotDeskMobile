@@ -40,7 +40,7 @@ Definiti in `app/src/main/java/com/example/mydeskrobot/memory/unified/MemoryDocu
 
 | Kind | Contenuto tipico |
 |------|------------------|
-| `USER_FACT` | Memoria fattuale (IDENTITY, PREFERENCE, ROUTINE, FACT) |
+| `USER_FACT` | Memoria fattuale (IDENTITY, PREFERENCE, ROUTINE, FACT); colonna opzionale `isPinned` |
 | `EPISODE` | Proiezione Log Day / notifiche |
 | `REMINDER` | Proiezione promemoria |
 | `LIST_ITEM` | Proiezione liste |
@@ -209,45 +209,40 @@ Il planner LLM espande parafrasi in `search_queries` (“che lavoro” → profe
 
 ### `upsertUserFacingFact` (memoria fattuale)
 
-```827:865:app/src/main/java/com/example/mydeskrobot/memory/unified/UnifiedMemoryRepository.kt
-    suspend fun upsertUserFacingFact(
-        category: MemoryCategory,
-        value: String,
-        confidence: Float,
-        source: MemoryDocumentSource,
-        sourceMessageId: Long = 0L,
-    ): Long {
-        require(MemoryCategory.isUserFacing(category)) { ... }
-        // dedup semantico findUserFacingDuplicate
-        // MemorySafetyPinDetector per allergie/emergenze
-        return upsertDocument(entity)
-    }
-```
+Entry: [`UnifiedMemoryRepository.upsertUserFacingFact`](../app/src/main/java/com/example/mydeskrobot/memory/unified/UnifiedMemoryRepository.kt).
+
+- **Dedup write path:** **exact match only** — same `category` + normalized value (`MemoryExactMatch`; trim, lowercase, collapsed whitespace). No semantic/fuzzy merge on save.
+- **`isPinned`:** optional on upsert; OR-merge on exact-match update (pinned wins). Set by LLM via `save_memory` / extractor `pinned: true`. Excluded from `pruneIfNeeded` and from consolidation LLM input.
+- **Not used on write:** `MemoryDuplicateDetector`, `MemorySafetyPinDetector` (Level 1 keyword pin removed from runtime).
 
 Categorie user-facing: `MemoryCategory.USER_FACING` = IDENTITY, PREFERENCE, ROUTINE, FACT.
+
+### Estrazione automatica fatti
+
+`MemoryExtractionScheduler` (loop standby):
+
+1. Se `enabled`: delta righe nuove dal `conversationLog` → `MemoryExtractionService` → `upsertUserFacingFact(source = EXTRACTOR)` (optional `pinned` from JSON).
+2. `pruneIfNeeded` se oltre cap (~300, escluse pinned).
+3. **`onAfterCycle`:** `MemoryReorganizeService.runAutoIfDue()` se `auto_reorganize_enabled` (valuta gate indipendentemente da `enabled` estrazione).
+
+### Consolidazione LLM (Riorganizza)
+
+Orchestrazione: [`MemoryReorganizeService`](../app/src/main/java/com/example/mydeskrobot/memory/MemoryReorganizeService.kt) + [`MemoryReorganizePolicy`](../app/src/main/java/com/example/mydeskrobot/memory/MemoryReorganizePolicy.kt).
+
+| Trigger | Entry | `force` consolidation |
+|---------|-------|------------------------|
+| Auto (standby) | `MemoryExtractionScheduler` → `runAutoIfDue()` | false |
+| Manuale UI | `ConversationViewModel.reorganizeMemoryManual()` | true |
+
+**Gate (configurabile in DataStore):** min user-facing rows (default 100), cooldown days since last success (default 7), LLM configured. Shared timestamp `last_manual_reorganize_at_ms` for auto and manual.
+
+**Pipeline:** `MemoryConsolidationService.consolidateIfNeeded` → `replaceUserFacingWithConsolidated` (pinned esclusi da input e da `deactivateIds`) → `reorganize()` / `pruneIfNeeded` (cap 300).
+
+Semantic merge **solo** in consolidation (`MemoryConsolidationApplicator`, `MemoryConsolidationCoverage`), non al save.
 
 ### `UnifiedMemoryWriter.saveEpisode` (pattern operativo + indice)
 
 Scrive prima su `ActivityLogRepository`, poi proietta su `memory_documents` con `saveEpisodeProjection` (dayKey, actor, `isUnread`, `rawPhrase` nel value).
-
-### Estrazione automatica fatti
-
-`MemoryExtractionScheduler` (standby + `enabled`):
-
-1. Delta righe nuove dal `conversationLog`
-2. `MemoryExtractionService` → LLM + `memory_extractor_prompt.txt`
-3. `upsertUserFacingFact(source = EXTRACTOR)`
-4. `reorganize()` dedup
-5. Callback `onAfterCycle` → `MemoryConsolidationService.consolidateIfNeeded`
-
-### Consolidazione
-
-`MemoryConsolidationService` (≥3 righe, hash contenuto cambiato o `force=true`):
-
-1. LLM + `memory_consolidation_prompt.txt`
-2. `MemoryConsolidationParser` + `MemoryConsolidationCoverage` (anti-perdita righe)
-3. `replaceUserFacingWithConsolidated` in-place (id e useCount preservati dove possibile)
-4. Backup JSON in DataStore
 
 ---
 
@@ -274,10 +269,6 @@ Dettaglio: [MEMORY_EMBEDDING.md](../MEMORY_EMBEDDING.md).
 
 Iniettato nel payload heartbeat, **non** nel blocco MEMORIA del dialogo.
 
-### User awareness
-
-Stato inferito (umore utente, “probabilmente sa già”) — payload heartbeat, teoria della mente.
-
 ### Cosa non passa dal recall MEMORIA
 
 | Evento | Motivo |
@@ -297,21 +288,20 @@ Stato inferito (umore utente, “probabilmente sa già”) — payload heartbeat
 | Salva riga | `updateValue(id, value)` |
 | Elimina riga | `deleteById(id)` → soft deactivate |
 | Reset | `resetUserFacingMemory()` |
-| Riorganizza | `reorganize()` + `MemoryConsolidationService.consolidateIfNeeded(force=true)` |
+| Riorganizza manuale | `MemoryReorganizeService.runManual()` → consolidation + `reorganize()` |
+| Riorganizza auto | `MemoryReorganizeService.runAutoIfDue()` (hook `MemoryExtractionScheduler.onAfterCycle`) |
 
-Preferenze estrazione: `MemorySettingsRepository` (DataStore `memory_settings`) — separato da `memory_documents.db`.
+Preferenze: `MemorySettingsRepository` (DataStore `memory_settings`) — estrazione, auto Riorganizza, min righe, cooldown giorni, `last_manual_reorganize_at_ms`. Separato da `memory_documents.db`.
+
+Schema USER_FACT: colonna `isPinned` (Room v3, migration 2→3).
 
 ---
 
-## 8. Shortcut vocali (bypass recall)
+## 8. Voce e memoria (nessun shortcut Kotlin)
 
-In `ConversationViewModel.handleMemoryVoiceCommand`:
+Tutte le frasi utente (salvo shortcut notifiche/debug) entrano in `sendPhraseToLlm` → `LlmMemoryRecallPlanner` decide se iniettare MEMORIA (`skip_recall`) → LLM dialogo e tool (`save_memory`, `delete_memory`, `list_memories`, …).
 
-- **“cosa sai di me”** — `getUserFacingActiveDocuments().take(8)`, TTS diretto
-- **“reset memoria”** — `resetUserFacingMemory()`
-- **“dimentica …”** — `forgetByTopic` + `MemoryTopicMatcher`
-
-Non passano da `recallForQuestion` né dal LLM.
+Reset totale profilo: solo UI `resetUserFacingMemory()` in Impostazioni → Memoria.
 
 ---
 
@@ -328,7 +318,9 @@ Non passano da `recallForQuestion` né dal LLM.
 | Writer unificato | `memory/unified/UnifiedMemoryWriter.kt` |
 | Tool save | `integration/tool/local/SaveMemoryTool.kt` |
 | Estrazione | `memory/extract/MemoryExtractionScheduler.kt`, `MemoryExtractionService.kt` |
+| Riorganizza | `memory/MemoryReorganizeService.kt`, `memory/MemoryReorganizePolicy.kt` |
 | Consolidazione | `memory/consolidate/MemoryConsolidationService.kt` |
+| Exact dedup write | `memory/MemoryExactMatch.kt` |
 | Heartbeat payload | `integration/input/heartbeat/HeartbeatContextBuilder.kt` |
 | Assembly prompt | `reasoning/ReasoningEngineImpl.kt` |
 | Entity Room | `memory/unified/db/MemoryDocumentEntity.kt` |
@@ -343,5 +335,8 @@ Non passano da `recallForQuestion` né dal LLM.
 4. Settings usa `getUserFacingActiveDocuments()`, non legacy `user_memory.db`
 5. Write episodi/notifiche passa da `UnifiedMemoryWriter`
 6. Blocco MEMORIA contiene sezione NOTIFICHE_NON_LETTE se `isUnread`
+7. Write dedup: solo exact match; parafrasi → due righe fino a Riorganizza
+8. `isPinned` sopravvive a prune; escluso da payload consolidation
+9. Auto Riorganizza rispetta gate e toggle `auto_reorganize_enabled`
 
 Checklist QA manuale completa: [MEMORY.md](../MEMORY.md) § Manual QA, [MEMORY_ACCESS.md](../MEMORY_ACCESS.md) § Acceptance.

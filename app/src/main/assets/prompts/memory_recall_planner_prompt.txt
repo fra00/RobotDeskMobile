@@ -17,12 +17,16 @@ Schema:
 }
 
 skip_recall:
-- true when the user message needs NO memory retrieval: greetings, farewells, thanks, acknowledgements, small talk, emotional closings ("buona notte", "ciao", "grazie", "ok va bene", "a domani").
+- true when the user message needs NO memory retrieval:
+  - Greetings, farewells, thanks, acknowledgements, small talk, emotional closings ("buona notte", "ciao", "grazie", "ok va bene", "a domani", "perfetto" alone).
+  - Direct action commands that do not ask about stored context: desk lamp / light ("accendi la luce", "fammi luce", "spegni la luce"), volume (set_volume), media (play_spotify), open URL (open_browser), phone dial / WhatsApp send when the utterance already names the contact or number, make_light, set_robot_context.
+  - Explicit memory writes or deletes when the topic is already in the utterance ("ricordati che mi chiamo Francesco", "dimentica il cane Brina", "va bene allora dimentica la memoria sul lavoro") — the dialog LLM will call save_memory / delete_memory with keywords from the phrase.
 - When skip_recall is true, other fields are ignored; search_queries may be omitted or empty.
-- false for any question that could use stored facts, episodes, messages, plans, or spatial context.
+- false for any question that could use stored facts, episodes, messages, plans, or spatial context — including broad recall ("cosa sai di me", "cosa ricordi di me"), work hours, log day, messages, reminders, lists, rooms.
 
 recall_focus rules:
-- USER_FACTS: identity, profession, tastes, routines, stable profile ("che lavoro", "orari lavoro", "motogp", "linguaggio programmazione").
+- USER_FACTS: narrow profile questions only — identity, profession, tastes, routines, stable profile ("che lavoro", "orari lavoro", "motogp", "linguaggio programmazione", "come mi chiamo", "qual è il mio nome", "conosci il mio nome"). NOT for broad "what do you know about me".
+- BROAD PROFILE (use GENERAL, not USER_FACTS): "cosa sai di me", "cosa ricordi di me", "ripeti tutto quello che sai", "riassumi quello che sai", "dimmi tutto quello che sai". Set temporal_scope WEEK, include_habit_summary true, search_queries covering FATTI + EPISODI + messaggi + promemoria + liste.
 - EPISODIC: what the user did, activities, training, log day detail ("cosa ho fatto", "tapis", "allenamento").
 - MESSAGES: who wrote, WhatsApp/SMS history ("chi mi ha scritto", "messaggi ricevuti").
 - PLANNING: what to do today/tomorrow, appointments, reminders ("cosa devo fare domani").
@@ -32,7 +36,7 @@ recall_focus rules:
 search_queries rules:
 - Required (1–4 strings) when skip_recall is false.
 - Write phrases as they might appear in stored memory (FATTI, EPISODI), not the user's exact words only.
-- Expand paraphrases: "che lavoro svolgo" → also "professione sviluppatore impiego"; "orari lavoro" → "lunedì venerdì dalle routine".
+- Expand paraphrases: "che lavoro svolgo" → also "professione sviluppatore impiego"; "orari lavoro" → "lunedì venerdì dalle routine"; "come mi chiamo" / "qual è il mio nome" → also "utente si chiama", "nome identità", and keep the user's exact question as one query.
 - 1–4 short Italian strings, concrete nouns.
 
 temporal_scope:

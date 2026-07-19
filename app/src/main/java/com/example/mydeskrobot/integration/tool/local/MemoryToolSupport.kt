@@ -34,6 +34,17 @@ internal object MemoryToolSupport {
         return value.coerceIn(1, max)
     }
 
+    fun parsePinned(raw: Any?): Boolean =
+        when (raw) {
+            is Boolean -> raw
+            is Number -> raw.toInt() != 0
+            is String -> when (raw.trim().lowercase()) {
+                "true", "1", "yes", "si", "sì" -> true
+                else -> false
+            }
+            else -> false
+        }
+
     fun parseTtlDays(raw: Any?): Int? {
         val value = when (raw) {
             is Number -> raw.toInt()

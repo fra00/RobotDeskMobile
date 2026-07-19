@@ -4,7 +4,7 @@ import com.example.mydeskrobot.memory.unified.VectorMath
 
 object EmbeddingQualityGate {
 
-    /** Minimum raw cosine similarity on paraphrase gate pairs (UNIFIED_MEMORY_RAG_PLAN §7). */
+    /** Minimum raw cosine similarity on paraphrase gate pairs — see docs/MEMORY_EMBEDDING.md. */
     const val MIN_PARAPHRASE_COSINE = 0.55f
 
     data class GateResult(

@@ -13,9 +13,8 @@ import com.example.mydeskrobot.domain.activitylog.EpisodeConfidence
 import com.example.mydeskrobot.domain.activitylog.EpisodeKind
 import com.example.mydeskrobot.domain.list.ListItemType
 import com.example.mydeskrobot.domain.spatial.SpatialPlace
-import com.example.mydeskrobot.memory.MemorySafetyPinDetector
+import com.example.mydeskrobot.memory.MemoryExactMatch
 import com.example.mydeskrobot.memory.MemorySettingsRepository
-import com.example.mydeskrobot.memory.MemoryDuplicateDetector
 import com.example.mydeskrobot.memory.MemoryTopicMatcher
 import com.example.mydeskrobot.memory.AutonomyUpsertResult
 import com.example.mydeskrobot.memory.ForgetByTopicResult
@@ -275,6 +274,11 @@ class UnifiedMemoryRepository(
         return dao.getByExternalRef(externalRef)
     }
 
+    suspend fun getDocumentById(id: Long): MemoryDocumentEntity? {
+        ensureMigrated()
+        return dao.getById(id)
+    }
+
     suspend fun markEpisodeRead(externalRef: String) {
         ensureMigrated()
         dao.markReadByExternalRef(externalRef)
@@ -434,11 +438,25 @@ class UnifiedMemoryRepository(
                 addDocument(episode, MemoryRecallRequest.UNREAD_EPISODE_SCORE)
             }
 
-        if (request.preferUserFacts) {
-            val userFacts = getUserFacingActiveDocuments()
-            val factQueries = request.searchQueries.ifEmpty {
-                listOf(request.query.trim()).filter { it.isNotBlank() }
+        if (request.includeHabitSummary &&
+            request.temporalScope == TemporalScope.WEEK &&
+            !request.preferEpisodicDetail &&
+            !request.preferUserFacts
+        ) {
+            getUserFacingActiveDocuments().forEach { fact ->
+                addDocument(fact, MemoryRecallRequest.USER_FACT_LINKED_SCORE)
             }
+        }
+
+        if (request.preferUserFacts) {
+            getCoreIdentity(limit = 5).forEach { identity ->
+                addDocument(identity, MemoryRecallRequest.USER_FACT_LINKED_SCORE)
+            }
+            val userFacts = getUserFacingActiveDocuments()
+            val factQueries = (request.searchQueries + listOfNotNull(request.query.trim().takeIf { it.isNotBlank() }))
+                .map { it.trim() }
+                .filter { it.isNotBlank() }
+                .distinct()
             factQueries.forEach { searchQuery ->
                 MemorySearchScorer.rank(
                     query = searchQuery,
@@ -562,9 +580,9 @@ class UnifiedMemoryRepository(
 
     private fun buildSemanticQueries(request: MemoryRecallRequest): List<String> {
         val fromPlan = request.searchQueries.map { it.trim() }.filter { it.isNotBlank() }
-        if (fromPlan.isNotEmpty()) return fromPlan.distinct()
         val query = request.query.trim()
-        if (query.isNotBlank()) return listOf(query)
+        val merged = (fromPlan + listOfNotNull(query.takeIf { it.isNotBlank() })).distinct()
+        if (merged.isNotEmpty()) return merged
         if (request.includeVisionCatalog) {
             return listOf("persone animali oggetti stanza laboratorio")
         }
@@ -791,7 +809,9 @@ class UnifiedMemoryRepository(
         val now = System.currentTimeMillis()
         val active = getUserFacingActiveDocuments()
         val plan = MemoryConsolidationApplicator.plan(
-            active = active.map { it.toConsolidationRow() },
+            active = active
+                .filterNot { it.isPinned }
+                .map { it.toConsolidationRow() },
             consolidated = lines,
         )
 
@@ -802,11 +822,7 @@ class UnifiedMemoryRepository(
                 existing.copy(
                     value = update.value,
                     category = update.category.name,
-                    confidence = MemorySafetyPinDetector.applyConfidenceFloor(
-                        confidence = existing.confidence,
-                        value = update.value,
-                        category = update.category,
-                    ),
+                    confidence = existing.confidence,
                     useCount = update.useCount,
                     lastUsedAt = update.lastUsedAt,
                     updatedAt = now,
@@ -820,6 +836,7 @@ class UnifiedMemoryRepository(
                 value = line.value,
                 confidence = 1f,
                 source = MemoryDocumentSource.CONSOLIDATION,
+                isPinned = false,
             )
         }
         return getUserFacingActiveDocuments().size
@@ -836,6 +853,7 @@ class UnifiedMemoryRepository(
             lastUsedAt = lastUsedAt,
             updatedAt = updatedAt,
             createdAt = createdAt,
+            isPinned = isPinned,
         )
     }
 
@@ -847,19 +865,16 @@ class UnifiedMemoryRepository(
         confidence: Float,
         source: MemoryDocumentSource,
         sourceMessageId: Long = 0L,
+        isPinned: Boolean = false,
     ): Long {
         require(MemoryCategory.isUserFacing(category)) {
             "Use upsertAutonomy for robot-internal categories"
         }
         val normalized = value.trim()
         if (normalized.isBlank()) return -1L
-        val effectiveConfidence = MemorySafetyPinDetector.applyConfidenceFloor(
-            confidence = confidence,
-            value = normalized,
-            category = category,
-        )
+        val effectiveConfidence = confidence.coerceIn(0f, 1f)
         val now = System.currentTimeMillis()
-        val existing = findUserFacingDuplicate(category, normalized)
+        val existing = findExactUserFacingDuplicate(category, normalized)
         val entity = if (existing != null) {
             existing.copy(
                 value = normalized,
@@ -867,6 +882,7 @@ class UnifiedMemoryRepository(
                 updatedAt = now,
                 isActive = true,
                 expiresAt = null,
+                isPinned = existing.isPinned || isPinned,
             )
         } else {
             MemoryDocumentEntity(
@@ -877,6 +893,7 @@ class UnifiedMemoryRepository(
                 confidence = effectiveConfidence,
                 createdAt = now,
                 updatedAt = now,
+                isPinned = isPinned,
             )
         }
         return upsertDocument(entity)
@@ -929,6 +946,29 @@ class UnifiedMemoryRepository(
             )
         }
         return AutonomyUpsertResult.Success(upsertDocument(entity))
+    }
+
+    suspend fun upsertHabitSlot(
+        externalRef: String,
+        value: String,
+        confidence: Float,
+        ttlDays: Int,
+    ): Long {
+        ensureMigrated()
+        val normalized = value.trim()
+        require(normalized.isNotBlank()) { "habit slot value must not be blank" }
+        val now = System.currentTimeMillis()
+        return upsertByExternalRef(
+            externalRef = externalRef,
+            value = normalized,
+            kind = MemoryDocumentKind.AUTONOMY,
+            category = MemoryCategory.PATTERN.name,
+            source = MemoryDocumentSource.EXTRACTOR,
+            confidence = confidence.coerceIn(0f, 1f),
+            createdAt = now,
+            updatedAt = now,
+            expiresAt = now + TimeUnit.DAYS.toMillis(ttlDays.toLong()),
+        )
     }
 
     suspend fun deleteById(id: Long): Boolean {
@@ -989,63 +1029,22 @@ class UnifiedMemoryRepository(
             .forEach { doc -> dao.deactivateById(doc.id, now) }
     }
 
-    suspend fun reorganize(): Int {
-        ensureMigrated()
-        val active = getUserFacingActiveDocuments()
-        val toDelete = mutableSetOf<Long>()
-        val now = System.currentTimeMillis()
-        active.groupBy { it.category }.values.forEach { categoryItems ->
-            val remaining = categoryItems.filter { it.id !in toDelete }
-            for (i in remaining.indices) {
-                val anchor = remaining[i]
-                if (anchor.id in toDelete) continue
-                val category = runCatching {
-                    MemoryCategory.valueOf(anchor.category.orEmpty())
-                }.getOrNull() ?: continue
-                val cluster = mutableListOf(anchor)
-                for (j in i + 1 until remaining.size) {
-                    val other = remaining[j]
-                    if (other.id in toDelete) continue
-                    if (MemoryDuplicateDetector.areDuplicates(anchor.value, other.value, category)) {
-                        cluster += other
-                    }
-                }
-                if (cluster.size <= 1) continue
-                val keeper = cluster.maxWithOrNull(
-                    compareBy<MemoryDocumentEntity> { it.useCount }
-                        .thenBy { it.confidence }
-                        .thenBy { it.updatedAt },
-                ) ?: continue
-                val mergedUseCount = cluster.sumOf { it.useCount }
-                val mergedLastUsed = cluster.maxOf { it.lastUsedAt }
-                if (mergedUseCount != keeper.useCount || mergedLastUsed != keeper.lastUsedAt) {
-                    dao.update(
-                        keeper.copy(
-                            useCount = mergedUseCount,
-                            lastUsedAt = mergedLastUsed,
-                            updatedAt = now,
-                        ),
-                    )
-                }
-                cluster.filter { it.id != keeper.id }.forEach { toDelete += it.id }
-            }
-        }
-        toDelete.forEach { dao.deactivateById(it, now) }
-        return toDelete.size
-    }
+    /** Prune least-used rows only when over [maxItems]; never deletes while under cap. */
+    suspend fun reorganize(maxItems: Int = USER_FACING_MAX_ITEMS): Int =
+        pruneIfNeeded(maxItems)
 
     suspend fun pruneIfNeeded(maxItems: Int): Int {
         pruneExpiredAutonomy()
         val userFacts = dao.getAllActive()
             .filter { it.kind == MemoryDocumentKind.USER_FACT.name }
-        val prunable = userFacts.filterNot { isSafetyPinnedDocument(it) }
+        val prunable = userFacts.filterNot { it.isPinned }
         if (prunable.size <= maxItems) return 0
         val toDelete = prunable.size - maxItems
         val lowPriority = prunable
             .sortedWith(
-                compareBy<MemoryDocumentEntity> { it.confidence }
-                    .thenBy { it.useCount }
+                compareBy<MemoryDocumentEntity> { it.useCount }
                     .thenBy { it.lastUsedAt }
+                    .thenBy { it.confidence }
                     .thenBy { it.updatedAt },
             )
             .take(toDelete)
@@ -1054,12 +1053,13 @@ class UnifiedMemoryRepository(
         return lowPriority.size
     }
 
-    private fun isSafetyPinnedDocument(document: MemoryDocumentEntity): Boolean {
-        val category = runCatching {
-            MemoryCategory.valueOf(document.category.orEmpty())
-        }.getOrNull() ?: return false
-        return MemorySafetyPinDetector.isSafetyPinned(document.value, category)
-    }
+    private suspend fun findExactUserFacingDuplicate(
+        category: MemoryCategory,
+        value: String,
+    ): MemoryDocumentEntity? =
+        getUserFacingActiveDocuments()
+            .filter { it.category == category.name }
+            .firstOrNull { MemoryExactMatch.isExactDuplicate(category, value, it.value) }
 
     suspend fun searchToolRelevant(
         query: String,
@@ -1180,18 +1180,6 @@ class UnifiedMemoryRepository(
             }
             .forEach { doc -> dao.deactivateById(doc.id, now) }
     }
-
-    private suspend fun findUserFacingDuplicate(
-        category: MemoryCategory,
-        value: String,
-    ): MemoryDocumentEntity? =
-        getUserFacingActiveDocuments()
-            .filter { it.category == category.name }
-            .filter { MemoryDuplicateDetector.areDuplicates(value, it.value, category) }
-            .maxWithOrNull(
-                compareBy<MemoryDocumentEntity> { it.confidence }
-                    .thenBy { it.updatedAt },
-            )
 
     private suspend fun findAutonomyExact(
         category: MemoryCategory,
@@ -1332,6 +1320,9 @@ class UnifiedMemoryRepository(
     }
 
     companion object {
+        /** Max active user-facing facts before least-used prune. */
+        const val USER_FACING_MAX_ITEMS = 300
+
         internal val EPISODE_RETENTION_MS =
             TimeUnit.DAYS.toMillis(ActivityLogRepository.RETENTION_DAYS.toLong())
 
@@ -1382,7 +1373,10 @@ class UnifiedMemoryRepository(
                 MemoryDocumentDatabase::class.java,
                 "memory_documents.db",
             )
-                .addMigrations(MemoryDocumentDatabase.MIGRATION_1_2)
+                .addMigrations(
+                    MemoryDocumentDatabase.MIGRATION_1_2,
+                    MemoryDocumentDatabase.MIGRATION_2_3,
+                )
                 .build()
             val dao = db.memoryDocumentDao()
             val migration = MemoryDocumentMigration(

@@ -38,7 +38,7 @@ class BodyExpressionContextTest {
             isVisionBusy = false,
             isBodyHardwareBusy = true,
         )
-        assertFalse(context.allowsMoodExpression(MoodReason.POSITIVE_INTERACTION))
+        assertFalse(context.allowsMoodExpression(MoodReason.LLM_EXPRESSION))
     }
 
     @Test

@@ -9,6 +9,8 @@ sealed class ReasoningResult {
         val finalText: String,
         val emotion: String? = null,
         val speakConfidence: Double? = null,
+        /** LLM-judged tone of the user's last utterance (positive | negative | apology | neutral). */
+        val userTone: String? = null,
     ) : ReasoningResult()
     
     /** Reasoning requires user confirmation to proceed */

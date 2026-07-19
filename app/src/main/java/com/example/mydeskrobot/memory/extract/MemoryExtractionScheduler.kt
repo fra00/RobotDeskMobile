@@ -26,7 +26,10 @@ class MemoryExtractionScheduler(
         if (job?.isActive == true) return
         job = scope.launch {
             while (isActive) {
-                runExtractionCycleIfReady()
+                if (isStandby()) {
+                    runExtractionCycleIfReady()
+                    onAfterCycle?.invoke()
+                }
                 val settings = settingsRepository.load()
                 val waitMs = settings.intervalSeconds.coerceIn(10L, 300L) * 1000L
                 delay(waitMs)
@@ -53,55 +56,53 @@ class MemoryExtractionScheduler(
         if (now - lastRunAtMs < 30_000L) return
         lastRunAtMs = now
 
-        try {
-            val log = getConversationLog()
-            if (log.isBlank()) {
-                settingsRepository.setLastProcessedEntryCount(0L)
-                runAutoDedup()
-                return
-            }
-
-            val entries = MemoryExtractionService.extractEntriesFromConversationLog(log)
-            if (entries.isEmpty()) {
-                runAutoDedup()
-                return
-            }
-
-            var processedCount = settings.lastProcessedEntryCount
-            if (processedCount > entries.size) {
-                Log.i(TAG, "Log shrank ($processedCount -> ${entries.size}); resetting extraction cursor")
-                processedCount = 0L
-                settingsRepository.setLastProcessedEntryCount(0L)
-            }
-
-            val delta = MemoryExtractionDelta.selectDelta(entries, processedCount)
-            if (delta.isEmpty()) {
-                runAutoDedup()
-                return
-            }
-
-            try {
-                onExtractingChanged(true)
-                val saved = extractionService.processDelta(delta)
-                if (saved > 0) {
-                    settingsRepository.setLastProcessedEntryCount(entries.size.toLong())
-                    Log.i(TAG, "Saved $saved memory fact(s) from ${delta.size} log line(s)")
-                } else {
-                    Log.w(TAG, "Extraction produced no facts for ${delta.size} log line(s)")
-                }
-            } finally {
-                onExtractingChanged(false)
-            }
-            runAutoDedup()
-        } finally {
-            onAfterCycle?.invoke()
+        val log = getConversationLog()
+        if (log.isBlank()) {
+            settingsRepository.setLastProcessedEntryCount(0L)
+            runPruneIfNeeded()
+            return
         }
+
+        val entries = MemoryExtractionService.extractEntriesFromConversationLog(log)
+        if (entries.isEmpty()) {
+            runPruneIfNeeded()
+            return
+        }
+
+        var processedCount = settings.lastProcessedEntryCount
+        if (processedCount > entries.size) {
+            Log.i(TAG, "Log shrank ($processedCount -> ${entries.size}); resetting extraction cursor")
+            processedCount = 0L
+            settingsRepository.setLastProcessedEntryCount(0L)
+        }
+
+        val delta = MemoryExtractionDelta.selectDelta(entries, processedCount)
+        if (delta.isEmpty()) {
+            runPruneIfNeeded()
+            return
+        }
+
+        try {
+            onExtractingChanged(true)
+            val saved = extractionService.processDelta(delta)
+            if (saved > 0) {
+                settingsRepository.setLastProcessedEntryCount(entries.size.toLong())
+                Log.i(TAG, "Saved $saved memory fact(s) from ${delta.size} log line(s)")
+            } else {
+                Log.w(TAG, "Extraction produced no facts for ${delta.size} log line(s)")
+            }
+        } finally {
+            onExtractingChanged(false)
+        }
+        runPruneIfNeeded()
     }
 
-    private suspend fun runAutoDedup() {
-        val deduped = unifiedMemoryRepository.reorganize()
-        if (deduped > 0) {
-            Log.i(TAG, "Auto dedup removed $deduped duplicate memory item(s)")
+    private suspend fun runPruneIfNeeded() {
+        val pruned = unifiedMemoryRepository.pruneIfNeeded(
+            UnifiedMemoryRepository.USER_FACING_MAX_ITEMS,
+        )
+        if (pruned > 0) {
+            Log.i(TAG, "Pruned $pruned low-use memory row(s) over cap")
         }
     }
 

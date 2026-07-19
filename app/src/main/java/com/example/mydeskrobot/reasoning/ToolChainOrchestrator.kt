@@ -131,9 +131,12 @@ class ToolChainOrchestrator(
     
     private suspend fun executeChain(
         onIntermediateResponse: suspend (IntermediateResponse) -> Unit,
+        initialUserTone: String? = null,
     ): ReasoningResult {
         var step = 0
         var lastResponse: ParsedLlmResponse? = null
+        // First step reads the fresh user utterance — later chain steps are tool feedback.
+        var turnUserTone: String? = initialUserTone
         
         while (step < maxChainSteps) {
             step++
@@ -171,6 +174,9 @@ class ToolChainOrchestrator(
             }
             
             lastResponse = parsed
+            if (turnUserTone == null) {
+                turnUserTone = parsed.userTone
+            }
             conversationHistory.addAssistantRawMessage(llmResult.getOrThrow().content)
             logLlmStep(step, parsed)
 
@@ -181,6 +187,7 @@ class ToolChainOrchestrator(
                         finalText = parsed.text,
                         emotion = parsed.emotion,
                         speakConfidence = parsed.speakConfidence,
+                        userTone = turnUserTone,
                     )
                 }
                 
@@ -227,6 +234,7 @@ class ToolChainOrchestrator(
                             finalText = finalText,
                             emotion = emotion,
                             speakConfidence = parsed.speakConfidence,
+                            userTone = turnUserTone,
                         )
                     }
                 }
@@ -286,6 +294,7 @@ class ToolChainOrchestrator(
                     finalText = parsed.text,
                     emotion = parsed.emotion,
                     speakConfidence = parsed.speakConfidence,
+                    userTone = parsed.userTone,
                 )
             }
             
@@ -324,9 +333,10 @@ class ToolChainOrchestrator(
                         finalText = finalText,
                         emotion = emotion,
                         speakConfidence = parsed.speakConfidence,
+                        userTone = parsed.userTone,
                     )
                 } else {
-                    executeChain(onIntermediateResponse)
+                    executeChain(onIntermediateResponse, initialUserTone = parsed.userTone)
                 }
             }
             

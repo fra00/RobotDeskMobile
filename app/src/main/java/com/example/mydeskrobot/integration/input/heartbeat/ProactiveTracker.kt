@@ -5,8 +5,6 @@ import com.example.mydeskrobot.data.reflection.WeeklyStatsRepository
 import com.example.mydeskrobot.data.workingmemory.WorkingMemoryRepository
 import com.example.mydeskrobot.domain.heartbeat.InterventionOutcome
 import com.example.mydeskrobot.domain.heartbeat.ProactiveIntervention
-import com.example.mydeskrobot.domain.mood.MoodManager
-import com.example.mydeskrobot.domain.mood.MoodTrigger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
@@ -14,7 +12,6 @@ class ProactiveTracker(
     private val workingMemoryRepository: WorkingMemoryRepository,
     private val weeklyStatsRepository: WeeklyStatsRepository,
     private val interventionRepository: ProactiveInterventionRepository,
-    private val moodManager: MoodManager?,
     private val scope: CoroutineScope,
 ) {
     private var lastProactiveSpeakTime: Long? = null
@@ -48,7 +45,6 @@ class ProactiveTracker(
                 outcome = InterventionOutcome.SUPPRESSED,
             ),
         )
-        moodManager?.onTrigger(MoodTrigger.HeartbeatSuppressed)
     }
 
     suspend fun recordSilent(domainId: String) {

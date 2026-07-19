@@ -16,7 +16,6 @@ class WorkingMemoryTest {
         assertEquals(0, memory.proactiveSpeaksToday)
         assertEquals(0, memory.ignoredSuggestionsToday)
         assertTrue(memory.topicsDiscussedToday.isEmpty())
-        assertNull(memory.lastUserMood)
         assertNull(memory.lastProactiveSpeakMillis)
     }
 
@@ -79,24 +78,6 @@ class WorkingMemoryTest {
     }
 
     @Test
-    fun `withUserMood sets mood`() {
-        val memory = WorkingMemory.forToday()
-
-        val updated = memory.withUserMood("stressed")
-
-        assertEquals("stressed", updated.lastUserMood)
-    }
-
-    @Test
-    fun `withUserMood can clear mood`() {
-        val memory = WorkingMemory.forToday().withUserMood("happy")
-
-        val updated = memory.withUserMood(null)
-
-        assertNull(updated.lastUserMood)
-    }
-
-    @Test
     fun `minutesSinceLastProactiveSpeak returns null if never spoke`() {
         val memory = WorkingMemory.forToday()
 
@@ -144,14 +125,12 @@ class WorkingMemoryTest {
             .withTopic("meteo")
             .withTopic("notizie")
             .withProactiveSpeak(1000L)
-            .withUserMood("relaxed")
             .withIgnoredSuggestion()
 
         assertEquals(2, memory.todayInteractions)
         assertEquals(2, memory.topicsDiscussedToday.size)
         assertEquals(1, memory.proactiveSpeaksToday)
         assertEquals(1, memory.ignoredSuggestionsToday)
-        assertEquals("relaxed", memory.lastUserMood)
         assertEquals(1000L, memory.lastProactiveSpeakMillis)
     }
 }

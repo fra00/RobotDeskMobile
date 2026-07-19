@@ -2,6 +2,8 @@ package com.example.mydeskrobot.memory.unified
 
 import com.example.mydeskrobot.memory.db.MemoryCategory
 import com.example.mydeskrobot.memory.unified.db.MemoryDocumentEntity
+import com.example.mydeskrobot.reasoning.memory.MemoryRecallPlan
+import com.example.mydeskrobot.reasoning.memory.RecallFocus
 import com.example.mydeskrobot.reasoning.memory.TemporalScope
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -257,6 +259,38 @@ class UnifiedMemoryRepositoryTest {
     }
 
     @Test
+    fun recallForQuestion_general_week_includes_recent_episodes() = runTest {
+        val dao = FakeMemoryDocumentDao()
+        val repository = UnifiedMemoryRepository.createForTest(dao)
+        repository.saveUserFact(
+            value = "L'utente si chiama Francesco",
+            category = MemoryCategory.IDENTITY,
+            confidence = 0.9f,
+            source = MemoryDocumentSource.TOOL,
+        )
+        val twoDaysAgo = System.currentTimeMillis() - 2L * 24 * 60 * 60 * 1000
+        val dayKey = com.example.mydeskrobot.data.activitylog.ActivityLogRepository.dayKeyFor(twoDaysAgo)
+        repository.saveEpisodeProjection(
+            eventId = 42L,
+            label = "pranzo con Marco",
+            eventKind = com.example.mydeskrobot.domain.activitylog.EpisodeKind.PHYSICAL_NOW,
+            dayKey = dayKey,
+            timestampMs = twoDaysAgo,
+            source = MemoryDocumentSource.TOOL,
+        )
+
+        val recalled = repository.recallForQuestion(
+            MemoryRecallPlan(
+                recallFocus = RecallFocus.GENERAL,
+                searchQueries = listOf("fatti episodi promemoria"),
+            ).toRequest("ripeti tutto quello che sai di me"),
+        )
+
+        assertTrue(recalled.any { it.kind == MemoryDocumentKind.EPISODE.name })
+        assertTrue(recalled.any { it.kind == MemoryDocumentKind.USER_FACT.name })
+    }
+
+    @Test
     fun recallForQuestion_preferUserFacts_returns_work_hours_not_habit_summary() = runTest {
         val dao = FakeMemoryDocumentDao()
         val repository = UnifiedMemoryRepository.createForTest(dao)
@@ -336,7 +370,79 @@ class UnifiedMemoryRepositoryTest {
     }
 
     @Test
-    fun pruneIfNeeded_keeps_safety_pinned_facts() = runTest {
+    fun recallForQuestion_preferUserFacts_returns_name_with_planner_only_queries() = runTest {
+        val dao = FakeMemoryDocumentDao()
+        val repository = UnifiedMemoryRepository.createForTest(dao)
+        repository.saveUserFact(
+            value = "L'utente si chiama Francesco",
+            category = MemoryCategory.IDENTITY,
+            confidence = 0.9f,
+            source = MemoryDocumentSource.TOOL,
+        )
+
+        val recalled = repository.recallForQuestion(
+            MemoryRecallRequest(
+                query = "come mi chiamo",
+                preferUserFacts = true,
+                searchQueries = listOf("nome identità utente"),
+            ),
+        )
+
+        assertTrue(recalled.any { it.value.contains("Francesco", ignoreCase = true) })
+    }
+
+    @Test
+    fun recallForQuestion_preferUserFacts_pins_identity_even_when_search_misses() = runTest {
+        val dao = FakeMemoryDocumentDao()
+        val repository = UnifiedMemoryRepository.createForTest(dao)
+        repository.saveUserFact(
+            value = "Ti chiami Francesco",
+            category = MemoryCategory.IDENTITY,
+            confidence = 0.9f,
+            source = MemoryDocumentSource.TOOL,
+        )
+        repository.saveUserFact(
+            value = "Guarda la MotoGP",
+            category = MemoryCategory.PREFERENCE,
+            confidence = 0.9f,
+            source = MemoryDocumentSource.TOOL,
+        )
+
+        val recalled = repository.recallForQuestion(
+            MemoryRecallRequest(
+                query = "come mi chiamo",
+                preferUserFacts = true,
+                searchQueries = listOf("xyz unrelated topic"),
+            ),
+        )
+
+        assertTrue(recalled.any { it.value.contains("Francesco", ignoreCase = true) })
+    }
+
+    @Test
+    fun recallForQuestion_preferUserFacts_returns_ti_chiami_phrasing() = runTest {
+        val dao = FakeMemoryDocumentDao()
+        val repository = UnifiedMemoryRepository.createForTest(dao)
+        repository.saveUserFact(
+            value = "Ti chiami Francesco",
+            category = MemoryCategory.IDENTITY,
+            confidence = 0.9f,
+            source = MemoryDocumentSource.TOOL,
+        )
+
+        val recalled = repository.recallForQuestion(
+            MemoryRecallRequest(
+                query = "Quale è il mio nome",
+                preferUserFacts = true,
+                searchQueries = listOf("nome identità"),
+            ),
+        )
+
+        assertTrue(recalled.any { it.value.contains("Francesco", ignoreCase = true) })
+    }
+
+    @Test
+    fun pruneIfNeeded_keeps_isPinned_facts() = runTest {
         val dao = FakeMemoryDocumentDao()
         val repository = UnifiedMemoryRepository.createForTest(dao)
         repository.upsertUserFacingFact(
@@ -344,6 +450,7 @@ class UnifiedMemoryRepositoryTest {
             value = "L'utente è allergico alle noci",
             confidence = 0.95f,
             source = MemoryDocumentSource.TOOL,
+            isPinned = true,
         )
         val now = System.currentTimeMillis()
         repeat(301) { index ->
@@ -366,5 +473,6 @@ class UnifiedMemoryRepositoryTest {
         assertTrue(pruned > 0)
         val allergy = dao.getAllActive().firstOrNull { it.value.contains("allergico") }
         assertTrue(allergy != null)
+        assertTrue(allergy!!.isPinned)
     }
 }

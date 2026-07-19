@@ -26,7 +26,7 @@ internal object RecallContextFormatter {
 
         val grouped = recallDocuments.groupBy { kindOf(it) }
         return buildString {
-            appendLine("MEMORIA (usa ciò che serve per la domanda; ignora il resto):")
+            appendLine("MEMORIA (usa ciò che serve per la domanda; per domande ampie sintetizza tutte le sezioni rilevanti):")
             appendLine("EPISODI includono messaggi e notifiche archiviati.")
             when (temporalScope) {
                 TemporalScope.WEEK -> appendLine("Contesto: questa settimana")

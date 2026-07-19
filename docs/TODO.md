@@ -1,308 +1,116 @@
 # TODO — My Desk Robot
 
-
-
-> **SSOT roadmap aperta.** Per visione autonoma vedi `docs/Drafts/AUTONOMOUS_AGENT_VISION.md` (draft — può essere disallineato).  
-
+> **SSOT roadmap aperta.** Visione autonoma (draft, può essere disallineata): `docs/Drafts/AUTONOMOUS_AGENT_VISION.md`  
 > **Ultimo allineamento codice:** giugno 2026.
 
-
-
 ---
-
-
 
 ## Prossimo focus
 
+### H3 — Emotional state machine
 
+- [x] Umore dinamico H3: `TurnMoodEvaluator`, hotword idle, burst/ripetizione, tier happy LLM, ephemeral neutral
+- [ ] Smoke manuale: [`guides/UMORE_SMOKE.md`](guides/UMORE_SMOKE.md) (standby vs sessione attiva vs notte, occhi + corpo ESP32)
 
-### H3 — Emotional state machine (parziale → completare)
+### H4 — Working memory
 
-- [x] `RobotMood` + `MoodEngine` + `MoodManager` (valenza persistente ±1)
+- [ ] Iniettare `topicsDiscussedToday` / cap proattivo nell'envelope `wellness_check` (oggi solo su heartbeat legacy)
+- [ ] `recordIgnoredSuggestion` su ignoro esplicito utente (oggi: timeout in `ProactiveTracker` + stats settimanali)
 
-- [x] Integrazione UI occhi (`DisplayEmotionResolver`, `MoodUiStateMapper`, `BodyExpressionController`)
+### H5 — Self-reflection settimanale
 
-- [x] Coreografie corpo ESP32 (`EmotionGestureMapper`, ephemeral → gesto in dialogo, `HeadNeutralizer`, speaking micro-moves)
+- [ ] Consolidamento memoria post-reflection (PATTERN/OBSERVATION misurabili, non solo save LLM generico)
 
-- [ ] Test manuali / checklist emozioni standby vs sessione attiva vs notte
+### H6 — Theory of mind
 
+- [ ] Umore utente nelle decisioni proattive: da riprogettare LLM-driven (luglio 2026: rimosso `UserAwarenessState` keyword-based; il tono utente ora arriva dal LLM via `user_tone`, solo per il mood robot)
+- [ ] Feedback loop strutturato dopo proactive speak (accettato / ignorato / rifiutato)
 
+### Follow-up proattività (post-H7 v1)
 
-### H4 — Working memory (parziale → completare)
-
-
-
-**A cosa serve:** memoria **effimera della giornata** (non va in `memory_documents.db`). Il robot sa cosa è già successo oggi — topic discussi, quante volte ha parlato in modo proattivo, ultima interazione — e lo inietta nel contesto heartbeat. Obiettivo: **non essere ripetitivo** (“ti ho già chiesto del pranzo”) e rispettare i cap/cooldown proattivi con dati reali.
-
-
-
-- [x] Buffer giornaliero (`WorkingMemoryRepository`, reset a mezzanotte)
-
-- [x] Injection in heartbeat (`HeartbeatContextBuilder`: interazioni, topic, proactive speaks)
-
-- [ ] Prevenzione ripetizioni esplicita nel prompt heartbeat (topic già discussi oggi → non ripetere)
-
-- [ ] `recordIgnoredSuggestion` collegato al flusso utente (oggi solo parziale: timeout in `ProactiveTracker`, non ignoro esplicito dell’utente)
-
-
-
-### H5 — Self-reflection settimanale (parziale → completare)
-
-
-
-**A cosa serve:** ogni settimana il robot **riflette** sulle statistiche accumulate (`WeeklyStatsRepository`: proactive accettati/ignorati, topic, pattern) e può consolidare insight in memoria autonoma (`PATTERN`, `OBSERVATION`). È il pilastro **REFLECT** del loop OODA — imparare dal comportamento della settimana, non solo reagire al turno.
-
-
-
-- [x] `WeeklyStatsRepository` + tick `weekly_reflection` (`checkAndTriggerReflection`)
-
-- [x] Playbook + `RobotInput.WeeklyReflection` nel bus input
-
-- [ ] Verifica end-to-end: reflection parte solo con mic attivo? (stesso gate degli altri system input)
-
-- [ ] Consolidamento memoria post-reflection (PATTERN → azioni misurabili, non solo save LLM)
-
-
-
-### H6 — Theory of mind (parziale → completare)
-
-- [x] `UserAwarenessRepository` + `UserStateTracker` + injection heartbeat
-
-- [ ] Inferenza umore utente usata nelle decisioni proattive (oltre al campo in contesto)
-
-- [ ] Feedback loop: risposta utente dopo proactive speak → aggiorna awareness in modo strutturato
-
-
+- [ ] Collegare `UserPresencePolicy.wellnessPresentEnough()` al gate wellness (oggi solo predittività usa presenza + body)
+- [ ] Smoke manuale: [`guides/PROATTIVITA_SMOKE.md`](guides/PROATTIVITA_SMOKE.md)
 
 ---
-
-
 
 ## Backlog prodotto
 
-
-
 | Item | Note |
-
 |------|------|
-
-| Memory safety pin **Level 2** | `isPinned` in schema + comando vocale “ricordalo sempre” (L1 keyword-only: `MemorySafetyPinDetector`) |
-
-| Tool **Note** dedicato | Oggi: `add_list_item` type `NOTE` — valutare UI/UX lista note separata |
-
-| **News** con chunking | `fetch_url` troppo grande; serve estrazione titoli o summarization a chunk |
-
-| **Traduttore** | Tool o catena web non ancora presente |
-
-| Sensori ambiente | Input `sensor_reading` (futuro) |
-
+| Memory pin + Riorganizza | ✅ `isPinned`, exact dedup, LLM consolidation auto/manuale (gate configurabile); ⬜ fragmentation analyzer |
+| Tool **Note** dedicato | Oggi: `add_list_item` type `NOTE` |
+| **News** summarization | Chunking in `fetch_url` ok; summarization ONNX opzionale |
+| **Traduttore** | Tool o catena web |
+| Sensori ambiente | Input `sensor_reading` |
 | **Domotica** | Termostato/luci con conferma utente |
-
-| Pulsante hardware ESP32 | `hardware_button` BLOCKING (futuro) |
-
-| **Speaker ID** | Draft `docs/Drafts/SPEAKER_IDENTIFICATION.md` (§9 dubbi aperti) |
-
-| Sessione vocale auto post-notifica | `activateVoiceSession()` esiste ma **non** è collegato al TTS notifica — vedi `INPUT_ARCHITECTURE.md` §1.1 |
-
-
-
-**Rimosso dal backlog** (già coperto):
-
-- ~~Lista spesa~~ → `add_list_item` `SHOPPING` + `list_items` / `update_list_item`
-
-- ~~Integrazione corpo ESP32~~ → `move_body_joint`, `body_home`, `body_status`, prompt condizionale
-
-
+| Pulsante hardware ESP32 | `hardware_button` BLOCKING |
+| **Speaker ID** | Draft `docs/Drafts/SPEAKER_IDENTIFICATION.md` |
+| Sessione vocale auto post-notifica | `activateVoiceSession()` non collegato al TTS notifica — `INPUT_ARCHITECTURE.md` §1.1 |
 
 ---
 
+## Debito tecnico / doc (aperto)
 
-
-## UX / qualità / debito tecnico
-
-
-
-| Item | Stato | Dettaglio |
-
-|------|--------|-----------|
-
-| Notifiche lette dopo TTS (modalità normale) | ✅ Fatto | `markEpisodeRead` dopo TTS riuscito; silent mode resta in inbox |
-
-| Catalogo tool body allineato al prompt | ✅ Fatto | `BODY_UNAVAILABLE_SECTION` se corpo non configurato; save su test connessione OK |
-
-| Notifiche con mic spento | ✅ By design | Input droppati (`canAcceptInput`); nessuna coda su disco — accettato per ora |
-
-| `ConversationViewModel` monolitico (~3.4k righe) | ⬜ Debito | Estrarre coordinatori (notifiche, speech, settings) senza cambiare architettura |
-
-| Dual path input bus | ⬜ Doc | `SystemInputDispatcher` usato da notifiche/heartbeat/reminder; `InputRouter` registrato ma heartbeat non passa da lì — vedi `INPUT_ARCHITECTURE.md` §3.1 |
-
-| Guide umane incomplete | ⬜ Doc | Solo memoria in `docs/guides/`; mancano heartbeat, LLM, body, smoke test |
-
-| `TOOL_ARCHITECTURE.md` troppo lungo | ⬜ Doc | ~1600 righe; spezzare o snellire sezioni storiche |
-
-| Draft obsoleti in `docs/Drafts/` | ⬜ Doc | `UNIFIED_MEMORY_RAG_PLAN`, `AgentEvolution-GapAnalysis`, `STT-Analysis` — non usare come SSOT |
-
-| Allineamento `AGENTS.md` / spec | ✅ Fatto | Giugno 2026 — tabella H1–H6, test coverage, feature recenti |
-
-
+| Item | Dettaglio |
+|------|-----------|
+| `ConversationViewModel` monolitico (~3.9k righe) | Estrarre coordinatori senza cambiare architettura |
+| Dual path input bus | Doc: `SystemInputDispatcher` vs `InputRouter` — `INPUT_ARCHITECTURE.md` §3.1 |
+| Guide umane | Mancano guide narrative LLM / body (memoria, proattività, umore ok) |
+| `TOOL_ARCHITECTURE.md` | ~1600 righe — snellire sezioni storiche |
+| Draft obsoleti | Eliminare `AgentEvolution-GapAnalysis.md`, `STT-Analysis.md` (fix in `STT_ARCHITECTURE.md`) |
 
 ---
 
+## Test coverage (unit)
 
+**~115 file di test.** Buona copertura su domain, parser, policy, memoria unificata, proattività H7.
 
-## Test coverage (unit, `app/src/test`)
+| Area | Esempi |
+|------|--------|
+| Memoria RAG | `UnifiedMemoryRepositoryTest`, `LlmMemoryRecallPlannerTest`, `MemorySearchScorerTest`, `MemoryReorganizePolicyTest`, `UpsertExactMatchTest` |
+| Proattività H7 | `DeviationWatcherTest`, `WellnessWatcherTest`, `WellnessContextBuilderTest`, `RecurringHabitSlotMinerTest` |
+| Mood / body mapper | `MoodEngineTest`, `EmotionGestureMapperTest`, `BodyExpressionMapperTest` |
+| Heartbeat legacy | `HeartbeatMicroTickPolicyTest`, `DomainSchedulerTest` |
 
+**Lacune:** `ConversationViewModel`, `HeartbeatOrchestrator`, `ProactiveGatePolicy`, E2E input drain.
 
-
-**~110 file di test** (giugno 2026). Buona copertura su **domain**, **parser**, **policy**, **memoria unificata**, **tool locali**.
-
-
-
-### Ben coperto
-
-| Area | Esempi test |
-
-|------|-------------|
-
-| Memoria RAG / unified | `UnifiedMemoryRepositoryTest`, `MemorySearchScorerTest`, `MemoryProjectionGuardTest`, `LlmMemoryRecallPlannerTest` |
-
-| Mood / emozioni UI | `MoodEngineTest`, `MoodUiStateMapperTest`, `EyeExpressionMapperTest`, `EphemeralExpressionTest` |
-
-| Body ESP32 (mapper) | `EmotionGestureMapperTest`, `BodyExpressionMapperTest`, `HeadNeutralizerTest`, `SpeakingMicroMovesTest` |
-
-| Heartbeat (parziale) | `DomainSchedulerTest`, `HeartbeatCriticParserTest`, `HeartbeatInputSourceTest`, `HeartbeatMicroTickPolicyTest` |
-
-| Presenza / centering planner | `DeskPresenceGateTest`, `PresenceFusionPolicyTest`, `AttentionCenteringPlannerTest` |
-
-| Input policy / coda | `InputPolicyEngineTest`, `DeferredInputQueueTest` |
-
-| STT / speech domain | `SttListeningOrchestratorTest`, `EchoSpeechFilterTest`, `WakePhraseMatcherTest` |
-
-| Spatial / activity | `PlaceMatcherTest`, `SavePlaceToolTest`, `ActivityLogRepositoryTest` |
-
-
-
-### Lacune (moduli runtime critici senza test dedicati)
-
-| Modulo | Note |
-
-|--------|------|
-
-| `ConversationViewModel` | Hub orchestrazione — nessun test |
-
-| `HeartbeatOrchestrator` | Tick end-to-end — nessun test |
-
-| `HeartbeatContextBuilder` | Assembly contesto — nessun test |
-
-| `ProactiveGatePolicy` / `ProactiveTracker` | Gate proattività — nessun test |
-
-| `ReasoningEngineImpl` / `ToolChainOrchestrator` | Solo `LlmResponseParserTest`, `ChainSpeechPolicyTest` |
-
-| `DeskPresenceMonitor` | Solo `DeskPresenceGateTest` (policy, non ML Kit) |
-
-| `UserAttentionCentering` | Closed-loop su ogni turno vocale; scan simmetrico solo senza volto a inizio turno — test `UserAttentionCenteringTest` |
-
-| `BodyExpressionController` | Solo mapper/gesture |
-
-| `MoodManager` | Solo `MoodEngineTest` |
-
-| `WorkingMemoryRepository` | Solo modello `WorkingMemoryTest` |
-
-| `WeeklyStatsRepository` | Solo `WeeklyStatsTest` (domain) |
-
-| `UserAwarenessRepository` | Solo tracker/state |
-
-| `NotificationInputSource` / listener | Parziale (`UnannouncedNotificationTest`, inbox mapper) |
-
-
-
-Priorità test futuri: `ProactiveGatePolicy`, `HeartbeatOrchestrator` (con fake deps), `InputPolicyEngine`+deferred drain E2E.
-
-
+Priorità test: `ProactiveGatePolicy`, `HeartbeatOrchestrator` (fake deps).
 
 ---
-
-
 
 ## Completato
 
-
-
 ### Autonomia
 
-- ~~**H1 — Heartbeat base**~~ — scheduler, orchestrator, playbook, domini attenzione (6 built-in + custom), critic pass HIGH, micro-tick senza LLM
+- **H7 — Proattività unificata (v1)** — Predittività + Wellness; settings; care domains = toggle su Wellness; ordine = fase visuale pre-score — [`PROACTIVE_ARCHITECTURE.md`](PROACTIVE_ARCHITECTURE.md)
+- **H1 — Heartbeat shell** — scheduler, micro-tick; attention domains (care + custom) → wellness
+- **H2 — Confidence threshold** — `speak_confidence`; suppress heartbeat / wellness / predittività
+- **H3 (core + dinamico)** — `MoodManager`, `TurnMoodEvaluator`, hotword idle, burst/ripetizione, tier happy LLM, UI occhi, coreografie corpo ESP32
+- **H4 (core)** — `WorkingMemoryRepository`, dedup deviation/wellness, injection heartbeat legacy
+- **H5 (core)** — `WeeklyStatsRepository`, tick `weekly_reflection` nel mood loop (senza gate mic dedicato)
+- **H6 (core)** — rimosso `UserAwarenessRepository` (keyword-based, luglio 2026); tono utente LLM-driven via `user_tone`
 
-- ~~**H2 — Confidence threshold**~~ — `speak_confidence` in JSON; soglia heartbeat configurabile; suppress heartbeat/TTS intermedio
+### Presenza, corpo, attenzione
 
+- Desk presence ML Kit — `docs/DESK_PRESENCE.md`
+- Attention centering ogni turno vocale — `UserAttentionCentering` + `locateUserNow()` per predittività
+- Body expression runtime — `BodyExpressionController`
 
+### Memoria, input, voce, tool
 
-### Presenza, corpo, attenzione (giugno 2026)
-
-- ~~Desk presence ML Kit~~ — `DeskPresenceMonitor`, gate heartbeat, settings UI — `docs/DESK_PRESENCE.md`
-
-- ~~Attention centering~~ — ogni turno vocale (sessione attiva), scan simmetrico se no face a inizio turno, hold pose se volto perso — `UserAttentionCentering`
-
-- ~~Body expression runtime~~ — `BodyExpressionController`, mood/ephemeral/speaking/micro-tick, `BodyHardwareBusyGate`
-
-
-
-### Memoria e input
-
-- ~~Unified memory RAG (Fase 0–2 + read/write unified-first)~~ — `memory_documents.db`, hybrid recall, `UnifiedMemoryFactory`
-
-- ~~Memory review follow-up (2.1 / 2.2 / 2.3)~~ — projection guard, weekly reconcile, recall budget, safety pin L1 — `docs/MEMORY_REVIEW_FOLLOWUP.md`
-
-- ~~Memory hygiene~~ — `MemoryRecallCueResolver`; `UserMemoryRepository` solo migrazione + test
-
-- ~~Tool notifiche~~ — `NotificationListener`, policy DEFERRED, inbox unificata (promemoria + episodi unread + deferred)
-
-- ~~Marcatura notifica letta dopo annuncio vocale~~ — giugno 2026, modalità NORMAL
-
-
-
-### Voce, LLM, tool
-
-- ~~Memoria utente~~ — estrazione automatica + `save/list/delete_memory`
-
-- ~~Promemoria vocali~~ — `set_reminder` + `ScheduledTaskFired`
-
-- ~~Data/ora nel prompt~~ — `{{CURRENT_DATETIME}}`
-
-- ~~Contesto robot / silenzio notifiche~~ — `set_robot_context`, `docs/ROBOT_CONTEXT.md`
-
-- ~~Web~~ — `web_search` + `fetch_url`
-
-- ~~Musica~~ — `play_spotify`
-
-- ~~Corpo ESP32 (myDeskBody)~~ — tool HARDWARE + `body_capabilities_prompt.txt` — `docs/BODY_INTEGRATION.md`
-
-- ~~Memoria spaziale~~ — `save_place`, `match_place`, DOVE SONO — `docs/SPATIAL_MEMORY.md`
-
-- ~~Log Day / activity log~~ — `log_daily_activity`, estrazione LLM — `docs/ACTIVITY_LOG.md`
-
-- ~~Fire-and-check~~ — `set_reminder` + verifica — `docs/FIRE_AND_CHECK.md`
-
-- ~~WhatsApp / telefono~~ — `resolve_whatsapp_target`, `send_whatsapp`, `dial_phone`
-
-- ~~STT unificato Android/Vosk~~ — `docs/STT_ARCHITECTURE.md`
-
-
+- Unified memory RAG — `MEMORY.md`, `MEMORY_EMBEDDING.md`, `MEMORY_ACCESS.md`
+- Memory review follow-up, notifiche DEFERRED, inbox unificata
+- STT unificato, promemoria vocali, web, Spotify, corpo ESP32, spatial, Log Day, WhatsApp/telefono, fire-and-check
+- UX: notifiche lette post-TTS, catalogo tool body, draft `UNIFIED_MEMORY_RAG_PLAN` rimosso
 
 ---
 
-
-
-## Documentazione di riferimento
-
-
+## Documentazione SSOT
 
 | Argomento | Spec |
-
 |-----------|------|
-
-| Visione autonomo (draft) | `docs/Drafts/AUTONOMOUS_AGENT_VISION.md` |
-
-| Gap analysis (obsoleto) | `docs/Drafts/AgentEvolution-GapAnalysis.md` |
-
-| Indice agenti | `AGENTS.md` |
-
+| Proattività | [`PROACTIVE_ARCHITECTURE.md`](PROACTIVE_ARCHITECTURE.md) · guida [`guides/PROATTIVITA.md`](guides/PROATTIVITA.md) |
+| Umore | [`MOOD.md`](MOOD.md) · guida [`guides/UMORE.md`](guides/UMORE.md) · smoke [`guides/UMORE_SMOKE.md`](guides/UMORE_SMOKE.md) |
+| Heartbeat | [`HEARTBEAT_ARCHITECTURE.md`](HEARTBEAT_ARCHITECTURE.md) (micro-tick) |
+| Memoria | [`MEMORY.md`](MEMORY.md), [`MEMORY_RECALL_PLANNER.md`](MEMORY_RECALL_PLANNER.md) |
+| Indice agenti | [`AGENTS.md`](../AGENTS.md) |

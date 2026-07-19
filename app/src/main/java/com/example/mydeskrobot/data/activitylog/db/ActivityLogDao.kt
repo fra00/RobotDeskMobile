@@ -111,4 +111,24 @@ interface ActivityLogDao {
 
     @Query("SELECT * FROM activity_log_events WHERE id = :id LIMIT 1")
     suspend fun getById(id: Long): ActivityLogEventEntity?
+
+    @Query(
+        """
+        SELECT DISTINCT dayKey FROM activity_log_events
+        WHERE timestampMs >= :sinceMs
+        ORDER BY dayKey ASC
+        """,
+    )
+    suspend fun getDistinctDayKeysSince(sinceMs: Long): List<String>
+
+    @Query(
+        """
+        SELECT * FROM activity_log_events
+        WHERE dayKey = :dayKey
+          AND eventKind = 'PHYSICAL_NOW'
+          AND confidence = 'CONFIRMED'
+        ORDER BY timestampMs ASC
+        """,
+    )
+    suspend fun getConfirmedPhysicalForDay(dayKey: String): List<ActivityLogEventEntity>
 }

@@ -16,6 +16,8 @@ class MoodManager(
     private val repository: MoodRepository,
     private val engine: MoodEngine = MoodEngine(),
     private val scope: CoroutineScope,
+    private val moodConfig: MoodConfig = MoodConfig(),
+    private val turnMoodConfig: TurnMoodConfig = TurnMoodConfig(),
 ) {
     private val _currentMood = MutableStateFlow(RobotMood.NEUTRAL)
     val currentMood: StateFlow<RobotMood> = _currentMood.asStateFlow()
@@ -24,6 +26,9 @@ class MoodManager(
     val ephemeralExpression: StateFlow<EphemeralExpression?> = _ephemeralExpression.asStateFlow()
 
     private var lastInteractionTime: Long = System.currentTimeMillis()
+    private var lastVoiceTurnTime: Long = System.currentTimeMillis()
+    private var conversationSession: ConversationMoodSession = ConversationMoodSession()
+    private var turnPromptHints: List<String> = emptyList()
 
     suspend fun initialize() {
         val stored = repository.load()
@@ -38,9 +43,11 @@ class MoodManager(
         val current = _currentMood.value
         val now = System.currentTimeMillis()
 
-        if (trigger is MoodTrigger.PositiveInteraction ||
-            trigger is MoodTrigger.UserApology ||
-            trigger is MoodTrigger.TaskCompletedUseful
+        if (trigger is MoodTrigger.UserApology ||
+            trigger is MoodTrigger.TaskCompletedUseful ||
+            trigger is MoodTrigger.LlmEmotion ||
+            trigger is MoodTrigger.VoiceTurnPresence ||
+            trigger is MoodTrigger.ValenceDelta
         ) {
             lastInteractionTime = now
         }
@@ -52,6 +59,11 @@ class MoodManager(
     fun checkIdleTransition() {
         val idleMinutes = (System.currentTimeMillis() - lastInteractionTime) / 60_000L
         onTrigger(MoodTrigger.IdleTime(idleMinutes))
+    }
+
+    fun checkHotwordListeningIdle() {
+        val idleMinutes = (System.currentTimeMillis() - lastVoiceTurnTime) / 60_000L
+        onTrigger(MoodTrigger.HotwordListeningIdle(idleMinutes))
     }
 
     fun checkDecay() {
@@ -66,34 +78,85 @@ class MoodManager(
         lastInteractionTime = System.currentTimeMillis()
     }
 
-    fun recordPositiveInteraction() {
-        lastInteractionTime = System.currentTimeMillis()
-        onTrigger(MoodTrigger.PositiveInteraction)
-    }
-
-    fun recordNegativeInteraction() {
-        lastInteractionTime = System.currentTimeMillis()
-        onTrigger(MoodTrigger.NegativeInteraction)
-    }
-
     fun recordTaskCompletedUseful() {
         lastInteractionTime = System.currentTimeMillis()
         onTrigger(MoodTrigger.TaskCompletedUseful)
-    }
-
-    fun recordApology() {
-        lastInteractionTime = System.currentTimeMillis()
-        onTrigger(MoodTrigger.UserApology)
     }
 
     fun recordEyePoke(tier: Int, count: Int) {
         onTrigger(MoodTrigger.EyePoked(tier, count))
     }
 
-    /** LLM JSON emotion: ephemeral only — does not change persistent valence. */
-    fun setEphemeralExpression(emotion: RobotEmotion?) {
+    fun recordVoiceTurn(phrase: String) {
         val now = System.currentTimeMillis()
-        _ephemeralExpression.value = EphemeralExpressionPolicy.create(emotion, now)
+        lastVoiceTurnTime = now
+        lastInteractionTime = now
+        val (session, signals) = TurnMoodEvaluator.evaluateUserTurn(
+            phrase = phrase,
+            session = conversationSession,
+            config = turnMoodConfig,
+            now = now,
+        )
+        conversationSession = session
+        turnPromptHints = signals.promptHints
+        signals.triggers.forEach { onTrigger(it) }
+    }
+
+    fun recordToolSuccessInSession() {
+        conversationSession = conversationSession.onToolSuccess(System.currentTimeMillis())
+    }
+
+    fun resetConversationSession() {
+        conversationSession = ConversationMoodSession.reset()
+        turnPromptHints = emptyList()
+        val now = System.currentTimeMillis()
+        lastVoiceTurnTime = now
+        lastInteractionTime = now
+    }
+
+    fun currentPromptHints(): List<String> = turnPromptHints
+
+    /** Ephemeral eyes only — no persistent valence (micro-tick, internal UI). */
+    fun setEphemeralExpression(emotion: RobotEmotion?) {
+        val mood = _currentMood.value
+        val now = System.currentTimeMillis()
+        _ephemeralExpression.value = EphemeralExpressionPolicy.create(
+            emotion = emotion,
+            valence = mood.valence,
+            baseline = mood.baseline,
+            now = now,
+        )
+    }
+
+    /**
+     * Completed LLM turn: ephemeral expression + optional valence shift.
+     * [userTone] is the LLM's judgement of the user's utterance (JSON `user_tone`).
+     */
+    fun applyLlmTurnEmotion(emotion: RobotEmotion?, userTone: UserInteractionTone? = null) {
+        lastInteractionTime = System.currentTimeMillis()
+        if (userTone == UserInteractionTone.APOLOGY) {
+            onTrigger(MoodTrigger.UserApology)
+        }
+        val mood = _currentMood.value
+        val (session, signals) = TurnMoodEvaluator.evaluateLlmTurn(
+            emotion = emotion,
+            userTone = userTone,
+            session = conversationSession,
+            config = turnMoodConfig,
+        )
+        conversationSession = session
+        if (signals.promptHints.isNotEmpty()) {
+            turnPromptHints = signals.promptHints
+        }
+        _ephemeralExpression.value = EphemeralExpressionPolicy.create(
+            emotion = emotion,
+            valence = mood.valence,
+            baseline = mood.baseline,
+            intensityScale = signals.ephemeralIntensityScale,
+        )
+        if (emotion != null && signals.llmEmotionValenceTier != LlmEmotionValenceTier.NONE) {
+            onTrigger(MoodTrigger.LlmEmotion(emotion, signals.llmEmotionValenceTier))
+        }
     }
 
     fun clearExpiredEphemeral(now: Long = System.currentTimeMillis()) {
@@ -105,6 +168,9 @@ class MoodManager(
 
     fun getIdleMinutes(): Long =
         (System.currentTimeMillis() - lastInteractionTime) / 60_000L
+
+    fun getMinutesSinceLastVoiceTurn(): Long =
+        (System.currentTimeMillis() - lastVoiceTurnTime) / 60_000L
 
     private fun applyMoodIfChanged(previous: RobotMood, newMood: RobotMood?) {
         if (newMood != null && newMood != previous) {

@@ -20,7 +20,7 @@ User voice → ReasoningEngineImpl.resolveRecallPlan()
 |------|-------------|
 | `MemoryRetrievalProfile.VISION` or `freshVisionVerify` after `take_photo` | `MemoryRecallPlan.visionCatalog()` |
 | Blank user text, `[SYSTEM_INPUT: …]` heartbeat | `recallPlan = null` → no MEMORIA from question |
-| Planner returns `skip_recall: true` | No MEMORIA (greetings, farewells, small talk) — turn continues |
+| Planner returns `skip_recall: true` | No MEMORIA (greetings, acknowledgements, direct action commands, explicit save/delete when topic is in utterance) — turn continues |
 | No `MemoryContextProvider` | `recallPlan = null` |
 
 ## Failure policy (no fallback)
@@ -52,7 +52,7 @@ Prompt asset: [`memory_recall_planner_prompt.txt`](../app/src/main/assets/prompt
 }
 ```
 
-`skip_recall: true` — saluti, ringraziamenti, chiusure conversazione (“buona notte”, “ciao”, “grazie”): nessun retrieval, turno **non** in errore.
+`skip_recall: true` — no retrieval, turn **not** in error. Examples: greetings/closings (“buona notte”, “ciao”, “grazie”); direct tools (“accendi la luce”, `set_volume`, `play_spotify`); explicit `save_memory` / `delete_memory` when the utterance already contains the topic (“dimentica il cane Brina”). **false** for recall questions (“cosa sai di me”, log day, work hours, messages).
 
 `focus_day_key` must be ISO date when `temporal_scope` is `SINGLE_DAY`. Relative dates (ieri, domani, weekday) are resolved by the planner using `{{CURRENT_DATETIME}}` in the prompt.
 
@@ -75,6 +75,7 @@ Prompt asset: [`memory_recall_planner_prompt.txt`](../app/src/main/assets/prompt
 | `USER_FACTS` | `preferUserFacts=true`; rank all user facts via `search_queries` |
 | `EPISODIC` | `preferEpisodicDetail=true` |
 | `MESSAGES` | If scope `NONE` → expand to `WEEK` |
+| `GENERAL` | If scope `NONE` → expand to `WEEK`; auto `include_habit_summary` when scope is `WEEK`; pins all user-facing facts + recent episodes for broad profile |
 | `PLANNING` | Uses plan temporal scope / day |
 | `SPATIAL` | `localizeQuery=true`; spatial landmarks excluded from RAG pool |
 | `GENERAL` | No prefer flags |

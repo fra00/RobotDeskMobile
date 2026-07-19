@@ -1,6 +1,5 @@
 package com.example.mydeskrobot.reasoning
 
-import com.example.mydeskrobot.integration.input.heartbeat.HeartbeatCriticParser
 import com.example.mydeskrobot.reasoning.llm.LlmClient
 import com.example.mydeskrobot.reasoning.memory.FreshVisionVerifyPrompt
 import com.example.mydeskrobot.reasoning.memory.MemoryRecallPlan
@@ -9,7 +8,6 @@ import com.example.mydeskrobot.reasoning.memory.MemoryRetrievalProfile
 import com.example.mydeskrobot.reasoning.memory.RecallPlanException
 import com.example.mydeskrobot.reasoning.memory.RecallPlanFailure
 import com.example.mydeskrobot.reasoning.memory.userMessage
-import com.example.mydeskrobot.reasoning.model.CriticResult
 import com.example.mydeskrobot.reasoning.model.ConversationMessage
 import com.example.mydeskrobot.reasoning.model.IntermediateResponse
 import com.example.mydeskrobot.reasoning.model.ReasoningResult
@@ -39,7 +37,6 @@ class ReasoningEngineImpl(
     private val robotContextProvider: RobotContextProvider? = null,
     private val moodContextProvider: MoodContextProvider? = null,
     private val heartbeatPlaybookProvider: HeartbeatPlaybookProvider? = null,
-    private val heartbeatCriticPrompt: String? = null,
     maxChainSteps: Int = 10,
     private val reasoningLogObserver: ReasoningLogObserver = NoOpReasoningLogObserver,
     private val onBodyHardwareBusyChanged: (Boolean) -> Unit = {},
@@ -132,42 +129,6 @@ PHYSICAL BODY — NOT CONNECTED
         }
         refreshSystemPromptForSystemInput(envelope.input)
         return orchestrator.processSystemInput(envelope, onIntermediateResponse)
-    }
-
-    override suspend fun processCriticPass(
-        proposal: String,
-        domainId: String,
-        domainName: String?,
-        recentInterventions: List<String>,
-    ): CriticResult {
-        val criticPrompt = heartbeatCriticPrompt
-        if (criticPrompt.isNullOrBlank() || proposal.isBlank()) {
-            return CriticResult.Approve(proposal)
-        }
-
-        val userMessage = buildString {
-            appendLine("DOMINIO: ${domainName ?: domainId}")
-            appendLine("PROPOSTA VOCALE:")
-            appendLine(proposal)
-            if (recentInterventions.isNotEmpty()) {
-                appendLine("INTERVENTI RECENTI SUL DOMINIO:")
-                recentInterventions.forEach { appendLine("- $it") }
-            }
-        }
-
-        val llmResult = llmClient.chat(
-            messages = listOf(ConversationMessage.User(userMessage)),
-            systemPrompt = criticPrompt,
-        )
-
-        val content = llmResult.getOrElse { error ->
-            return CriticResult.Failed(
-                message = error.message ?: "Critic LLM error",
-                fallbackText = proposal,
-            )
-        }.content
-
-        return HeartbeatCriticParser.parse(content, proposal)
     }
     
     override fun reset() {

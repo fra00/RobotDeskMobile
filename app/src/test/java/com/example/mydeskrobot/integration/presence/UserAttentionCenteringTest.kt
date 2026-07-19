@@ -28,6 +28,18 @@ class UserAttentionCenteringTest {
     }
 
     @Test
+    fun bodyUnreachable_abortsWithoutMovesOrScan() = runTest {
+        val fake = FakeAttentionBodyClient(statusError = "timeout")
+        FaceGazeStateStore.reset()
+
+        val result = centering(fake).tryCenterOnUser()
+
+        assertEquals(AttentionCenteringResult.SkippedBodyUnreachable, result)
+        assertTrue(fake.jointMoves.isEmpty())
+        assertEquals(1, fake.statusCalls)
+    }
+
+    @Test
     fun alreadyCentered_skipsMoves() = runTest {
         val fake = FakeAttentionBodyClient()
         setGaze(FaceGazeSnapshot(0.05f, 0f, 0.8f, capturedAt = fakeNow))
@@ -86,6 +98,58 @@ class UserAttentionCenteringTest {
     }
 
     @Test
+    fun scanAcceptsFaceDetectedDuringSettle_stopsWithoutNextPan() = runTest {
+        val fake = FakeAttentionBodyClient()
+        FaceGazeStateStore.reset()
+        fake.onMoveToBasePan = { pan ->
+            if (pan == 14) {
+                // ML Kit sees the face mid-settle; timestamp is before settle ends.
+                FaceGazeStateStore.update(
+                    FaceGazeSnapshot(
+                        horizontalOffset = 0.05f,
+                        verticalOffset = 0f,
+                        confidence = 0.8f,
+                        capturedAt = fakeNow + 500L,
+                    ),
+                )
+            } else {
+                FaceGazeStateStore.reset()
+            }
+        }
+
+        centering(fake).tryCenterOnUser()
+
+        assertEquals(14, fake.basePanPosition())
+        assertFalse(fake.jointMoves.any { it.joint == BodyJoint.BASE_PAN && it.position == -14 })
+    }
+
+    @Test
+    fun noFaceAtStart_scanFindsCenteredFace_skipsFineCentering() = runTest {
+        val fake = FakeAttentionBodyClient()
+        FaceGazeStateStore.reset()
+        fake.onMoveToBasePan = { pan ->
+            if (pan != -28) {
+                FaceGazeStateStore.reset()
+            }
+        }
+
+        centering(
+            fake = fake,
+            pause = { ms ->
+                fakeNow += ms
+                if (fake.basePanPosition() == -28) {
+                    FaceGazeStateStore.update(
+                        FaceGazeSnapshot(0.05f, 0f, 0.8f, capturedAt = fakeNow),
+                    )
+                }
+            },
+        ).tryCenterOnUser()
+
+        assertEquals(-28, fake.basePanPosition())
+        assertFalse(fake.jointMoves.any { it.joint == BodyJoint.DISPLAY_PAN })
+    }
+
+    @Test
     fun noFaceAtStart_scanExploresSymmetricPans() = runTest {
         val fake = FakeAttentionBodyClient()
         FaceGazeStateStore.reset()
@@ -96,14 +160,17 @@ class UserAttentionCenteringTest {
         assertTrue(fake.jointMoves.any { it.joint == BodyJoint.BASE_PAN && it.position == -14 })
     }
 
-    private fun centering(fake: FakeAttentionBodyClient): UserAttentionCentering {
+    private fun centering(
+        fake: FakeAttentionBodyClient,
+        pause: suspend (Long) -> Unit = { ms -> fakeNow += ms },
+    ): UserAttentionCentering {
         fakeNow = 1_000_000L
         return UserAttentionCentering(
             bodySettingsProvider = { BodySettings(enabled = true, baseUrl = "http://test") },
             deskPresenceSettingsProvider = { DeskPresenceSettings(enabled = true) },
             bodyClientProvider = { fake },
             nowMillis = { fakeNow },
-            pause = { ms -> fakeNow += ms },
+            pause = pause,
         )
     }
 
@@ -118,6 +185,7 @@ class UserAttentionCenteringTest {
 
     private class FakeAttentionBodyClient(
         basePan: Int = 0,
+        private val statusError: String? = null,
     ) : AttentionBodyClient {
         private val joints = mutableMapOf(
             BodyJoint.BASE_PAN.apiName to BodyJointState(position = basePan),
@@ -126,13 +194,19 @@ class UserAttentionCenteringTest {
         )
 
         val jointMoves = mutableListOf<RecordedMove>()
+        var statusCalls = 0
         var onMoveToBasePan: (Int) -> Unit = {}
         var onAfterMove: () -> Unit = {}
 
         fun basePanPosition(): Int = joints.getValue(BodyJoint.BASE_PAN.apiName).position
 
-        override suspend fun getStatus(): BodyApiResult<BodyStatus> =
-            BodyApiResult.Success(BodyStatus(joints = joints.toMap()))
+        override suspend fun getStatus(): BodyApiResult<BodyStatus> {
+            statusCalls++
+            if (statusError != null) {
+                return BodyApiResult.Error(statusError)
+            }
+            return BodyApiResult.Success(BodyStatus(joints = joints.toMap()))
+        }
 
         override suspend fun moveJoint(
             joint: BodyJoint,

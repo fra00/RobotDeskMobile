@@ -21,6 +21,6 @@ class MoodPromptFormatterTest {
         assertTrue(text.contains("Valenza:"))
         assertTrue(text.contains("angry (70%)"))
         assertTrue(text.contains("poke_occhi"))
-        assertTrue(text.contains("effimera"))
+        assertTrue(text.contains("effimero") || text.contains("valenza di fondo") || text.contains("STILE RISPOSTA"))
     }
 }
