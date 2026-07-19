@@ -97,8 +97,8 @@ Praise (LLM `user_tone: "positive"`, cap/hour) does not shift valence directly: 
 
 | Condition | After | Action |
 |-----------|-------|--------|
-| Valence > baseline (event-driven reasons) | 20 min (`happyDecayMinutes`) | Drift toward baseline, clear reason near target |
-| Valence < baseline (event-driven reasons) | 45 min (`sadDecayMinutes`) | Drift toward baseline, clear reason near target |
+| Valence > baseline (event-driven reasons) | 5 min (`happyDecayMinutes`) | Drift toward baseline (−0.10/step), clear reason near target |
+| Valence < baseline (event-driven reasons) | 12 min (`sadDecayMinutes`) | Drift toward baseline (+0.10/step), clear reason near target |
 | `EYE_POKE` annoyance | 8 min | Drift toward baseline, clear reason |
 
 Generic drift excludes `NIGHT_TIME` (forced sleeping), idle reasons (managed by the idle loop) and `EYE_POKE` (own rule).

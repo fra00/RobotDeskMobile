@@ -7,7 +7,7 @@ Il robot ha un **umore persistente** (come un coinquilino che si ricorda se la g
 | | Umore di fondo | Espressione del turno |
 |---|----------------|----------------------|
 | **Cosa vedi** | Occhi in standby (noia, sonno, neutro, felice…) | Occhi mentre parla o ascolta (es. sorpresa, tristezza sulla frase appena detta) |
-| **Durata** | Ore/giorni (salvato) | ~15–30 secondi dopo la risposta |
+| **Durata** | Persistente (salvato); senza eventi nuovi torna al baseline in decine di minuti | ~15–30 secondi dopo la risposta |
 | **Chi decide** | Regole Kotlin (idle hotword, notte, poke, presenza vocale, fatigue) + LLM su eventi emotivi | Campo `emotion` nel JSON del LLM |
 
 In dialogo attivo l’espressione del turno **prevale** sugli occhi; in standby vedi l’umore di fondo.
@@ -28,7 +28,7 @@ In dialogo attivo l’espressione del turno **prevale** sugli occhi; in standby 
 - **Poke occhi:** tap ripetuti → fastidio; scuse sincere possono ammorbidire.
 - **Emozione LLM:** `sad`/`angry`/`bored` abbassano; `happy`/`loving` alzano solo su **eventi reali**, non su ogni ack post-tool.
 
-L’umore **torna verso un baseline** con il tempo (decay), salvo eventi nuovi.
+L’umore **torna verso un baseline** a passi (~0.10 ogni 5 min se alto, ogni 12 min se basso). Da un picco felice (~0.8) al neutro servono circa **mezz’ora**, non ore.
 
 ## Cosa vede l’LLM
 

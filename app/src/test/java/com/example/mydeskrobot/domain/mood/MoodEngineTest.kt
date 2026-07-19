@@ -142,14 +142,14 @@ class MoodEngineTest {
 
     @Test
     fun `positive valence decays toward baseline after happy decay window`() {
-        val config = MoodConfig(happyDecayMinutes = 20)
+        val config = MoodConfig(happyDecayMinutes = 5)
         val engine = MoodEngine(config, MoodValenceConfig())
         val happy = RobotMood.fromValence(
             valence = 0.35f,
             since = baseTime,
             reason = MoodReason.LLM_EXPRESSION,
         )
-        val decayed = engine.checkDecay(happy, baseTime + 20 * 60_000)
+        val decayed = engine.checkDecay(happy, baseTime + 5 * 60_000)
 
         assertNotNull(decayed)
         assertTrue(decayed!!.valence < happy.valence)
@@ -158,14 +158,14 @@ class MoodEngineTest {
 
     @Test
     fun `negative valence drifts toward baseline after sad decay window`() {
-        val config = MoodConfig(sadDecayMinutes = 45)
+        val config = MoodConfig(sadDecayMinutes = 12)
         val engine = MoodEngine(config, MoodValenceConfig())
         val sad = RobotMood.fromValence(
             valence = -0.3f,
             since = baseTime,
             reason = MoodReason.LLM_EXPRESSION,
         )
-        val decayed = engine.checkDecay(sad, baseTime + 45 * 60_000)
+        val decayed = engine.checkDecay(sad, baseTime + 12 * 60_000)
 
         assertNotNull(decayed)
         assertTrue(decayed!!.valence > sad.valence)
@@ -174,14 +174,14 @@ class MoodEngineTest {
 
     @Test
     fun `negative valence does not drift before sad decay window`() {
-        val config = MoodConfig(sadDecayMinutes = 45)
+        val config = MoodConfig(sadDecayMinutes = 12)
         val engine = MoodEngine(config, MoodValenceConfig())
         val sad = RobotMood.fromValence(
             valence = -0.3f,
             since = baseTime,
             reason = MoodReason.LLM_EXPRESSION,
         )
-        assertNull(engine.checkDecay(sad, baseTime + 30 * 60_000))
+        assertNull(engine.checkDecay(sad, baseTime + 8 * 60_000))
     }
 
     @Test

@@ -125,8 +125,10 @@ data class MoodConfig(
     val idleToBoredMinutes: Int = DEFAULT_IDLE_TO_BORED_MINUTES,
     val hotwordIdleToBoredMinutes: Int = DEFAULT_HOTWORD_IDLE_TO_BORED_MINUTES,
     val boredToDrowsyMinutes: Int = 90,
-    val happyDecayMinutes: Int = 20,
-    val sadDecayMinutes: Int = 45,
+    /** Minutes between drift steps when valence is above baseline. */
+    val happyDecayMinutes: Int = 5,
+    /** Minutes between drift steps when valence is below baseline (lingers a bit longer). */
+    val sadDecayMinutes: Int = 12,
     val eyePokeAnnoyanceDecayMinutes: Int = 8,
     val burstTurnCount: Int = DEFAULT_BURST_TURN_COUNT,
     val burstWindowMinutes: Int = DEFAULT_BURST_WINDOW_MINUTES,
