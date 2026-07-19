@@ -1,9 +1,19 @@
 package com.example.mydeskrobot.domain.mood
 
+import com.example.mydeskrobot.domain.model.RobotEmotion
+
 /**
  * Formats persistent robot wellbeing (+ optional active ephemeral face) for LLM prompt injection.
  */
 object MoodPromptFormatter {
+
+    private val LOW_MOOD_FACES = setOf(
+        RobotEmotion.BORED,
+        RobotEmotion.SAD,
+        RobotEmotion.ANGRY,
+        RobotEmotion.DROWSY,
+        RobotEmotion.CONFUSED,
+    )
 
     fun format(
         mood: RobotMood,
@@ -17,6 +27,12 @@ object MoodPromptFormatter {
         val valenceLine = MoodValenceMapper.formatValence(mood.valence)
         val baselineLine = MoodValenceMapper.formatValence(mood.baseline)
         val activeEphemeral = ephemeral?.takeIf { it.isActive(now) }
+        val visibleFace = activeEphemeral?.emotion
+        val faceConflictsWithWarmFondo =
+            visibleFace != null &&
+                visibleFace in LOW_MOOD_FACES &&
+                (mood.baseEmotion in setOf(RobotEmotion.HAPPY, RobotEmotion.LOVING) ||
+                    mood.valence >= 0.28f)
 
         return buildString {
             appendLine("STATO ROBOT (autoritativo — benessere persistente + faccia attuale):")
@@ -26,16 +42,22 @@ object MoodPromptFormatter {
                 appendLine("- Motivo di fondo: $reasonLine")
             }
             if (activeEphemeral != null) {
+                val face = activeEphemeral.emotion.name.lowercase()
                 val ePct = (activeEphemeral.intensity * 100).toInt()
+                appendLine("- Espressione attuale (occhi, effimera): $face ($ePct%)")
                 appendLine(
-                    "- Espressione attuale (occhi, effimera): " +
-                        "${activeEphemeral.emotion.name.lowercase()} ($ePct%)",
+                    "- PRIORITÀ FACCIA: gli occhi mostrano $face ora. " +
+                        "Se chiedono come stai / cos'hai / perché quella faccia: " +
+                        "rispondi da $face (breve, onesto), emotion=$face. " +
+                        "VIETATO: \"tutto bene\", \"alla grande\", tono solare — " +
+                        "anche se la valenza di fondo è alta.",
                 )
-                appendLine(
-                    "- Coerenza: se ti chiedono come stai / cos'hai / perché quella faccia, " +
-                        "rispondi in linea con l'espressione attuale e/o l'emozione di fondo — " +
-                        "non dire che va tutto bene se risulti bored, sad, angry o drowsy.",
-                )
+                if (faceConflictsWithWarmFondo) {
+                    appendLine(
+                        "- Conflitto fondo/faccia: il fondo può essere positivo, " +
+                            "ma la faccia attuale vince su come-stai e sullo stile del turno.",
+                    )
+                }
             } else {
                 appendLine("- Espressione attuale (occhi): = emozione di fondo (nessuna effimera attiva)")
                 appendLine(
@@ -77,7 +99,7 @@ object MoodPromptFormatter {
                         "non diventare subito entusiasta.",
                 )
             }
-            val replyStyle = MoodReplyStyleResolver.resolve(mood)
+            val replyStyle = MoodReplyStyleResolver.resolve(mood, visibleFace)
             appendLine("- Profilo stile: ${replyStyle.name.lowercase()}")
             MoodReplyStyleResolver.promptLines(replyStyle).forEach { appendLine(it) }
         }.trim()

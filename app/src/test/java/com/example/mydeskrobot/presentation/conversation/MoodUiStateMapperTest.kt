@@ -40,5 +40,7 @@ class MoodUiStateMapperTest {
         assertEquals(21L, ui.ephemeralRemainingSeconds)
         assertEquals(12L, ui.idleMinutes)
         assertTrue(ui.promptSnapshot.contains("STATO ROBOT"))
+        assertTrue(ui.promptSnapshot.contains("PRIORITÀ FACCIA"))
+        assertTrue(ui.promptSnapshot.contains("angry"))
     }
 }

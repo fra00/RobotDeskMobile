@@ -121,8 +121,8 @@ On session start: `moodManager.initialize()` loads persisted mood; `resetConvers
 ## Prompt injection
 
 - Provider: [`MoodContextProvider`](../app/src/main/java/com/example/mydeskrobot/reasoning/MoodContextProvider.kt) / [`DelegatingMoodContextProvider`](../app/src/main/java/com/example/mydeskrobot/integration/mood/DelegatingMoodContextProvider.kt)
-- Formatter: [`MoodPromptFormatter`](../app/src/main/java/com/example/mydeskrobot/domain/mood/MoodPromptFormatter.kt) → block **`STATO ROBOT`**: persistent wellbeing **and** active ephemeral face (if any), plus coherence rule for “come stai?” (+ turn hints: fatigue, repetition)
-- Reply style: [`MoodReplyStyleResolver`](../app/src/main/java/com/example/mydeskrobot/domain/mood/MoodReplyStyleResolver.kt) → `terse` / `normal` / `warm` appended to STATO ROBOT
+- Formatter: [`MoodPromptFormatter`](../app/src/main/java/com/example/mydeskrobot/domain/mood/MoodPromptFormatter.kt) → block **`STATO ROBOT`**: persistent wellbeing **and** active ephemeral face (if any). If eyes show bored/sad/angry while fondo is happy, **PRIORITÀ FACCIA** forbids “tutto bene” / warm tone (+ turn hints: fatigue, repetition)
+- Reply style: [`MoodReplyStyleResolver`](../app/src/main/java/com/example/mydeskrobot/domain/mood/MoodReplyStyle.kt) → `terse` / `normal` / `warm` from **visible face** (ephemeral if active), else wellbeing valence
 - Human cadence: [`HumanVoicePrompt`](../app/src/main/java/com/example/mydeskrobot/domain/mood/HumanVoicePrompt.kt) (injected each user turn)
 
 Persona philosophy: [`nextPromptv1.md`](nextPromptv1.md), runtime: `assets/llm_system_prompt.txt`.

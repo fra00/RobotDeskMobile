@@ -32,6 +32,21 @@ class MoodReplyStyleResolverTest {
     }
 
     @Test
+    fun `bored visible face overrides warm valence to terse`() {
+        val mood = RobotMood.fromValence(
+            valence = 0.4f,
+            since = 0L,
+            reason = null,
+            forceEmotion = RobotEmotion.HAPPY,
+            forceIntensity = 0.7f,
+        )
+        assertEquals(
+            MoodReplyStyle.TERSE,
+            MoodReplyStyleResolver.resolve(mood, visibleFace = RobotEmotion.BORED),
+        )
+    }
+
+    @Test
     fun `neutral valence resolves normal`() {
         val mood = RobotMood.fromValence(
             valence = 0.1f,

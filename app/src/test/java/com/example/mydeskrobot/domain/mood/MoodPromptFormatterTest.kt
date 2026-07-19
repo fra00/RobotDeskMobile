@@ -41,7 +41,31 @@ class MoodPromptFormatterTest {
         val text = MoodPromptFormatter.format(mood, ephemeral = ephemeral, now = 10_000L)
 
         assertTrue(text.contains("Espressione attuale (occhi, effimera): bored"))
-        assertTrue(text.contains("non dire che va tutto bene"))
+        assertTrue(text.contains("PRIORITÀ FACCIA"))
+        assertTrue(text.contains("VIETATO"))
+        assertTrue(text.contains("Profilo stile: terse"))
+    }
+
+    @Test
+    fun `happy fondo with bored face forces terse and conflict line`() {
+        val mood = RobotMood.fromValence(
+            valence = 0.4f,
+            since = 0L,
+            reason = null,
+            forceEmotion = RobotEmotion.HAPPY,
+            forceIntensity = 0.7f,
+        )
+        val ephemeral = EphemeralExpression(
+            emotion = RobotEmotion.BORED,
+            intensity = 0.55f,
+            expiresAt = 50_000L,
+        )
+        val text = MoodPromptFormatter.format(mood, ephemeral = ephemeral, now = 10_000L)
+
+        assertTrue(text.contains("PRIORITÀ FACCIA"))
+        assertTrue(text.contains("Conflitto fondo/faccia"))
+        assertTrue(text.contains("Profilo stile: terse"))
+        assertFalse(text.contains("STILE RISPOSTA (cordiale)"))
     }
 
     @Test

@@ -3,10 +3,10 @@ package com.example.mydeskrobot.domain.mood
 import com.example.mydeskrobot.domain.model.RobotEmotion
 
 /**
- * How the LLM should shape spoken replies based on persistent wellbeing.
+ * How the LLM should shape spoken replies based on visible face (ephemeral if active) or wellbeing.
  */
 enum class MoodReplyStyle {
-    /** Sad, angry, or low valence — minimal words. */
+    /** Sad, angry, bored, or low valence — minimal words. */
     TERSE,
     /** Default desk-companion tone. */
     NORMAL,
@@ -16,16 +16,30 @@ enum class MoodReplyStyle {
 
 object MoodReplyStyleResolver {
 
-    fun resolve(mood: RobotMood): MoodReplyStyle {
-        when (mood.baseEmotion) {
-            RobotEmotion.SAD,
-            RobotEmotion.ANGRY,
-            -> return MoodReplyStyle.TERSE
-            RobotEmotion.HAPPY,
-            RobotEmotion.LOVING,
-            -> return MoodReplyStyle.WARM
+    private val TERSE_FACES = setOf(
+        RobotEmotion.SAD,
+        RobotEmotion.ANGRY,
+        RobotEmotion.BORED,
+        RobotEmotion.DROWSY,
+        RobotEmotion.CONFUSED,
+    )
+
+    private val WARM_FACES = setOf(
+        RobotEmotion.HAPPY,
+        RobotEmotion.LOVING,
+    )
+
+    /**
+     * @param visibleFace active ephemeral emotion if any; otherwise wellbeing face is used.
+     */
+    fun resolve(mood: RobotMood, visibleFace: RobotEmotion? = null): MoodReplyStyle {
+        val face = visibleFace ?: mood.baseEmotion
+        when (face) {
+            in TERSE_FACES -> return MoodReplyStyle.TERSE
+            in WARM_FACES -> return MoodReplyStyle.WARM
             else -> Unit
         }
+        // No strong face signal (neutral/thinking/…): fall back to persistent valence.
         return when {
             mood.valence >= 0.28f -> MoodReplyStyle.WARM
             mood.valence <= -0.12f -> MoodReplyStyle.TERSE

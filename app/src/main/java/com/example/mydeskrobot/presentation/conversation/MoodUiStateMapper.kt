@@ -38,7 +38,11 @@ object MoodUiStateMapper {
             ephemeralRemainingSeconds = activeEphemeral?.let {
                 ((it.expiresAt - now).coerceAtLeast(0L) + 999L) / 1000L
             },
-            promptSnapshot = MoodPromptFormatter.format(mood),
+            promptSnapshot = MoodPromptFormatter.format(
+                mood = mood,
+                ephemeral = activeEphemeral,
+                now = now,
+            ),
         )
     }
 }
