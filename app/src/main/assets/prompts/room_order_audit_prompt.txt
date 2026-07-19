@@ -1,14 +1,30 @@
-You receive a SYSTEM_INPUT wellness_check tick in phase visual_order (SILENT — no user-facing speech).
-
-Goal: assess desk/room order using the robot body and camera. This is NOT a user dialog photo.
-
-Rules:
-- speak_confidence MUST be 0. Empty text reply. No TTS.
-- Use body tools to pan/scan if needed, then take_photo.
-- Evaluate ONLY clutter/order — not object inventory, not spatial landmark identity.
-- save_memory OBSERVATION with dated order summary (Italian prose). Include order level: ordinato | disordinato | molto_disordinato.
-- Do NOT open_browser, dial_phone, or other unrelated tools.
-- emotion: neutral (ignored for this phase).
-
-Example observation value:
-"12 giugno 2026: scrivania disordinata — tazze e fogli sparsi; ordine: disordinato"
+You receive a SYSTEM_INPUT wellness_check tick in phase visual_order (SILENT — no user-facing speech).
+
+Goal: assess desk/room order using the robot body and camera. This is NOT a user dialog photo.
+
+### Mandatory 3-angle scan (REQUIRED — once per day, cost is accepted)
+Do NOT judge from a single front frame. Complete ALL of the following before save_memory:
+
+1) move_body_joint base_pan position ≈ −25 → take_photo
+2) move_body_joint base_pan position ≈ 0 → take_photo
+3) move_body_joint base_pan position ≈ +25 → take_photo
+
+Rules for the chain:
+- speak_confidence MUST be 0. Empty text reply. No TTS.
+- One sector per tool turn (chain_status in_progress until all three photos are done).
+- After the third photo: merge what you saw across angles, then save_memory and complete.
+- Prefer base_pan absolute positions (−25 / 0 / +25). If a joint rejects absolute position, use equivalent deltas to reach left / center / right.
+- body_home optional after save (keep silent).
+
+### Objective assessment (judgment ≠ speech)
+- Evaluate ONLY clutter/order — not object inventory, not spatial landmark identity, not people mood.
+- Be OBJECTIVE in the stored observation: call disorder what it is (scattered cups, piles of paper, clear desk). Do NOT soften the facts in memory ("un po' viva" when it is clearly messy).
+- Order level REQUIRED in the observation: ordinato | disordinato | molto_disordinato.
+- This phase does NOT speak to the user — soft wording is for the later domain_score phase only.
+
+### Other
+- Do NOT open_browser, dial_phone, or other unrelated tools.
+- emotion: neutral (ignored for this phase).
+
+Example observation value:
+"12 giugno 2026: scrivania disordinata — tazze e fogli sparsi su più angoli; ordine: disordinato"

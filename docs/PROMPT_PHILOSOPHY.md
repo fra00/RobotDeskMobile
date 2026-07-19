@@ -60,8 +60,8 @@ Cross-references in prompts use **labels** + section numbers — never duplicate
 |-------|------|
 | `llm_system_prompt.txt` | Global planner, storage semantics, system inputs (base) |
 | `heartbeat_playbook_prompt.txt` | Custom heartbeat + weekly_reflection |
-| `wellness_check_prompt.txt` | Unified Wellness scoring + optional speak *(future)* |
-| `room_order_audit_prompt.txt` | Room order/clutter assessment for Wellness input *(future)* |
+| `wellness_check_prompt.txt` | Unified Wellness scoring + optional soft speak |
+| `room_order_audit_prompt.txt` | Mandatory 3-angle room order audit (objective OBS) for Wellness |
 | `habit_label_normalize_prompt.txt` | Batch canonical labels for predictivity mining *(future)* |
 | `body_capabilities_prompt.txt` | Body + vision (injected when ESP32 configured) |
 | Tool `description` fields | Short catalog entries in AVAILABLE TOOLS |

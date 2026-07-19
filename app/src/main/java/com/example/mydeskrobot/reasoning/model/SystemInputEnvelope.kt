@@ -250,9 +250,9 @@ data class SystemInputEnvelope(
         fun fromWellnessCheck(check: RobotInput.WellnessCheck): SystemInputEnvelope {
             val phaseLabel = when (check.phase) {
                 com.example.mydeskrobot.domain.wellness.WellnessPhase.VISUAL_ORDER ->
-                    "visual_order (silent body scan + room order photo)"
+                    "visual_order (silent mandatory 3-angle body scan + room order photos)"
                 com.example.mydeskrobot.domain.wellness.WellnessPhase.DOMAIN_SCORE ->
-                    "domain_score (max one short sentence if needed)"
+                    "domain_score (max one short soft sentence if needed)"
             }
             val enabledLabels = check.enabledDomainIds
                 .sorted()

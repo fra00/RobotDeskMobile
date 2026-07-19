@@ -27,7 +27,7 @@ Se non vuoi più un ambito (es. pasti), disattivalo da **Gestisci domini** — n
 
 ## Ordine ambientale
 
-Se il corpo robot è configurato e raggiungibile, durante il check wellness il robot può **girare e scattare foto** con un prompt dedicato solo all’ordine — senza dirti nulla in quel momento. Il risultato serve al wellness (e alla memoria interna), non è un canale a parte.
+Se il corpo robot è configurato e raggiungibile, durante il check wellness il robot **deve** girare su **tre angoli** (sinistra / centro / destra) e scattare una foto per angolo — senza dirti nulla in quel momento. La valutazione in memoria è **oggettiva** (se è disordinato lo scrive chiaro); se poi ti parla, lo fa in modo **soft**, senza ordini né toni punitivi.
 
 Senza corpo ESP32 il wellness resta su abitudini e log testuali, senza valutazione visiva dell’ordine.
 

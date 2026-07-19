@@ -300,9 +300,9 @@ sequenceDiagram
     K->>K: Gates pass
     K->>LLM: SYSTEM_INPUT wellness_check phase visual
     alt bodyConfigured and body_status OK
-        LLM->>Body: scan move_body joints
-        LLM->>LLM: take_photo plus ROOM_ORDER_AUDIT prompt
-        LLM->>Mem: save_memory OBSERVATION order
+        LLM->>Body: base_pan -25 / 0 / +25
+        LLM->>LLM: take_photo x3 plus ROOM_ORDER_AUDIT
+        LLM->>Mem: save_memory OBSERVATION order objective
         K->>K: SensingLog ROOM_SCENE
     else no body
         Note over K: Skip order dimension
@@ -327,12 +327,13 @@ Schedule: poll every ~5 min while mic active (same loop as mood monitor), or int
 
 **Not** required: ML Kit presence, user dialog photos.
 
-**Actions:**
+**Actions (mandatory 3-angle scan — once/day cost accepted):**
 
-- Body scan pattern (symmetric pan per [`BODY_INTEGRATION.md`](BODY_INTEGRATION.md) room exploration — planner-driven in LLM chain).
-- `take_photo` with **dedicated** `ROOM_ORDER_AUDIT` prompt (future asset).
+- `base_pan` ≈ **−25 / 0 / +25**, each followed by `take_photo` (one sector per chain turn; planner-driven).
+- Dedicated playbook [`room_order_audit_prompt.txt`](../app/src/main/assets/prompts/room_order_audit_prompt.txt) (`ROOM_ORDER_AUDIT`).
 - Evaluate clutter/order only — **no** object inventory, no entity catalog, no spatial landmark identity.
-- `save_memory` OBSERVATION with dated order summary.
+- **Judgment in OBSERVATION is objective** (call disorder what it is; level `ordinato` | `disordinato` | `molto_disordinato`). Soft wording is for phase 4 speak only.
+- `save_memory` OBSERVATION with dated order summary after all three angles.
 - `SensingLogRepository.record(SensingKind.ROOM_SCENE)`.
 
 **Without body:** skip phase 2; Wellness scores text-only domains.
@@ -359,6 +360,8 @@ Speak only if:
 - Top domain score > threshold
 - `speak_confidence` ≥ proactive threshold
 - `wellnessSpeakCapPerDay` not exceeded
+
+**Exposure tone:** soft, non-imperative, non-shaming — even when the stored order judgment is objectively `disordinato` / `molto_disordinato`. Soft speak ≠ soft facts.
 
 Otherwise: silence; phase 2 data still persisted.
 

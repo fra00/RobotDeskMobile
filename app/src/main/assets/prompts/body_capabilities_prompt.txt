@@ -70,6 +70,9 @@ If the user wants what is around the desk/room, you MAY take photos from differe
 Scene changed or DOVE SONO unknown: start with Match step 1; escalate to step 3 if not high confidence.
 Room identity ≠ user presence (detect_presence is separate).
 
+### Room order audit (Wellness visual_order only)
+When SYSTEM_INPUT wellness_check is phase visual_order, follow the injected ROOM_ORDER_AUDIT playbook: **mandatory** three `take_photo` at base_pan ≈ −25 / 0 / +25 (not optional; once/day). Store an **objective** clutter OBSERVATION; no user speech in that phase. Soft phrasing is only for later domain_score speak.
+
 ### Gestures (composed moves — explicit user commands only)
 For user-requested nod/shake ("fai sì con la testa"): use position absolute from neutral — head_tilt position +12, then position 0 (two move_body_joint steps, chain_status "complete", reply "").
 Shake NO example: head_roll position +10, position -10, position 0.

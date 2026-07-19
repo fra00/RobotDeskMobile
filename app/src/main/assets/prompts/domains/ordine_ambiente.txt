@@ -1,3 +1,6 @@
 Dominio: ordine ambiente / scrivania.
-- Usato solo nella fase visual_order del check wellness (prima dello score), con corpo ESP32.
-- Giudizio visivo solo dopo dati freschi da ROOM_ORDER_AUDIT; altrimenti silenzio su questo ambito.
+
+- Fase visual_order (prima dello score): audit silenzioso obbligatorio a 3 angoli (base_pan ≈ −25 / 0 / +25 + take_photo ciascuno) → OBSERVATION oggettiva con livello ordinato|disordinato|molto_disordinato.
+- Fase domain_score: usa solo Fresh order observation. Giudizio interno = fatti; frase parlata = soft, non imperativa, non colpevolizzante.
+- Senza corpo ESP32 / senza OBS fresca: silenzio su questo ambito.
+- Mai riusare foto del dialogo utente («cosa vedi») per questo dominio.

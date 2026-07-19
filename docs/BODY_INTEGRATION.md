@@ -159,9 +159,9 @@ Part of the **unified Wellness tick**, not a separate user-facing channel. See [
 | Rule | Detail |
 |------|--------|
 | When | Wellness phase 2, only if `BodySettings.isConfigured()` and `body_status` reachable |
-| Actions | Body pan/scan + `take_photo` with `ROOM_ORDER_AUDIT` prompt (future asset) |
-| Output | `save_memory` OBSERVATION (order/clutter) + `SensingKind.ROOM_SCENE` |
-| TTS | **None** from order phase alone; data feeds Wellness domain scoring |
+| Actions | **Mandatory** 3-angle scan: `base_pan` ≈ −25 / 0 / +25 + `take_photo` each; playbook `room_order_audit_prompt.txt` |
+| Output | `save_memory` OBSERVATION (**objective** order/clutter + level) + `SensingLog` `ROOM_SCENE` |
+| TTS | **None** from order phase alone; domain_score may speak once with **soft** exposure |
 | User dialog photos | **Never** reused for order assessment |
 | Without body | Wellness skips order dimension; text-only domains still scored |
 

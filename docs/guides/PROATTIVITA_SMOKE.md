@@ -23,8 +23,8 @@ Checklist manuale dopo modifiche a H7. Eseguire con LLM configurato, mic attivo,
 ## Wellness (con corpo ESP32)
 
 1. Corpo configurato e raggiungibile.
-2. Dopo i gate sopra, fase visiva: scan + foto **senza TTS**; OBSERVATION ordine in memoria.
-3. Poi fase score: eventuale frase se dominio carente (es. ordine disordinato).
+2. Dopo i gate sopra, fase visiva: **3 angoli** (pan ≈ −25 / 0 / +25) + foto ciascuno **senza TTS**; OBSERVATION ordine **oggettiva** in memoria.
+3. Poi fase score: eventuale frase **soft** se dominio carente (es. ordine disordinato — noto senza imperativi).
 
 ## Legacy dismesso
 
