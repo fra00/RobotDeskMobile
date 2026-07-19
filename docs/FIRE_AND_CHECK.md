@@ -21,4 +21,6 @@ Tracks LLM **fire-and-check** loops (action + later verification) and shows indi
 - `data/check/FireAndCheckRepository.kt`
 - `ui/components/FireAndCheckIndicators.kt`, `FireAndCheckDetailDialog.kt`
 
-See `llm_system_prompt.txt` § Fire-and-Check and `docs/SCHEDULED_TASKS.md`.
+See `llm_system_prompt.txt` **FIRE_AND_CHECK** (§4 goal strategy gate + §5 execution) and `docs/SCHEDULED_TASKS.md`.
+
+Classification (forget vs check) is prompt-mandated before tools; this doc covers the Kotlin UI/tracking when the LLM schedules a check loop. Declared physical actions ("adesso vado") may open a check when later observable — not every utterance.

@@ -7,7 +7,7 @@ LLM prompts in this project describe **what the robot can do** and **hard limits
 | Layer | Purpose | Example |
 |-------|---------|---------|
 | **Capabilities** | Tool catalog + hardware semantics | Joint names, `save_memory` vs `add_list_item` roles |
-| **Constraints** | Non-negotiable technical or product rules | One image per LLM turn; `reply: ""` for silent body moves; `think` = orientation (goal/know/unknown/success/now), no multi-step plans in `think`; never TTS; no OTP in voice |
+| **Constraints** | Non-negotiable technical or product rules | One image per LLM turn; `reply: ""` for silent body moves; `think` = orientation (goal/strategy when world_change/know/unknown/success/now), no multi-step plans in `think`; FIRE_AND_CHECK classify before tools; never TTS; no OTP in voice |
 | **Illustrative examples** | Show valid JSON shape and plausible chains | Few-shot JSON uses `<MARKER>` placeholders in `reply`, not fixed Italian phrases |
 
 The planner (the LLM) combines tools freely to reach the user's goal or heartbeat objective. See [TOOL_ARCHITECTURE.md](TOOL_ARCHITECTURE.md) §11 (autonomous tool chains).
@@ -33,7 +33,7 @@ Cross-references in prompts use **labels** + section numbers — never duplicate
 |-------|-----------|---------------|
 | `JSON_CONTRACT` | §2 `llm_system_prompt.txt` | always (base) |
 | `PERSISTENT_SEARCH` | §4 STEP 3 | always |
-| `FIRE_AND_CHECK` | §5 | always |
+| `FIRE_AND_CHECK` | §4 goal strategy gate (mandatory classify) + §5 execution | always |
 | `STORAGE_CHANNEL` | §8 | always |
 | `ROBOT_FACE` | §9 | always |
 | `HUMAN_VOICE` | §6 + `HumanVoicePrompt.kt` | user turns (with STATO ROBOT) |
@@ -48,7 +48,7 @@ Cross-references in prompts use **labels** + section numbers — never duplicate
 | Removed / compressed | Preserved in |
 |---------------------|--------------|
 | Duplicate persistent-search JSON (nascondino, dito, computer ×N) | `PERSISTENT_SEARCH` (§4) + 2 canonical §7 examples + `BODY_SEARCH` |
-| Duplicate set_reminder fire_and_check example | `FIRE_AND_CHECK` (§5) single example |
+| Duplicate set_reminder fire_and_check example | `FIRE_AND_CHECK` (§4 gate + §5 execution) |
 | `IMPORTANT for X` routing prose | `STORAGE_CHANNEL` decision table (§8) + AVAILABLE TOOLS params |
 | §11 heartbeat rules + examples | `HEARTBEAT_PLAYBOOK` asset (conditional inject) |
 | Multiple play_spotify / open_browser / set_robot_context / make_light examples | One JSON example each + trigger table |
