@@ -48,14 +48,17 @@ import com.example.mydeskrobot.integration.tool.remote.SearxngWebSearchEngine
 import com.example.mydeskrobot.integration.tool.remote.WebSearchTool
 import com.example.mydeskrobot.integration.tool.remote.WeatherTool
 import com.example.mydeskrobot.data.body.BodySettingsRepository
+import com.example.mydeskrobot.data.presence.DeskPresenceSettingsRepository
 import com.example.mydeskrobot.integration.body.BodyApiClient
 import com.example.mydeskrobot.integration.body.BodyPromptProviderImpl
 import com.example.mydeskrobot.integration.input.heartbeat.HeartbeatPlaybookProviderImpl
 import com.example.mydeskrobot.integration.tool.hardware.BodyHomeTool
 import com.example.mydeskrobot.integration.tool.hardware.BodyStatusTool
 import com.example.mydeskrobot.domain.spatial.SpatialScanSession
+import com.example.mydeskrobot.integration.tool.hardware.LookAtUserTool
 import com.example.mydeskrobot.integration.tool.hardware.MoveBodyJointTool
 import com.example.mydeskrobot.integration.tool.hardware.MoveBodyJointsTool
+import com.example.mydeskrobot.integration.presence.UserAttentionCentering
 import com.example.mydeskrobot.memory.unified.UnifiedMemoryFactory
 import kotlinx.coroutines.runBlocking
 import com.example.mydeskrobot.integration.mood.DelegatingMoodContextProvider
@@ -159,6 +162,13 @@ object ReasoningModule {
                 add(MoveBodyJointsTool(client))
                 add(BodyHomeTool(client))
                 add(BodyStatusTool(client))
+                val attentionCentering = UserAttentionCentering(
+                    bodySettingsProvider = { BodySettingsRepository(context).load() },
+                    deskPresenceSettingsProvider = {
+                        DeskPresenceSettingsRepository(context).load()
+                    },
+                )
+                add(LookAtUserTool(attentionCentering))
             }
 
             spatialBindings?.let { spatial ->

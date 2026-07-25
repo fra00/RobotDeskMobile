@@ -252,6 +252,7 @@ Checklist estesa: `.cursor/rules/70-testing-and-quality.mdc`.
 | `move_body_joints` | HARDWARE | Muove più joint del corpo in un comando |
 | `body_home` | HARDWARE | Ritorno posizione neutra corpo |
 | `body_status` | HARDWARE | Stato motori e connettività corpo |
+| `look_at_user` | HARDWARE | Centra sul volto (su richiesta: «guardami»); non per destra/sinistra |
 
 ## Input esterni disponibili
 

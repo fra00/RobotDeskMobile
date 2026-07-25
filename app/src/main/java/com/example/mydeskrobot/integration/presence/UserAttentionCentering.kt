@@ -16,9 +16,8 @@ import com.example.mydeskrobot.integration.body.BodyStatus
 import kotlinx.coroutines.delay
 
 /**
- * Closed-loop centering toward the user before a conversational reply.
- * Runs on each user voice turn while the session is active.
- * Scan + return to base_pan 0 only when there was no face at turn start.
+ * Closed-loop centering toward a face (on-request tool + idle re-acquire).
+ * Scan + return to base_pan 0 only when no face was visible at start.
  */
 class UserAttentionCentering(
     private val bodySettingsProvider: suspend () -> BodySettings,

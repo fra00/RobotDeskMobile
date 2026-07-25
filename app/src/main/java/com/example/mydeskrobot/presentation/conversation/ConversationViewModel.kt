@@ -148,11 +148,12 @@ import com.example.mydeskrobot.integration.presence.DeskPresenceMonitor
 import com.example.mydeskrobot.integration.presence.BodyLocateService
 import com.example.mydeskrobot.integration.presence.UserAttentionCentering
 import com.example.mydeskrobot.data.presence.DeskPresenceSettingsRepository
+import com.example.mydeskrobot.data.presence.FaceGazeStateStore
 import com.example.mydeskrobot.data.presence.DeskPresenceStateStore
 import com.example.mydeskrobot.data.hotword.VoiceSessionState
 import com.example.mydeskrobot.data.heartbeat.AttentionDomainRepository
 import com.example.mydeskrobot.data.heartbeat.ProactiveInterventionRepository
-import com.example.mydeskrobot.domain.presence.AttentionTriggerMatcher
+import com.example.mydeskrobot.domain.presence.IdleVisualReacquirePolicy
 import com.example.mydeskrobot.domain.presence.DeskPresenceGate
 import com.example.mydeskrobot.integration.input.heartbeat.ProactiveTracker
 import com.example.mydeskrobot.R
@@ -435,6 +436,9 @@ class ConversationViewModel(
         private const val PROACTIVE_RESPONSE_WINDOW_MS = 5 * 60_000L
         private const val EYE_SQUISH_HOLD_MS = 1_200L
     }
+
+    private var voiceSessionStartedAtMs: Long = 0L
+    private var lastIdleVisualAttemptAtMs: Long? = null
 
     init {
         moodContextProvider.snapshotProvider = { moodManager.currentMood.value }
@@ -2126,6 +2130,8 @@ class ConversationViewModel(
         lastAssistantResponse = null
         lastLlmEmotion = null
         voiceSessionActive = false
+        voiceSessionStartedAtMs = System.currentTimeMillis()
+        lastIdleVisualAttemptAtMs = null
         val night = isNightModeNow()
         HotwordServiceStarter.start(appContext)
         viewModelScope.launch {
@@ -2564,10 +2570,6 @@ class ConversationViewModel(
             try {
                 if (turnId != llmTurnGeneration) return@launch
                 refreshReasoningEngineIfBodySettingsChanged()
-
-                if (AttentionTriggerMatcher.shouldCenterOnUser(phrase)) {
-                    userAttentionCentering.tryCenterOnUser()
-                }
 
                 val result = reasoningEngine.processUserInput(
                     userText = phrase,
@@ -3533,8 +3535,35 @@ class ConversationViewModel(
                 checkAndTriggerReflection()
                 pollPredictivityDeviation()
                 pollWellnessCheck()
+                pollIdleVisualReacquire()
             }
         }.also { moodTickJob = it }
+    }
+
+    private suspend fun pollIdleVisualReacquire() {
+        val ui = _uiState.value
+        if (!ui.isHotwordListeningActive) return
+        if (ui.phase !is ConversationPhase.WaitingForHotword) return
+        if (bodyHardwareBusyGate.isBusy) return
+
+        val now = System.currentTimeMillis()
+        val stored = robotContextRepository.getStoredState()
+        val suppress = RobotContextPolicy.shouldSuppressNotificationTts(stored, now)
+        if (!IdleVisualReacquirePolicy.shouldScan(
+                nowMs = now,
+                sessionStartedAtMs = voiceSessionStartedAtMs,
+                lastFaceSeenAtMs = FaceGazeStateStore.lastFaceSeenAtMs(),
+                lastIdleAttemptAtMs = lastIdleVisualAttemptAtMs,
+                isWaitingForHotword = true,
+                suppressForRobotContext = suppress,
+            )
+        ) {
+            return
+        }
+
+        lastIdleVisualAttemptAtMs = now
+        Log.i(TAG, "Idle visual re-acquire: no face for threshold — scanning")
+        userAttentionCentering.tryCenterOnUser()
     }
 
     private suspend fun pollWellnessCheck() {

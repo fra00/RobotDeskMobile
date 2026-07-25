@@ -10,11 +10,12 @@ Kotlin-only on-device presence detection and face offset for attention centering
 |-----------|------|
 | `DeskPresenceMonitor` | CameraX ImageAnalysis + ML Kit face/pose while voice session active |
 | `DeskPresenceStateStore` | Process-wide latest `DeskOccupancy` |
-| `FaceGazeStateStore` | Latest face offset in frame (for attention centering, not continuous tracking) |
-| `UserAttentionCentering` | Closed-loop body centering on every user voice turn while session active |
-| `AttentionTriggerMatcher` | Every user voice utterance (non-blank phrase) |
+| `FaceGazeStateStore` | Latest face offset + `lastFaceSeenAtMs` (survives brief null gaze until reset) |
+| `UserAttentionCentering` | Closed-loop body centering (tool `look_at_user` + idle re-acquire) |
+| `IdleVisualReacquirePolicy` | After 5 min without face (mic on, WaitingForHotword) → one silent scan; 10 min cooldown |
 | `DeskPresenceGate` | Pure rules: allows proactive only when `PRESENT` (or `UNCERTAIN` + recent interaction) |
 | `DetectPresenceTool` (LLM) | Fallback for nuanced checks when ML Kit is `UNCERTAIN` |
+| `look_at_user` (LLM) | On-request centering (“guardami”); not for turn left/right |
 
 ## Scope
 
@@ -39,22 +40,26 @@ Device is expected **always on charger** — default 5 fps, accurate ML Kit mode
 
 ## Attention centering (conversational)
 
-On **every user voice turn** during an active voice session (no cooldown between turns):
+**Not** on every voice turn (that conflicted with “girati a destra”).
 
-1. If face in frame → closed-loop centering (min **2** moves, max 5); longer settle (**1 s**) + gaze wait (**1.8 s**) between steps
-2. **No scan / no return to 0** if the face was visible at turn start — hold last pose and speak
-3. If **no face at turn start** → `base_pan` to **0**, symmetric scan **±14°, ±28°, ±42°**; if found, center and **stay there**
-4. Return to **0** only when scan fails (never saw a face this turn)
-5. Pan sign flip once if horizontal error worsens while face still visible
-6. Final optional `head_tilt`; then LLM responds
+### On request
+LLM tool **`look_at_user`** → `UserAttentionCentering.tryCenterOnUser()` when the user asks to look at them / center. Directional moves stay `move_body_joint` from the current pose. First face in frame only (no speaker ID).
 
-Neutral `base_pan` is always **0** (user may rotate the physical base by hand between sessions).
+### Idle re-acquire (silent)
+While voice session is active and phase is `WaitingForHotword` (mic on, no dialog turn):
 
-Does **not** require ML Kit `PRESENT` — centering runs precisely when the user is not in front of the camera.
+1. If no face seen for **5 minutes** (or since session start if never seen) → one silent `tryCenterOnUser()`
+2. Face in frame → closed-loop center; no face at start → scan ±14/28/42°, then stay or return to `base_pan` 0
+3. **10 minute** cooldown between idle attempts
+4. Suppressed when robot context is SILENT (work/call/meeting/focus) or body hardware busy
 
 Requires **corpo ESP32** + **presenza scrivania** enabled.
 
-If the first `getStatus()` fails (ESP32 offline / timeout), centering **aborts immediately** (`SkippedBodyUnreachable`) — no pan scan and no stacked move timeouts — so the LLM turn is not delayed by tens of seconds.
+If the first `getStatus()` fails (ESP32 offline / timeout), centering **aborts immediately** (`SkippedBodyUnreachable`) — no pan scan and no stacked move timeouts.
+
+Neutral `base_pan` is always **0** (user may rotate the physical base by hand between sessions).
+
+Does **not** require ML Kit `PRESENT` — centering/scan runs when the user is not in front of the camera.
 
 ## FaceGazeStateStore and UserPresencePolicy
 

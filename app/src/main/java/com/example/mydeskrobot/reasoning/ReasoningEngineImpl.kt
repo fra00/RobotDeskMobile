@@ -50,11 +50,12 @@ class ReasoningEngineImpl(
             "move_body_joints",
             "body_home",
             "body_status",
+            "look_at_user",
         )
 
         private const val BODY_UNAVAILABLE_SECTION = """
 PHYSICAL BODY — NOT CONNECTED
-- move_body_joint, move_body_joints, body_home, body_status are NOT in AVAILABLE TOOLS.
+- move_body_joint, move_body_joints, body_home, body_status, look_at_user are NOT in AVAILABLE TOOLS.
 - Do NOT call these tools. Ignore few-shot JSON in the base prompt that references them.
 - If the user asks to move the head or body, reply briefly in Italian: the ESP32 body is not active — open Impostazioni → Corpo robot, enable it, set the base URL, tap Salva (or Prova connessione then Salva).
 - When connected: head_tilt negative delta lowers the head, positive raises it.

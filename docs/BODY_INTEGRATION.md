@@ -29,7 +29,7 @@ Vedi [PROMPT_PHILOSOPHY.md](PROMPT_PHILOSOPHY.md).
 
 ### Capability summary (prompt corpo)
 
-- **Planner**: `move_body_joint`, `move_body_joints`, `body_home`, `body_status`, `take_photo` — combinabili liberamente.
+- **Planner**: `move_body_joint`, `move_body_joints`, `body_home`, `body_status`, `look_at_user`, `take_photo` — combinabili liberamente.
 - **Vincoli**: gesti fisici → `reply: ""`; occhi Compose ≠ corpo; ±45°; una foto per turno LLM (note testuali in history se catena multi-foto).
 - **Joint**: `base_pan` (intero robot), `display_pan` (solo testa/display), `head_tilt` (sì/no su-giù), `head_roll` (scuoti no).
 - **Hint italiano**: *"gira la testa"* → spesso `base_pan`; *"solo la testa"* → `display_pan` (non obbligatorio).
@@ -131,6 +131,7 @@ Joint: `base_pan`, `head_roll`, `head_tilt`, `display_pan` (±45°).
 |------|----------|-------------|
 | `move_body_joint` | HARDWARE | Un joint (`delta` o `position`) |
 | `move_body_joints` | HARDWARE | Più joint in un comando |
+| `look_at_user` | HARDWARE | Centering chiuso su faccia (richiesta utente; idle 5 min senza faccia è Kotlin) |
 | `body_home` | HARDWARE | Posizione neutra |
 | `body_status` | HARDWARE | Stato motori e rete |
 
