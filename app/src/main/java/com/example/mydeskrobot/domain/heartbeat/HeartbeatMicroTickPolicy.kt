@@ -3,7 +3,8 @@ package com.example.mydeskrobot.domain.heartbeat
 import com.example.mydeskrobot.domain.model.RobotEmotion
 
 /**
- * Rules for heartbeat MICRO ticks (no LLM): mood/body/eyes only.
+ * Rules for silent idle look-around (mood/body/eyes only, no LLM).
+ * Used by [IdleLookAroundEligibility].
  */
 object HeartbeatMicroTickPolicy {
 

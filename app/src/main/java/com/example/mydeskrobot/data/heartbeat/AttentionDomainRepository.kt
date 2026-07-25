@@ -91,12 +91,6 @@ class AttentionDomainRepository(
     suspend fun enabledWellnessDomainIds(): Set<String> =
         enabledWellnessDomains().map { it.id }.toSet()
 
-    /**
-     * Heartbeat no longer schedules attention domains — care and custom run on Wellness only.
-     * Kept for API compatibility; always empty.
-     */
-    suspend fun enabledHeartbeatDomains(): List<AttentionDomainState> = emptyList()
-
     @Deprecated("Use enabledWellnessDomainIds()", ReplaceWith("enabledWellnessDomainIds()"))
     suspend fun enabledCareDomainIds(): Set<String> = enabledWellnessDomainIds()
 

@@ -19,7 +19,7 @@ Kotlin-only on-device presence detection and face offset for attention centering
 
 ## Scope
 
-- **Legacy blocks**: heartbeat / proactive bot initiatives via `ProactiveGatePolicy` + `DeskPresenceGate` (until H7 migration)
+- **Presence**: predictivity / idle look-around use `DeskPresenceGate` where applicable; Wellness uses `UserPresencePolicy`
 - **Target Wellness speak**: `UserPresencePolicy` — interaction within W min OR face seen within W min; body connected alone does **not** count as presence
 - **Room order capture (Wellness phase 2)**: does **not** require ML Kit presence; requires ESP32 body configured and reachable
 - **Does not block**: user speech, STT, DEFERRED notifications/reminders
@@ -69,4 +69,4 @@ Does **not** require ML Kit `PRESENT` — centering/scan runs when the user is n
 
 ## vs Heartbeat (legacy)
 
-Consumed by `ProactiveGatePolicy` and `HeartbeatOrchestrator` today. After Wellness migration, ML Kit remains for **centering** and optional face timestamp for presence OR; not the sole proactive gate.
+Consumed by idle look-around / predictivity presence paths via `DeskPresenceGate`. After Wellness migration, ML Kit remains for **centering** and optional face timestamp for presence OR; not the sole proactive gate.

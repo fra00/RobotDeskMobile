@@ -64,6 +64,7 @@ flowchart LR
 - Range: **−0.4 … +0.85** (`MoodValenceConfig`), default baseline **+0.1**.
 - `MoodValenceMapper.derive()` maps valence + optional `MoodReason` override → `RobotEmotion` + intensity.
 - Recent events stored in `RobotMood.recentDeltas` (max 5) for prompt transparency.
+- **`lastDecayAtMs`**: inexorable decay clock. Event deltas (`applyDelta`) update `since` (active reason / UI duration) but **never** reset this clock; only `checkDecay` drift steps advance it.
 
 ### MoodReason overrides (before generic valence bands)
 
@@ -93,15 +94,17 @@ flowchart LR
 
 Praise (LLM `user_tone: "positive"`, cap/hour) does not shift valence directly: it promotes the LLM `happy`/`loving` on that turn to tier FULL (+0.12/+0.10). Insults are penalized through the LLM's own `sad`/`angry` reply emotion (FULL tier).
 
-### Decay (`checkDecay()`)
+### Decay (`checkDecay()`) — inexorable
 
-| Condition | After | Action |
-|-----------|-------|--------|
-| Valence > baseline (event-driven reasons) | 5 min (`happyDecayMinutes`) | Drift toward baseline (−0.10/step), clear reason near target |
-| Valence < baseline (event-driven reasons) | 12 min (`sadDecayMinutes`) | Drift toward baseline (+0.10/step), clear reason near target |
-| `EYE_POKE` annoyance | 8 min | Drift toward baseline, clear reason |
+The clock is `(now - lastDecayAtMs)`, **not** `since`. Voice turns, LLM emotions, poke, idle transitions, and tasks move valence but leave `lastDecayAtMs` unchanged, so talking does not postpone recovery.
 
-Generic drift excludes `NIGHT_TIME` (forced sleeping), idle reasons (managed by the idle loop) and `EYE_POKE` (own rule).
+| Condition | Interval from `lastDecayAtMs` | Action |
+|-----------|-------------------------------|--------|
+| Valence > baseline | 5 min (`happyDecayMinutes`) | Drift toward baseline (−0.15/step); clear reason near target (incl. idle) |
+| Valence < baseline | 6 min (`sadDecayMinutes`) | Drift toward baseline (+0.15/step); clear reason near target (incl. idle) |
+| `EYE_POKE` annoyance | 5 min (`eyePokeAnnoyanceDecayMinutes`) | Same drift; clear reason near target |
+
+Idle reasons (`IDLE_*`) **no longer block** drift. `NIGHT_TIME` keeps the sleeping face/reason while valence may still drift toward baseline. From a typical happy peak (~0.85) to baseline (~0.1) ≈ 5 steps ≈ **~25 min** of decay clock (mic on, ~30 s mood loop).
 
 Constants: [`MoodConfig`](../app/src/main/java/com/example/mydeskrobot/domain/mood/RobotMood.kt), deltas: [`MoodValenceConfig`](../app/src/main/java/com/example/mydeskrobot/domain/mood/MoodValenceConfig.kt).
 

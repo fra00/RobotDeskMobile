@@ -34,6 +34,7 @@ class MoodEngineTest {
             0.001f,
         )
         assertEquals(MoodReason.LLM_EXPRESSION, result.reason)
+        assertEquals(neutral.lastDecayAtMs, result.lastDecayAtMs)
     }
 
     @Test
@@ -44,6 +45,7 @@ class MoodEngineTest {
         assertNotNull(result)
         assertEquals(0.18f, result!!.valence, 0.001f)
         assertEquals(MoodReason.TASK_COMPLETED, result.reason)
+        assertEquals(neutral.lastDecayAtMs, result.lastDecayAtMs)
     }
 
     @Test
@@ -122,6 +124,7 @@ class MoodEngineTest {
         assertEquals(RobotEmotion.SLEEPING, result!!.baseEmotion)
         assertEquals(MoodReason.NIGHT_TIME, result.reason)
         assertEquals(neutral.valence, result.valence, 0.001f)
+        assertEquals(neutral.lastDecayAtMs, result.lastDecayAtMs)
     }
 
     @Test
@@ -148,24 +151,27 @@ class MoodEngineTest {
             valence = 0.35f,
             since = baseTime,
             reason = MoodReason.LLM_EXPRESSION,
+            lastDecayAtMs = baseTime,
         )
         val decayed = engine.checkDecay(happy, baseTime + 5 * 60_000)
 
         assertNotNull(decayed)
         assertTrue(decayed!!.valence < happy.valence)
         assertTrue(decayed.valence >= happy.baseline)
+        assertEquals(baseTime + 5 * 60_000, decayed.lastDecayAtMs)
     }
 
     @Test
     fun `negative valence drifts toward baseline after sad decay window`() {
-        val config = MoodConfig(sadDecayMinutes = 12)
+        val config = MoodConfig(sadDecayMinutes = 6)
         val engine = MoodEngine(config, MoodValenceConfig())
         val sad = RobotMood.fromValence(
             valence = -0.3f,
             since = baseTime,
             reason = MoodReason.LLM_EXPRESSION,
+            lastDecayAtMs = baseTime,
         )
-        val decayed = engine.checkDecay(sad, baseTime + 12 * 60_000)
+        val decayed = engine.checkDecay(sad, baseTime + 6 * 60_000)
 
         assertNotNull(decayed)
         assertTrue(decayed!!.valence > sad.valence)
@@ -174,24 +180,103 @@ class MoodEngineTest {
 
     @Test
     fun `negative valence does not drift before sad decay window`() {
-        val config = MoodConfig(sadDecayMinutes = 12)
+        val config = MoodConfig(sadDecayMinutes = 6)
         val engine = MoodEngine(config, MoodValenceConfig())
         val sad = RobotMood.fromValence(
             valence = -0.3f,
             since = baseTime,
             reason = MoodReason.LLM_EXPRESSION,
+            lastDecayAtMs = baseTime,
         )
-        assertNull(engine.checkDecay(sad, baseTime + 8 * 60_000))
+        assertNull(engine.checkDecay(sad, baseTime + 5 * 60_000))
     }
 
     @Test
-    fun `idle bored valence does not generic-drift`() {
+    fun `decay uses lastDecayAt even when since is recent`() {
+        val happy = RobotMood.fromValence(
+            valence = 0.5f,
+            since = baseTime + 20 * 60_000,
+            reason = MoodReason.VOICE_TURN_PRESENCE,
+            lastDecayAtMs = baseTime,
+        )
+        val decayed = engine.checkDecay(happy, baseTime + 5 * 60_000)
+
+        assertNotNull(decayed)
+        assertTrue(decayed!!.valence < happy.valence)
+    }
+
+    @Test
+    fun `voice turn presence does not delay next decay step`() {
+        val happy = RobotMood.fromValence(
+            valence = 0.5f,
+            since = baseTime,
+            reason = MoodReason.LLM_EXPRESSION,
+            lastDecayAtMs = baseTime,
+        )
+        val afterVoice = engine.evaluate(
+            happy,
+            MoodTrigger.VoiceTurnPresence(0.04f),
+            baseTime + 2 * 60_000,
+        )
+        assertNotNull(afterVoice)
+        assertEquals(happy.lastDecayAtMs, afterVoice!!.lastDecayAtMs)
+
+        val decayed = engine.checkDecay(afterVoice, baseTime + 5 * 60_000)
+        assertNotNull(decayed)
+        assertTrue(decayed!!.valence < afterVoice.valence)
+    }
+
+    @Test
+    fun `idle bored valence can drift toward baseline`() {
         val bored = RobotMood.fromValence(
             valence = -0.2f,
             since = baseTime,
             reason = MoodReason.IDLE_LONG,
+            lastDecayAtMs = baseTime,
         )
-        assertNull(engine.checkDecay(bored, baseTime + 120 * 60_000))
+        val decayed = engine.checkDecay(bored, baseTime + 6 * 60_000)
+
+        assertNotNull(decayed)
+        assertTrue(decayed!!.valence > bored.valence)
+        assertTrue(decayed.valence <= bored.baseline)
+    }
+
+    @Test
+    fun `idle reason clears near baseline after drift`() {
+        val bored = RobotMood.fromValence(
+            valence = MoodValenceConfig.DEFAULT_BASELINE - 0.05f,
+            since = baseTime,
+            reason = MoodReason.IDLE_LISTENING,
+            lastDecayAtMs = baseTime,
+        )
+        val decayed = engine.checkDecay(bored, baseTime + 6 * 60_000)
+
+        assertNotNull(decayed)
+        assertNull(decayed!!.reason)
+        assertEquals(MoodValenceConfig.DEFAULT_BASELINE, decayed.valence, 0.02f)
+    }
+
+    @Test
+    fun `peak happy reaches baseline within 30 min decay clock`() {
+        val config = MoodConfig(happyDecayMinutes = 5)
+        val valenceConfig = MoodValenceConfig(decayTowardBaseline = 0.15f)
+        val engine = MoodEngine(config, valenceConfig)
+        var mood = RobotMood.fromValence(
+            valence = 0.85f,
+            since = baseTime,
+            reason = MoodReason.LLM_EXPRESSION,
+            lastDecayAtMs = baseTime,
+        )
+        // 5 steps × 5 min = 25 min clock; 0.85 − 5×0.15 = 0.10 baseline
+        var now = baseTime
+        repeat(5) {
+            now += 5 * 60_000L
+            val next = engine.checkDecay(mood, now)
+            assertNotNull(next)
+            mood = next!!
+        }
+        assertEquals(MoodValenceConfig.DEFAULT_BASELINE, mood.valence, 0.02f)
+        assertTrue(now - baseTime <= 30 * 60_000L)
     }
 
     @Test

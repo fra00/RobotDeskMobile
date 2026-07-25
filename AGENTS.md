@@ -97,7 +97,7 @@ Indice guide: `docs/guides/README.md`.
 | `docs/SPATIAL_MEMORY.md` | Stanze, landmark visivi, auto-localizzazione | |
 | `docs/ROBOT_CONTEXT.md` | Profili lavoro/call, silenzio notifiche | |
 | `docs/PROACTIVE_ARCHITECTURE.md` | Predictivity + Wellness, ordine come input visivo | **SSOT proattività** |
-| `docs/HEARTBEAT_ARCHITECTURE.md` | Heartbeat alarm, micro-tick | Care + custom domains → Wellness toggles (H7) |
+| `docs/HEARTBEAT_ARCHITECTURE.md` | Idle look-around (ex micro-tick); alarm/orchestrator retired | Care + custom → Wellness (H7) |
 | `docs/DESK_PRESENCE.md` | ML Kit presenza + centering; `UserPresencePolicy` | |
 | `docs/BODY_INTEGRATION.md` | ESP32 myDeskBody HTTP REST | Tool HARDWARE |
 | `docs/PROMPT_PHILOSOPHY.md` | Capability + vincoli, non playbook rigido | SSOT labels prompt |
@@ -140,7 +140,7 @@ Indice guide: `docs/guides/README.md`.
 
 | Fase | Contenuto | Stato (`docs/TODO.md`) |
 |------|-----------|------------------------|
-| H1 | Heartbeat base (scheduler, playbook, micro-tick) | ✅ Completato (shell; care → Wellness) |
+| H1 | Heartbeat base → retired to idle look-around in mood loop | ✅ Completato (care → Wellness; alarm LLM rimosso) |
 | H2 | `speak_confidence`, soglia invasività | ✅ Completato |
 | **H7** | **Predictivity + Wellness unificato** | ✅ Completato (v1) — smoke manuale aperto |
 | H3 | State machine emozioni (`MoodManager` + corpo ESP32) | 🟡 Parziale — core ok, smoke `docs/guides/UMORE_SMOKE.md` |
@@ -154,13 +154,13 @@ Indice guide: `docs/guides/README.md`.
 
 ### Stato implementazione
 
-**Fatto:** architettura 3 layer, tool JSON + catene, STT unificato, input notifiche, memoria unificata RAG, recall planner LLM, activity log, spatial memory, robot context, web/meteo/Spotify, body ESP32 + espressione corpo (mood/ephemeral/speaking), desk presence ML Kit + attention centering, heartbeat H1–H2, proattività H7 v1, domini attenzione (Wellness), liste strutturate.
+**Fatto:** architettura 3 layer, tool JSON + catene, STT unificato, input notifiche, memoria unificata RAG, recall planner LLM, activity log, spatial memory, robot context, web/meteo/Spotify, body ESP32 + espressione corpo (mood/ephemeral/speaking), desk presence ML Kit + attention centering, idle look-around (ex heartbeat micro-tick), proattività H7 v1, domini attenzione (Wellness), liste strutturate.
 
 **Backlog:** chiusura H3–H5 (smoke, WM wellness, reflection memory), H6 redesign LLM-driven se serve umore utente in proattività, news/traduttore/domotica, memory pin Level 2, tool note dedicato, speaker ID (draft).
 
 ### Avvertenze documentazione
 
-- **`docs/PROACTIVE_ARCHITECTURE.md`** è SSOT per Predittività + Wellness (H7 v1 implementato); heartbeat resta per micro-tick.
+- **`docs/PROACTIVE_ARCHITECTURE.md`** è SSOT per Predittività + Wellness (H7 v1 implementato); idle look-around → `docs/HEARTBEAT_ARCHITECTURE.md`.
 - **`docs/TODO.md`** è SSOT per roadmap aperta; `docs/Drafts/AUTONOMOUS_AGENT_VISION.md` segna H1–H6 come fatti — **disallineamento noto**, fidarsi di `TODO.md` per ciò che resta da fare.
 - **Draft obsoleti:** non usare `AgentEvolution-GapAnalysis.md`, `STT-Analysis.md` come SSOT — citano componenti rimossi o fix già applicati. Memoria RAG unificata: SSOT `docs/MEMORY.md`, `docs/MEMORY_EMBEDDING.md`, `docs/MEMORY_ACCESS.md` (draft `UNIFIED_MEMORY_RAG_PLAN` rimosso giugno 2026).
 - **WhatsApp/telefono:** tool in tabella sotto, nessuna spec dedicata in `docs/` — comportamento da `AGENTS.md` + codice.
@@ -178,7 +178,7 @@ Indice guide: `docs/guides/README.md`.
 7c. Per accesso unificato memoria (write path, recall, notifiche unread) → `docs/MEMORY_ACCESS.md`.
 7d. Per LLM recall planner (piano JSON per turno vocale, no fallback) → `docs/MEMORY_RECALL_PLANNER.md`.
 8. Per contesto robot / silenzio notifiche → `docs/ROBOT_CONTEXT.md`.
-8b. **Per proattività target (Predittività + Wellness, ordine come input)** → `docs/PROACTIVE_ARCHITECTURE.md`; guida umana → `docs/guides/PROATTIVITA.md`. Heartbeat shell (micro-tick) → `docs/HEARTBEAT_ARCHITECTURE.md`.
+8b. **Per proattività target (Predittività + Wellness, ordine come input)** → `docs/PROACTIVE_ARCHITECTURE.md`; guida umana → `docs/guides/PROATTIVITA.md`. Idle look-around → `docs/HEARTBEAT_ARCHITECTURE.md`.
 9. Per corpo fisico ESP32 (myDeskBody) → `docs/BODY_INTEGRATION.md` + prompt dinamico `body_capabilities_prompt.txt` via `BodyPromptProviderImpl`.
 9b. **Assembly prompt runtime** (`ReasoningEngineImpl.buildPromptWithContext`): base `llm_system_prompt.txt` + AVAILABLE TOOLS + condizionali: `body_capabilities` (ESP32), `heartbeat_playbook` (solo tick heartbeat/weekly_reflection), memory/day/activity/robot/spatial/mood. SSOT labels: `docs/PROMPT_PHILOSOPHY.md`.
 10. **Per filosofia prompt (capability + vincoli, esempi illustrativi)** → `docs/PROMPT_PHILOSOPHY.md`.
@@ -195,7 +195,7 @@ Indice guide: `docs/guides/README.md`.
 
 ## Test (sintesi)
 
-~110 unit test in `app/src/test`. Forte su domain/parser/memoria; debole su `ConversationViewModel`, `HeartbeatOrchestrator`, integrazione presenza/corpo runtime. Dettaglio: `docs/TODO.md`.
+~110 unit test in `app/src/test`. Forte su domain/parser/memoria; debole su `ConversationViewModel`, integrazione presenza/corpo runtime. Dettaglio: `docs/TODO.md`.
 
 ## Regressioni (obbligo agente)
 

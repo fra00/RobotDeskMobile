@@ -155,7 +155,7 @@ La maggior parte degli input esterni **non passa** da `InputRouter`:
 
 | Percorso | Chi lo usa | Flusso |
 |----------|------------|--------|
-| **`SystemInputDispatcher`** (diretto) | `RobotNotificationListenerService`, `HeartbeatOrchestrator`, `ReminderAlarmReceiver`, reflection da VM | `emit(InputReceived)` → `ConversationViewModel.onSystemInputReceived` |
+| **`SystemInputDispatcher`** (diretto) | `RobotNotificationListenerService`, `ReminderAlarmReceiver`, Wellness/Predictivity/reflection da VM | `emit(InputReceived)` → `ConversationViewModel.onSystemInputReceived` |
 | **`InputRouter`** | Registrato in VM con `HeartbeatInputSource`, ma l’heartbeat **non** chiama `inputRouter.onInput()` | Usato soprattutto per `drainDeferred()` sulla coda condivisa |
 
 `DeferredInputQueue` è condivisa tra VM e router. Non è un bug: è evoluzione incrementale. Unificare su un solo ingresso è debito documentato in `docs/TODO.md`.

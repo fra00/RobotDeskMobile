@@ -19,7 +19,7 @@ data class MoodValenceConfig(
     val eyePokeTier3: Float = -0.30f,
     val idleBored: Float = -0.05f,
     val idleDrowsy: Float = -0.10f,
-    val decayTowardBaseline: Float = 0.10f,
+    val decayTowardBaseline: Float = 0.15f,
     val maxRecentDeltas: Int = 5,
     val llmSad: Float = LLM_SAD_DELTA,
     val llmAngry: Float = LLM_ANGRY_DELTA,

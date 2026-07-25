@@ -4,7 +4,8 @@ import com.example.mydeskrobot.domain.model.RobotEmotion
 import kotlin.math.abs
 
 /**
- * Evaluates persistent wellbeing (valence) transitions. LLM emotions are ephemeral only.
+ * Evaluates persistent wellbeing (valence) transitions.
+ * Drift toward baseline is inexorable: [RobotMood.lastDecayAtMs] is never reset by event deltas.
  */
 class MoodEngine(
     private val config: MoodConfig = MoodConfig(),
@@ -52,40 +53,24 @@ class MoodEngine(
     }
 
     fun checkDecay(current: RobotMood, now: Long = System.currentTimeMillis()): RobotMood? {
-        val minutesInMood = current.durationMinutes(now)
+        val minutesSinceDecay = current.minutesSinceLastDecay(now)
 
         return when {
             current.reason == MoodReason.EYE_POKE &&
                 isAnnoyedFromEyePoke(current) &&
-                minutesInMood >= config.eyePokeAnnoyanceDecayMinutes ->
+                minutesSinceDecay >= config.eyePokeAnnoyanceDecayMinutes ->
                 driftTowardBaseline(current, now, clearReason = true)
 
-            canDriftTowardBaseline(current) &&
-                current.valence > current.baseline &&
-                minutesInMood >= config.happyDecayMinutes ->
+            current.valence > current.baseline &&
+                minutesSinceDecay >= config.happyDecayMinutes ->
                 driftTowardBaseline(current, now, clearReason = true)
 
-            canDriftTowardBaseline(current) &&
-                current.valence < current.baseline &&
-                minutesInMood >= config.sadDecayMinutes ->
+            current.valence < current.baseline &&
+                minutesSinceDecay >= config.sadDecayMinutes ->
                 driftTowardBaseline(current, now, clearReason = true)
 
             else -> null
         }
-    }
-
-    /**
-     * Generic drift applies to event-driven valence (LLM emotion, task, presence, fatigue).
-     * Excluded: night (forced sleeping), idle (managed by the idle loop), poke (own rule).
-     */
-    private fun canDriftTowardBaseline(current: RobotMood): Boolean = when (current.reason) {
-        MoodReason.NIGHT_TIME,
-        MoodReason.IDLE_LONG,
-        MoodReason.IDLE_VERY_LONG,
-        MoodReason.IDLE_LISTENING,
-        MoodReason.EYE_POKE,
-        -> false
-        else -> true
     }
 
     private fun evaluateLlmEmotion(
@@ -132,6 +117,7 @@ class MoodEngine(
             since = now,
             reason = reason,
             recentDeltas = newDeltas,
+            lastDecayAtMs = current.lastDecayAtMs,
         )
     }
 
@@ -147,12 +133,27 @@ class MoodEngine(
             current.valence < target -> (current.valence + step).coerceAtMost(target)
             else -> current.valence
         }
+        val nearBaseline = abs(newValence - target) < 0.02f
+        // Night keeps sleeping reason; other reasons (incl. idle) clear near baseline.
+        val nextReason = when {
+            !clearReason -> current.reason
+            current.reason == MoodReason.NIGHT_TIME -> current.reason
+            nearBaseline -> null
+            else -> current.reason
+        }
         return RobotMood.fromValence(
             valence = newValence,
             baseline = current.baseline,
-            since = now,
-            reason = if (clearReason && abs(newValence - target) < 0.02f) null else current.reason,
+            since = if (nextReason != current.reason) now else current.since,
+            reason = nextReason,
             recentDeltas = current.recentDeltas,
+            lastDecayAtMs = now,
+            forceEmotion = if (nextReason == MoodReason.NIGHT_TIME) {
+                RobotEmotion.SLEEPING
+            } else {
+                null
+            },
+            forceIntensity = if (nextReason == MoodReason.NIGHT_TIME) 1.0f else null,
         )
     }
 
@@ -170,6 +171,7 @@ class MoodEngine(
             recentDeltas = current.recentDeltas,
             forceEmotion = RobotEmotion.SLEEPING,
             forceIntensity = 1.0f,
+            lastDecayAtMs = current.lastDecayAtMs,
         )
     }
 
@@ -185,6 +187,7 @@ class MoodEngine(
             since = now,
             reason = null,
             recentDeltas = current.recentDeltas,
+            lastDecayAtMs = current.lastDecayAtMs,
         )
     }
 

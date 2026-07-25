@@ -6,6 +6,8 @@ import com.example.mydeskrobot.domain.model.RobotEmotion
  * Autonomous emotional wellbeing of the robot (persistent valence + derived standby expression).
  * LLM [emotion] on a completed turn updates [EphemeralExpression] and may shift persistent valence
  * via [LlmEmotionValenceMapper] (see [MoodTrigger.LlmEmotion]).
+ *
+ * [lastDecayAtMs] drives inexorable drift toward [baseline]; event deltas must not reset it.
  */
 data class RobotMood(
     val valence: Float,
@@ -15,6 +17,7 @@ data class RobotMood(
     val since: Long,
     val reason: MoodReason?,
     val recentDeltas: List<MoodDelta> = emptyList(),
+    val lastDecayAtMs: Long = since,
 ) {
     init {
         require(intensity in 0f..1f) { "Intensity must be in [0, 1]" }
@@ -25,6 +28,9 @@ data class RobotMood(
 
     fun durationMinutes(now: Long = System.currentTimeMillis()): Long =
         (now - since) / 60_000L
+
+    fun minutesSinceLastDecay(now: Long = System.currentTimeMillis()): Long =
+        (now - lastDecayAtMs) / 60_000L
 
     companion object {
         val NEUTRAL: RobotMood = fromValence(
@@ -41,6 +47,7 @@ data class RobotMood(
             recentDeltas: List<MoodDelta> = emptyList(),
             forceEmotion: RobotEmotion? = null,
             forceIntensity: Float? = null,
+            lastDecayAtMs: Long = since,
         ): RobotMood {
             val clamped = valence.coerceIn(MoodValenceConfig.VALENCE_MIN, MoodValenceConfig.VALENCE_MAX)
             val derived = if (forceEmotion != null) {
@@ -56,6 +63,7 @@ data class RobotMood(
                 since = since,
                 reason = reason,
                 recentDeltas = recentDeltas,
+                lastDecayAtMs = lastDecayAtMs,
             )
         }
 
@@ -83,6 +91,7 @@ data class RobotMood(
                 reason = reason,
                 forceEmotion = emotion,
                 forceIntensity = intensity,
+                lastDecayAtMs = since,
             )
         }
     }
@@ -125,11 +134,11 @@ data class MoodConfig(
     val idleToBoredMinutes: Int = DEFAULT_IDLE_TO_BORED_MINUTES,
     val hotwordIdleToBoredMinutes: Int = DEFAULT_HOTWORD_IDLE_TO_BORED_MINUTES,
     val boredToDrowsyMinutes: Int = 90,
-    /** Minutes between drift steps when valence is above baseline. */
+    /** Minutes between inexorable drift steps when valence is above baseline. */
     val happyDecayMinutes: Int = 5,
-    /** Minutes between drift steps when valence is below baseline (lingers a bit longer). */
-    val sadDecayMinutes: Int = 12,
-    val eyePokeAnnoyanceDecayMinutes: Int = 8,
+    /** Minutes between inexorable drift steps when valence is below baseline. */
+    val sadDecayMinutes: Int = 6,
+    val eyePokeAnnoyanceDecayMinutes: Int = 5,
     val burstTurnCount: Int = DEFAULT_BURST_TURN_COUNT,
     val burstWindowMinutes: Int = DEFAULT_BURST_WINDOW_MINUTES,
     val repeatedPhraseThreshold: Int = DEFAULT_REPEATED_PHRASE_THRESHOLD,

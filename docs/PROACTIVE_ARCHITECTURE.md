@@ -455,7 +455,7 @@ ML Kit [`DeskPresenceMonitor`](DESK_PRESENCE.md) remains for conversational cent
 | Presence | 10 min turn OR body locate | Body locate first, else turn ≤W |
 | Mining | Incremental catch-up + pre-prune | — |
 
-`HeartbeatSettings.enabled` = **micro-tick alarm only** (eyes/body look-around, no LLM).
+`HeartbeatSettings.enabled` = **micro-tick look-around only** (eyes/body in mood loop, no LLM, no AlarmManager).
 
 ---
 
@@ -469,7 +469,7 @@ ML Kit [`DeskPresenceMonitor`](DESK_PRESENCE.md) remains for conversational cent
 | `ProactiveGatePolicy` + ML Kit for all proactive | ML Kit optional; `UserPresencePolicy` for Wellness speak |
 | `assets/prompts/domains/*.txt` per tick | Care prompts optional reference; runtime uses `wellness_check_prompt.txt` + `room_order_audit_prompt.txt` |
 | `HEARTBEAT_PLAYBOOK` on domain ticks | `WELLNESS_CHECK` / room-order prompts for Wellness; playbook only for remaining custom heartbeat ticks |
-| Heartbeat MICRO tick (bored look-around) | **Keep** — zero LLM, separate from Wellness |
+| Idle look-around (bored / mood loop) | **Keep** — zero LLM, in VM mood poll; see [HEARTBEAT_ARCHITECTURE.md](HEARTBEAT_ARCHITECTURE.md) |
 | Critic pass (HIGH domains) | **Removed** — superseded by Wellness/Predictivity gates + `speak_confidence` |
 | `weekly_reflection` | Keep; complement Predictivity miner (robot stats vs user habits) |
 

@@ -52,7 +52,7 @@ Quando il corpo ESP32 è configurato, l'app esegue gesti **chiusi** (neutro test
 | `BodyExpressionMapper` | Transizione `RobotMood` → coreografia (poke, sonno, idle, …) |
 | `HeadNeutralizer` | Centra `head_tilt` / `head_roll` / `display_pan` prima dei gesti |
 | `BodyChoreographyExecutor` | Esecuzione sequenza su ESP32 |
-| `BodyExpressionController` | Orchestrazione da VM (mood, ephemeral, micro-tick) |
+| `BodyExpressionController` | Orchestrazione da VM (mood, ephemeral, idle look-around) |
 | `BodyExpressionContext` | Guard: visione, LLM busy, `BodyHardwareBusyGate` |
 | `BodyHardwareBusyGate` | Blocca gesti Kotlin durante tool LLM body |
 
@@ -64,7 +64,7 @@ Quando il corpo ESP32 è configurato, l'app esegue gesti **chiusi** (neutro test
 | TTS attivo (`Speaking`) | Micro-oscillazioni testa (`SpeakingMicroMoves`) — ritorno neutro a fine risposta |
 | Transizione `RobotMood` | `BodyExpressionMapper` |
 | Scadenza TTL ephemeral | Ritorno testa neutra (salvo `SLEEPING`) |
-| Heartbeat micro-tick bored | Look-around silenzioso |
+| Idle look-around bored | Look-around silenzioso (mood loop) |
 
 ### Mappa emozione → corpo (ESP32)
 
@@ -150,7 +150,7 @@ Registrazione: solo se `BodySettings.isConfigured()` (`enabled` + URL).
 | *"Guardati intorno e dimmi cosa vedi"* | Esplorazione multi-angolo ragionata + sintesi |
 | *"Guarda a destra"* | `base_pan`, reply vuota |
 | *"Guarda il mio cane"* | Foto + eventuale movimento funzionale + risposta |
-| Heartbeat bored, idle 15+ min | Look-around silenzioso Kotlin (non LLM) |
+| Bored / idle ≥15 min (mood loop) | Look-around silenzioso Kotlin (non LLM) |
 | *"Vai a dormire"* | Pose sonno testa ~−10°, non resettata da ephemeral |
 
 ## Room order scan (Wellness only — target)

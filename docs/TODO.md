@@ -73,9 +73,9 @@
 | Mood / body mapper | `MoodEngineTest`, `EmotionGestureMapperTest`, `BodyExpressionMapperTest` |
 | Heartbeat legacy | `HeartbeatMicroTickPolicyTest`, `DomainSchedulerTest` |
 
-**Lacune:** `ConversationViewModel`, `HeartbeatOrchestrator`, `ProactiveGatePolicy`, E2E input drain.
+**Lacune:** `ConversationViewModel`, E2E input drain.
 
-Priorità test: `ProactiveGatePolicy`, `HeartbeatOrchestrator` (fake deps).
+Priorità test: `IdleLookAroundEligibility`, Wellness/Predictivity watchers (fake deps).
 
 ---
 

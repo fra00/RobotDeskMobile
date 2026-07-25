@@ -1,50 +1,35 @@
 # Heartbeat Architecture
 
-> **Care domains and Wellness:** The **target** proactive model for pasti / lavoro / movimento / contatti / ordine is **[PROACTIVE_ARCHITECTURE.md](PROACTIVE_ARCHITECTURE.md)** (Predictivity + unified Wellness).  
-> **H7:** Care and **custom** attention domains are **toggleable scopes** for Wellness — not `TimeDaily` / event-driven heartbeat ticks. Heartbeat alarm remains for **micro-tick** only. Room identity uses spatial SSOT (`set_current_place`), not an attention-domain event.
+> **Retired (July 2026):** AlarmManager + `HeartbeatOrchestrator` LLM domain ticks are **removed**.  
+> Care / custom attention domains run as **Wellness** toggles — see [PROACTIVE_ARCHITECTURE.md](PROACTIVE_ARCHITECTURE.md).  
+> Silent idle look-around (ex MICRO tick) runs in the **ConversationViewModel mood loop** (~30 s).
 
-SSOT for **heartbeat shell** (alarm + micro-tick).
+## What remains from the old “heartbeat” package
 
-## Flow (current runtime)
+| Piece | Role today |
+|-------|------------|
+| `HeartbeatSettings` / repository | Micro-tick **enabled**, look-around **cooldown** (`intervalMinutes`), proactive **time window**, `proactiveThreshold`, `lastInteractionMillis` |
+| `IdleLookAroundEligibility` + `HeartbeatMicroTickPolicy` | Gates for silent eyes/body look-around (no LLM, **no** speak budget) |
+| `HeartbeatPlaybookProviderImpl` | Still injects prompts for **weekly_reflection**, wellness, predictivity (name historical) |
+| `ProactiveGatePolicy` constants | Cap/cooldown shared with `ProactiveSpeakGate` (predictivity speak) |
+| `AttentionDomainRepository` | Wellness domain toggles only |
+| `ProactiveTracker` | Intervention logging for wellness/predictivity |
 
-1. `HeartbeatScheduler` alarm → `HeartbeatOrchestrator.onAlarmTick()`
-2. `ProactiveGatePolicy` (mic session, time window, desk presence ML Kit, robot context, caps)
-3. Attention domains are **not** selected here (`enabledHeartbeatDomains()` is empty) — care + custom run on Wellness
-4. If no domain due → optional **MICRO** tick (no LLM)
+## Idle look-around (ex MICRO tick)
 
-## Tick MICRO (no LLM)
+While hotword session is active, every ~30 s mood poll may call `pollIdleLookAround()`:
 
-When no attention domain is due (always, for care/custom) but idle ≥ 15 min and user is present:
-- Orchestrator emits `SystemInputEvent.MicroTick`
-- VM refreshes bored/drowsy eyes; optional ESP32 look-around (DISPLAY_PAN sweep)
-- Logged in `SensingLogRepository` as `LOOK_AROUND`
-- Zero token cost
+1. `HeartbeatSettings.enabled` (UI: Micro-tick)
+2. Active time window, not night, not robot-context silent
+3. Desk presence allows interaction (ML Kit / policy)
+4. `HeartbeatMicroTickPolicy` (idle ≥15 min + bored/drowsy, or idle ≥20)
+5. Cooldown since last `SensingKind.LOOK_AROUND` ≥ `intervalMinutes`
+6. Ephemeral bored/drowsy eyes + optional ESP32 `display_pan` sweep via `BodyExpressionMapper.resolveMicroTick`
 
-**Retained** in target architecture — not replaced by Wellness.
-
-## Desk presence gate (legacy proactive)
-
-See [DESK_PRESENCE.md](DESK_PRESENCE.md). ML Kit runs in parallel; heartbeat blocks proactive LLM when `ABSENT`.
-
-**Target:** Wellness speak uses [`UserPresencePolicy`](PROACTIVE_ARCHITECTURE.md#userpresencepolicy) (interaction OR recent face), not mandatory ML Kit gate.
-
-## Domains
-
-| Kind | Scheduling | Settings |
-|------|------------|----------|
-| Care (`pasti`, `attivita_fisica`, `carico_lavoro`, `contatti_sociali`, `ordine_ambiente`) | Unified Wellness tick only | Toggle on/off in Impostazioni → Proattività → Gestisci domini |
-| Custom (user-defined prompt) | Same Wellness tick as care domains (no separate schedule) | Same dialog; name + description |
-| Spatial / room identity | Not an attention domain | Spatial tools + `set_current_place` |
-
-## Kotlin vs LLM
-
-| Kotlin | LLM |
-|--------|-----|
-| When to tick Wellness / custom / micro, gates, intervention log | What to say, tools, speak_confidence |
-| Environment freshness timestamps | `detect_presence`, `take_photo`, `analyze_room_scene` when needed |
+Zero LLM. Does **not** use `ProactiveSpeakGate` (speak cap must not block silent fidget).
 
 ## Related
 
 - **[PROACTIVE_ARCHITECTURE.md](PROACTIVE_ARCHITECTURE.md)** — Wellness + Predictivity SSOT
-- `docs/PROMPT_PHILOSOPHY.md`
-- `assets/prompts/heartbeat_playbook_prompt.txt`
+- **[BODY_INTEGRATION.md](BODY_INTEGRATION.md)** — body choreography
+- `assets/prompts/heartbeat_playbook_prompt.txt` — still used for **weekly_reflection** injection

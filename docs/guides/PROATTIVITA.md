@@ -41,7 +41,7 @@ I pattern si aggiornano dal **Log Day** con mining **incrementale** (all’apert
 
 **Impostazioni → Proattività**:
 
-- **Micro-tick** — solo occhi/corpo in standby (niente LLM). Indipendente da wellness/predittività.
+- **Micro-tick** — look-around occhi/corpo in standby (niente LLM; mood loop). Indipendente da wellness/predittività.
 - **Predittività** / **Wellness** — interruttori dei due canali.
 - Minuti anchor / buffer dialogo / presenza; soglia `speak_confidence`.
 - **Gestisci domini** — abilita/disabilita ambiti del check wellness (predefiniti + personalizzati).

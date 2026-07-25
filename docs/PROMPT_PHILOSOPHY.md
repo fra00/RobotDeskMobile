@@ -7,7 +7,7 @@ LLM prompts in this project describe **what the robot can do** and **hard limits
 | Layer | Purpose | Example |
 |-------|---------|---------|
 | **Capabilities** | Tool catalog + hardware semantics | Joint names, `save_memory` vs `add_list_item` roles |
-| **Constraints** | Non-negotiable technical or product rules | One image per LLM turn; `reply: ""` for silent body moves; `think` = orientation (goal/strategy when world_change/know/unknown/success/now), no multi-step plans in `think`; FIRE_AND_CHECK classify before tools; never TTS; no OTP in voice |
+| **Constraints** | Non-negotiable technical or product rules | One image per LLM turn; `reply: ""` for silent body moves; `think` = orientation (goal/strategy when world_change/know/unknown/success/now), no multi-step plans in `think`; FIRE_AND_CHECK classify before tools; VERIFY_CLAIMS — do not treat user facts as true when clock/tools contradict; never TTS; no OTP in voice |
 | **Illustrative examples** | Show valid JSON shape and plausible chains | Few-shot JSON uses `<MARKER>` placeholders in `reply`, not fixed Italian phrases |
 
 The planner (the LLM) combines tools freely to reach the user's goal or heartbeat objective. See [TOOL_ARCHITECTURE.md](TOOL_ARCHITECTURE.md) §11 (autonomous tool chains).
@@ -34,11 +34,12 @@ Cross-references in prompts use **labels** + section numbers — never duplicate
 | `JSON_CONTRACT` | §2 `llm_system_prompt.txt` | always (base) |
 | `PERSISTENT_SEARCH` | §4 STEP 3 | always |
 | `FIRE_AND_CHECK` | §4 goal strategy gate (mandatory classify) + §5 execution | always |
+| `VERIFY_CLAIMS` | §3 Cognitive Style — verifiable facts vs clock/tools | always |
 | `STORAGE_CHANNEL` | §8 | always |
 | `ROBOT_FACE` | §9 | always |
 | `HUMAN_VOICE` | §6 + `HumanVoicePrompt.kt` | user turns (with STATO ROBOT) |
 | `SYSTEM_INPUTS` | §10 | always |
-| `HEARTBEAT_PLAYBOOK` | `heartbeat_playbook_prompt.txt` | custom heartbeat / weekly_reflection ticks only |
+| `HEARTBEAT_PLAYBOOK` | `heartbeat_playbook_prompt.txt` | weekly_reflection only |
 | `WELLNESS_CHECK` | `wellness_check_prompt.txt` *(future)* | `SYSTEM_INPUT: wellness_check` only |
 | `HABIT_LABEL_NORMALIZE` | `habit_label_normalize_prompt.txt` | incremental predictivity mining (one batch per run) |
 | `BODY_SEARCH` | `body_capabilities_prompt.txt` | ESP32 body configured |
@@ -59,7 +60,7 @@ Cross-references in prompts use **labels** + section numbers — never duplicate
 | Asset | Role |
 |-------|------|
 | `llm_system_prompt.txt` | Global planner, storage semantics, system inputs (base) |
-| `heartbeat_playbook_prompt.txt` | Custom heartbeat + weekly_reflection |
+| `heartbeat_playbook_prompt.txt` | Weekly reflection |
 | `wellness_check_prompt.txt` | Unified Wellness scoring + optional soft speak |
 | `room_order_audit_prompt.txt` | Mandatory 3-angle room order audit (objective OBS) for Wellness |
 | `habit_label_normalize_prompt.txt` | Batch canonical labels for predictivity mining *(future)* |

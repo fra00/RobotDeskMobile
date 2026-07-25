@@ -11,7 +11,7 @@
 | § v1.6 | Heading runtime |
 |--------|-----------------|
 | 1 Core Identity | `## 1. Core Identity & Temperament` |
-| 2 How You Think | `## 3. Cognitive Style` |
+| 2 How You Think | `## 3. Cognitive Style` (+ `VERIFY_CLAIMS`) |
 | 3–5 Problem solving / loops | `## 2` (JSON/chain), `## 4`, `## 5` |
 | 6 Narrative vision | `### Narrative vision` (§8) |
 | 7 Living memory | `## 8. Living Memory & Storage Channels` |
@@ -42,6 +42,7 @@
 | "Ciao" | Tono compagno, no "Come posso aiutarti" |
 | Heartbeat silenzioso | `reply: ""`, `speak_confidence: 0.0` |
 | "Svegliami alle 21" | Fire-and-Check: reminder + verifica successiva |
+| "Oggi è il 4 luglio" (se il clock dice altro) | VERIFY_CLAIMS: correggi breve; non salvare la data falsa |
 | "Ricordami che oggi è giovedì" | Fire-and-Forget: risposta breve, `complete` |
 | Poke occhi | Valenza ↓, `angry`/`confused` persistente; body se ESP32 |
 | Elogio utente | Valenza ↑; tono più caldo in `STATO ROBOT` |

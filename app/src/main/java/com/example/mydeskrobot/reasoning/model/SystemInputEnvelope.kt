@@ -94,109 +94,6 @@ data class SystemInputEnvelope(
         }
 
         /**
-         * Creates an envelope from a [RobotInput.Heartbeat].
-         */
-        fun fromHeartbeat(heartbeat: RobotInput.Heartbeat): SystemInputEnvelope {
-            val timeLabel = "${heartbeat.currentHour}:${heartbeat.currentMinute.toString().padStart(2, '0')}"
-            val formatted = buildString {
-                append("[SYSTEM_INPUT: heartbeat]\n")
-                append("Ora: $timeLabel\n")
-                append("Giorno: ${heartbeat.dayOfWeek}\n")
-                append("Minuti dall'ultima interazione: ${heartbeat.minutesSinceLastInteraction}\n")
-                if (heartbeat.moodValence != null || heartbeat.moodLabel != null) {
-                    heartbeat.moodValence?.let { v ->
-                        val sign = if (v >= 0f) "+" else ""
-                        append("Valenza benessere: $sign${"%.2f".format(v)}\n")
-                    }
-                    if (heartbeat.moodLabel != null) {
-                        val intensityPct = heartbeat.moodIntensity?.let { (it * 100).toInt() } ?: 50
-                        append("Stato emotivo: ${heartbeat.moodLabel} ($intensityPct%)\n")
-                    }
-                }
-                if (heartbeat.todayInteractions > 0) {
-                    append("Interazioni oggi: ${heartbeat.todayInteractions}\n")
-                }
-                if (heartbeat.proactiveSpeaksToday > 0) {
-                    append("Interventi proattivi oggi: ${heartbeat.proactiveSpeaksToday}\n")
-                }
-                heartbeat.minutesSinceLastProactiveSpeak?.let { mins ->
-                    append("Minuti dall'ultimo intervento: $mins\n")
-                }
-                if (heartbeat.topicsDiscussedToday.isNotEmpty()) {
-                    append("Topic già discussi oggi: ${heartbeat.topicsDiscussedToday.joinToString(", ")}\n")
-                }
-                if (heartbeat.pendingRemindersCount > 0) {
-                    append("Promemoria attivi: ${heartbeat.pendingRemindersCount}\n")
-                }
-                heartbeat.relevantRoutines.forEach { routine ->
-                    append("Routine: $routine\n")
-                }
-                if (heartbeat.activeIntents.isNotEmpty()) {
-                    append("OBIETTIVI ATTIVI (INTENT):\n")
-                    heartbeat.activeIntents.forEach { intent ->
-                        append("- $intent\n")
-                    }
-                }
-                if (heartbeat.recentObservations.isNotEmpty()) {
-                    append("OSSERVAZIONI RECENTI (OBSERVATION):\n")
-                    heartbeat.recentObservations.forEach { observation ->
-                        append("- $observation\n")
-                    }
-                }
-                if (heartbeat.activePatterns.isNotEmpty()) {
-                    append("PATTERN EMERGENTI (PATTERN):\n")
-                    heartbeat.activePatterns.forEach { pattern ->
-                        append("- $pattern\n")
-                    }
-                }
-                if (!heartbeat.habitProfileSummary.isNullOrBlank()) {
-                    append("PROFILO ABITUDINI:\n")
-                    append(heartbeat.habitProfileSummary.trim())
-                    append('\n')
-                }
-                if (heartbeat.recentDailyActivities.isNotEmpty()) {
-                    append("ATTIVITÀ RECENTI:\n")
-                    heartbeat.recentDailyActivities.forEach { activity ->
-                        append("- $activity\n")
-                    }
-                }
-                if (heartbeat.currentPlaceLabel != null) {
-                    val conf = heartbeat.placeConfidence?.let { " (confidenza ${"%.2f".format(it)})" }.orEmpty()
-                    append("Stanza corrente: ${heartbeat.currentPlaceLabel}$conf\n")
-                } else {
-                    append("Stanza corrente: sconosciuta\n")
-                }
-                if (heartbeat.knownPlaces.isNotEmpty()) {
-                    append("Luoghi noti: ${heartbeat.knownPlaces.joinToString(", ")}\n")
-                }
-                if (heartbeat.activeDomainId != null) {
-                    append("DOMINIO ATTIVO: ${heartbeat.activeDomainName ?: heartbeat.activeDomainId}\n")
-                }
-                if (heartbeat.recentInterventionsOnDomain.isNotEmpty()) {
-                    append("Interventi recenti su questo dominio:\n")
-                    heartbeat.recentInterventionsOnDomain.forEach { line ->
-                        append("- $line\n")
-                    }
-                }
-                heartbeat.deskOccupancyState?.let {
-                    append("Presenza scrivania (ML Kit): $it\n")
-                }
-                if (!heartbeat.environmentFreshnessBlock.isNullOrBlank()) {
-                    append(heartbeat.environmentFreshnessBlock.trim())
-                    append('\n')
-                }
-            }.trimEnd()
-
-            val dedupKey = "heartbeat:${heartbeat.timestamp / 60000}"
-
-            return SystemInputEnvelope(
-                input = heartbeat,
-                formattedForLlm = formatted,
-                dedupKey = dedupKey,
-            )
-        }
-
-        /**
          * Creates an envelope from a [RobotInput.WeeklyReflection].
          */
         fun fromWeeklyReflection(reflection: RobotInput.WeeklyReflection): SystemInputEnvelope {
@@ -317,7 +214,6 @@ data class SystemInputEnvelope(
             is RobotInput.HardwareButton -> fromHardwareButton(input)
             is RobotInput.SensorReading -> fromSensorReading(input)
             is RobotInput.ScheduledTaskFired -> fromScheduledTask(input)
-            is RobotInput.Heartbeat -> fromHeartbeat(input)
             is RobotInput.WeeklyReflection -> fromWeeklyReflection(input)
             is RobotInput.PredictivityDeviation -> fromPredictivityDeviation(input)
             is RobotInput.WellnessCheck -> fromWellnessCheck(input)

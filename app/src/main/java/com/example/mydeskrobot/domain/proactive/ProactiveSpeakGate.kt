@@ -21,9 +21,9 @@ data class ProactiveSpeakContext(
 object ProactiveSpeakGate {
 
     /**
-     * Speak gates for **predictivity** (and legacy heartbeat voice ticks).
+     * Speak gates for **predictivity**.
      * Does not gate Wellness — wellness has its own once-per-day scheduling.
-     * Does not require [HeartbeatSettings.enabled] (that switch is micro-tick / alarm only).
+     * Does not require [HeartbeatSettings.enabled] (that switch is micro-tick look-around only).
      */
     fun canSpeak(context: ProactiveSpeakContext): GateDecision {
         val settings = context.heartbeatSettings

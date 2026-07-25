@@ -67,71 +67,13 @@ sealed class RobotInput {
     }
 
     /**
-     * Periodic tick for autonomous agent proactivity.
-     * The robot evaluates context and decides whether to speak or stay silent.
-     */
-    data class Heartbeat(
-        val minutesSinceLastInteraction: Long,
-        val currentHour: Int,
-        val currentMinute: Int,
-        val dayOfWeek: String,
-        val pendingRemindersCount: Int,
-        val relevantRoutines: List<String>,
-        /** Current autonomous mood valence (-1…+1 wellbeing). */
-        val moodValence: Float? = null,
-        /** Current autonomous mood of the robot (e.g. "bored", "happy"). */
-        val moodLabel: String? = null,
-        /** Current mood intensity (0.0–1.0). */
-        val moodIntensity: Float? = null,
-        /** Number of user interactions today. */
-        val todayInteractions: Int = 0,
-        /** Number of proactive speaks today (to avoid being too chatty). */
-        val proactiveSpeaksToday: Int = 0,
-        /** Topics already discussed today (to avoid repetition). */
-        val topicsDiscussedToday: List<String> = emptyList(),
-        /** Minutes since last proactive speak (cooldown). */
-        val minutesSinceLastProactiveSpeak: Long? = null,
-        /** Active autonomous goals (INTENT category), injected by the app. */
-        val activeIntents: List<String> = emptyList(),
-        /** Recent contextual observations (OBSERVATION category), injected by the app. */
-        val recentObservations: List<String> = emptyList(),
-        /** Emerging behavior patterns (PATTERN category), injected by the app. */
-        val activePatterns: List<String> = emptyList(),
-        /** Short habit profile from daily activity log (last 7 days). */
-        val habitProfileSummary: String? = null,
-        /** Recent ephemeral activities (today / yesterday). */
-        val recentDailyActivities: List<String> = emptyList(),
-        /** Current room label at desk (spatial memory). */
-        val currentPlaceLabel: String? = null,
-        /** Confidence for current room (0.0–1.0). */
-        val placeConfidence: Float? = null,
-        /** Known memorized places (short list). */
-        val knownPlaces: List<String> = emptyList(),
-        /** Active attention domain for this tick (round-robin). */
-        val activeDomainId: String? = null,
-        val activeDomainName: String? = null,
-        /** Custom domain user prompt; built-in domains use asset files. */
-        val activeDomainUserPrompt: String? = null,
-        /** Recent proactive interventions on the active domain. */
-        val recentInterventionsOnDomain: List<String> = emptyList(),
-        /** ML Kit desk occupancy for this tick. */
-        val deskOccupancyState: String? = null,
-        /** Environment sensing freshness block (metadata only). */
-        val environmentFreshnessBlock: String? = null,
-        override val timestamp: Long = System.currentTimeMillis(),
-    ) : RobotInput() {
-        override val sourceId: String = "heartbeat"
-        override val priority: InputPriority = InputPriority.DEFERRED
-    }
-
-    /**
      * Weekly self-reflection trigger.
      * The robot analyzes its behavior and learns what works.
      */
     data class WeeklyReflection(
         /** Total user interactions this week. */
         val totalInteractions: Int,
-        /** Total proactive speaks (heartbeat interventions). */
+        /** Total proactive speaks this week. */
         val totalProactiveSpeaks: Int,
         /** Proactive speaks with positive user engagement. */
         val positiveResponses: Int,

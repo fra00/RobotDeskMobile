@@ -34,6 +34,7 @@ class MoodRepository(
             prefs[KEY_EMOTION] = mood.baseEmotion.name
             prefs[KEY_INTENSITY] = mood.intensity
             prefs[KEY_SINCE] = mood.since
+            prefs[KEY_LAST_DECAY_AT] = mood.lastDecayAtMs
             if (mood.reason != null) {
                 prefs[KEY_REASON] = mood.reason.name
             } else {
@@ -51,6 +52,7 @@ class MoodRepository(
 
     private fun parseMood(prefs: Preferences): RobotMood {
         val since = prefs[KEY_SINCE] ?: System.currentTimeMillis()
+        val lastDecayAt = prefs[KEY_LAST_DECAY_AT] ?: since
         val reasonName = prefs[KEY_REASON]
         val reason = reasonName?.let {
             runCatching { MoodReason.valueOf(it) }.getOrNull()
@@ -64,6 +66,7 @@ class MoodRepository(
                 since = since,
                 reason = reason,
                 recentDeltas = parseDeltas(prefs[KEY_RECENT_DELTAS]),
+                lastDecayAtMs = lastDecayAt,
             )
         }
 
@@ -94,6 +97,7 @@ class MoodRepository(
         private val KEY_EMOTION = stringPreferencesKey("mood_emotion")
         private val KEY_INTENSITY = floatPreferencesKey("mood_intensity")
         private val KEY_SINCE = longPreferencesKey("mood_since")
+        private val KEY_LAST_DECAY_AT = longPreferencesKey("mood_last_decay_at")
         private val KEY_REASON = stringPreferencesKey("mood_reason")
         private val KEY_RECENT_DELTAS = stringPreferencesKey("mood_recent_deltas")
     }

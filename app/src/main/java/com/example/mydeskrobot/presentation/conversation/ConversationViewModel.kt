@@ -11,7 +11,6 @@ import com.example.mydeskrobot.domain.hotword.HotwordEvent
 import com.example.mydeskrobot.domain.hotword.HotwordEventDispatcher
 import com.example.mydeskrobot.domain.hotword.SessionEndReason
 import com.example.mydeskrobot.domain.input.SystemInputDispatcher
-import com.example.mydeskrobot.domain.input.HeartbeatMicroTick
 import com.example.mydeskrobot.domain.input.SystemInputEvent
 import com.example.mydeskrobot.domain.memory.ConversationTopicExtractor
 import com.example.mydeskrobot.domain.model.BoredIdleConfig
@@ -31,7 +30,6 @@ import com.example.mydeskrobot.domain.speech.EchoSpeechFilter
 import com.example.mydeskrobot.domain.speech.MarkdownStripper
 import com.example.mydeskrobot.domain.speech.VoiceConfirmationDecision
 import com.example.mydeskrobot.domain.speech.VoiceConfirmationMatcher
-import com.example.mydeskrobot.domain.speech.VoiceDebugCommandMatcher
 import com.example.mydeskrobot.domain.llm.LlmEmotionMapper
 import com.example.mydeskrobot.domain.llm.LlmSettings
 import com.example.mydeskrobot.domain.llm.LlmSettingsRepository
@@ -78,6 +76,7 @@ import com.example.mydeskrobot.presentation.settings.toDomainState
 import com.example.mydeskrobot.presentation.settings.toEditorForm
 import com.example.mydeskrobot.domain.heartbeat.AttentionDomainState
 import com.example.mydeskrobot.domain.heartbeat.AttentionDomainValidator
+import com.example.mydeskrobot.domain.heartbeat.IdleLookAroundEligibility
 import com.example.mydeskrobot.presentation.settings.toFormState
 import com.example.mydeskrobot.reasoning.ReasoningEngine
 import com.example.mydeskrobot.reasoning.model.ConversationMessage
@@ -88,7 +87,6 @@ import com.example.mydeskrobot.reasoning.model.RobotProfile
 import com.example.mydeskrobot.reasoning.model.SystemInputEnvelope
 import com.example.mydeskrobot.integration.input.DeferredInputQueue
 import com.example.mydeskrobot.integration.input.InputRouter
-import com.example.mydeskrobot.integration.input.heartbeat.HeartbeatInputSource
 import com.example.mydeskrobot.integration.input.InputPolicyEngine
 import com.example.mydeskrobot.data.check.FireAndCheckRepository
 import com.example.mydeskrobot.data.scheduled.ScheduledTaskAlarmScheduler
@@ -127,8 +125,6 @@ import com.example.mydeskrobot.integration.spatial.SpatialRuntimeBindings
 import com.example.mydeskrobot.domain.spatial.SpatialIntentDetector
 import com.example.mydeskrobot.domain.spatial.SpatialScanSession
 import com.example.mydeskrobot.domain.reflection.WeeklyStats
-import com.example.mydeskrobot.integration.input.heartbeat.VoiceHeartbeatTriggerResult
-import com.example.mydeskrobot.integration.input.heartbeat.HeartbeatModule
 import com.example.mydeskrobot.integration.predictivity.DeviationWatchContext
 import com.example.mydeskrobot.integration.predictivity.DeviationWatcher
 import com.example.mydeskrobot.integration.predictivity.PredictivityDeviationOrchestrator
@@ -143,7 +139,6 @@ import com.example.mydeskrobot.integration.wellness.WellnessCheckOrchestrator
 import com.example.mydeskrobot.integration.wellness.WellnessModule
 import com.example.mydeskrobot.integration.wellness.WellnessWatchContext
 import com.example.mydeskrobot.integration.presence.BodyReachability
-import com.example.mydeskrobot.integration.input.heartbeat.HeartbeatScheduler
 import com.example.mydeskrobot.integration.presence.DeskPresenceMonitor
 import com.example.mydeskrobot.integration.presence.BodyLocateService
 import com.example.mydeskrobot.integration.presence.UserAttentionCentering
@@ -294,7 +289,6 @@ class ConversationViewModel(
     private val deskPresenceSettingsRepository = DeskPresenceSettingsRepository(appContext)
     private val attentionDomainRepository = AttentionDomainRepository(appContext)
     private val proactiveInterventionRepository = ProactiveInterventionRepository(appContext)
-    private val heartbeatOrchestrator by lazy { HeartbeatModule.createOrchestrator(appContext) }
     private val deskPresenceMonitor by lazy {
         DeskPresenceMonitor(appContext, deskPresenceSettingsRepository, viewModelScope).also { monitor ->
             VisionCameraLifecycleCoordinator.setPresenceResumeHandler {
@@ -342,8 +336,6 @@ class ConversationViewModel(
     /** Notification dedup key to mark read after successful TTS (normal notification mode). */
     private var pendingAnnouncedNotificationDedupKey: String? = null
 
-    /** True when the current LLM turn was triggered by a heartbeat input. */
-    private var currentInputIsHeartbeat = false
     /** True when the current LLM turn was triggered by predictivity deviation. */
     private var currentInputIsPredictivityDeviation = false
     /** True when the current LLM turn was triggered by wellness check. */
@@ -351,14 +343,10 @@ class ConversationViewModel(
     /** Prevents double-dispatch while a wellness tick is in flight. */
     private var wellnessCheckInFlight = false
     private var currentWellnessPhase: WellnessPhase? = null
-    /** Active heartbeat domain context for tracking. */
-    private var currentHeartbeatDomainId: String? = null
-    private var currentHeartbeatDomainName: String? = null
-    private var currentHeartbeatInterventions: List<String> = emptyList()
 
     private val inputRouter by lazy {
         InputRouter(
-            sources = listOf(HeartbeatInputSource()),
+            sources = emptyList(),
             deferredQueue = deferredInputQueue,
             getUiState = { _uiState.value },
         )
@@ -463,7 +451,6 @@ class ConversationViewModel(
             SystemInputDispatcher.events.collect { event ->
                 when (event) {
                     is SystemInputEvent.InputReceived -> onSystemInputReceived(event.envelope)
-                    is SystemInputEvent.MicroTick -> onMicroTickReceived(event.tick)
                 }
             }
         }
@@ -1667,12 +1654,6 @@ class ConversationViewModel(
                 wellnessPresenceMinutes = form.wellnessPresenceMinutes,
             )
 
-            if (form.enabled && _uiState.value.isHotwordListeningActive) {
-                HeartbeatScheduler.schedule(appContext, form.intervalMinutes)
-            } else {
-                HeartbeatScheduler.cancel(appContext)
-            }
-
             _settingsUiState.update {
                 it.copy(
                     showHeartbeatDialog = false,
@@ -1798,7 +1779,6 @@ class ConversationViewModel(
                 toggles[state.id]?.let { state.copy(enabled = it) } ?: state
             }
             attentionDomainRepository.saveStates(updated)
-            heartbeatOrchestrator.onDomainsChanged()
             val domains = attentionDomainRepository.listStates()
             val enabledDomains = domains.count { it.enabled }
             _settingsUiState.update {
@@ -1891,7 +1871,6 @@ class ConversationViewModel(
                 current + newState
             }
             attentionDomainRepository.saveStates(updated)
-            heartbeatOrchestrator.onDomainsChanged()
             refreshAttentionDomainsList()
             _settingsUiState.update {
                 it.copy(
@@ -1930,7 +1909,6 @@ class ConversationViewModel(
             }
             val updated = attentionDomainRepository.listStates().filter { it.id != domainId }
             attentionDomainRepository.saveStates(updated)
-            heartbeatOrchestrator.onDomainsChanged()
             refreshAttentionDomainsList()
             _settingsUiState.update {
                 it.copy(
@@ -2153,7 +2131,6 @@ class ConversationViewModel(
         startMoodMonitor()
         memoryExtractionScheduler.start()
         activityLogExtractionScheduler.start()
-        startHeartbeatIfEnabled()
         VoiceSessionState.setActive(true)
         viewModelScope.launch { workingMemoryRepository.recordFirstHotwordOn() }
         viewModelScope.launch {
@@ -2164,15 +2141,6 @@ class ConversationViewModel(
                 deskPresenceMonitor.stop()
             }
             _uiState.update { it.copy(deskPresenceMonitorEnabled = deskSettings.enabled) }
-        }
-    }
-
-    private fun startHeartbeatIfEnabled() {
-        viewModelScope.launch {
-            val settings = heartbeatSettingsRepository.load()
-            if (settings.enabled) {
-                HeartbeatScheduler.schedule(appContext, settings.intervalMinutes)
-            }
         }
     }
 
@@ -2189,7 +2157,6 @@ class ConversationViewModel(
         moodManager.resetConversationSession()
         ttsRepository.stop()
         HotwordServiceStarter.stop(appContext)
-        HeartbeatScheduler.cancel(appContext)
         VoiceSessionState.setActive(false)
         deskPresenceMonitor.stop()
         _uiState.update {
@@ -2320,11 +2287,6 @@ class ConversationViewModel(
             return
         }
 
-        if (handleDebugVoiceCommand(trimmed)) {
-            clearCurrentUtteranceDisplay()
-            return
-        }
-
         if (isAssistantTurnInProgress() || visionPipelineActive) {
             Log.d(TAG, "onUtteranceReadyForLlm: queued (assistant turn in progress)")
             queueUtteranceForLlm(trimmed)
@@ -2369,39 +2331,6 @@ class ConversationViewModel(
             }
         }
         return true
-    }
-
-    private fun handleDebugVoiceCommand(phrase: String): Boolean {
-        if (!VoiceDebugCommandMatcher.matchesForceHeartbeat(phrase)) return false
-
-        viewModelScope.launch {
-            when (val result = heartbeatOrchestrator.triggerVoiceHeartbeat()) {
-                is VoiceHeartbeatTriggerResult.Dispatched -> {
-                    Log.i(TAG, "Heartbeat triggered by voice, domain=${result.domainName}")
-                }
-                is VoiceHeartbeatTriggerResult.GateBlocked -> {
-                    speakEphemeralReply(voiceHeartbeatGateMessage(result.reason))
-                }
-                VoiceHeartbeatTriggerResult.NoEnabledDomains -> {
-                    speakEphemeralReply(
-                        "Nessun dominio di attenzione abilitato. Abilitalo nelle impostazioni proattività.",
-                    )
-                }
-            }
-        }
-        return true
-    }
-
-    private fun voiceHeartbeatGateMessage(reason: String): String = when (reason) {
-        "heartbeat disabled" -> "La proattività è disattivata. Abilitala nelle impostazioni."
-        "desk absent (ML Kit)" -> "Heartbeat non avviato: nessuna presenza rilevata alla scrivania."
-        "outside active window" -> "Heartbeat non avviato: fuori dalla finestra oraria della proattività."
-        "night mode" -> "Heartbeat non avviato: modalità notte attiva."
-        "robot context silent" -> "Heartbeat non avviato: contesto silenzioso attivo."
-        "daily proactive cap" -> "Heartbeat non avviato: raggiunto il limite giornaliero di interventi."
-        "proactive cooldown" -> "Heartbeat non avviato: in cooldown tra un intervento e l'altro."
-        "mic session inactive" -> "Heartbeat non avviato: sessione vocale non attiva."
-        else -> "Heartbeat non avviato: $reason"
     }
 
     private suspend fun speakEphemeralReply(robotReply: String) {
@@ -2697,18 +2626,6 @@ class ConversationViewModel(
                 var emotion = result.emotion
                 lastLlmUserTone = UserInteractionTone.fromLlmValue(result.userTone)
 
-                if (shouldSuppressHeartbeat(result.copy(finalText = finalText))) {
-                    Log.i(TAG, "Heartbeat suppressed: confidence ${result.speakConfidence} below threshold")
-                    val domainId = currentHeartbeatDomainId ?: "heartbeat"
-                    clearHeartbeatDomainContext()
-                    currentInputIsHeartbeat = false
-                    viewModelScope.launch {
-                        proactiveTracker.recordSuppressed(domainId, "low speak_confidence")
-                    }
-                    finalizeTurnWithoutSpeech(LlmEmotionMapper.fromLlmValue(emotion))
-                    return
-                }
-
                 if (shouldSuppressPredictivity(result.copy(finalText = finalText))) {
                     Log.i(TAG, "Predictivity deviation suppressed: confidence ${result.speakConfidence}")
                     currentInputIsPredictivityDeviation = false
@@ -2737,19 +2654,14 @@ class ConversationViewModel(
                     return
                 }
 
-                val wasHeartbeat = currentInputIsHeartbeat
                 val wasPredictivity = currentInputIsPredictivityDeviation
                 val wasWellness = currentInputIsWellnessCheck
                 val wellnessPhase = currentWellnessPhase
-                val domainId = currentHeartbeatDomainId
-                val domainName = currentHeartbeatDomainName
-                clearHeartbeatDomainContext()
-                currentInputIsHeartbeat = false
                 currentInputIsPredictivityDeviation = false
                 currentInputIsWellnessCheck = false
                 currentWellnessPhase = null
 
-                if (!wasHeartbeat && !wasPredictivity && !wasWellness) {
+                if (!wasPredictivity && !wasWellness) {
                     recordTopicFromUserTurn()
                     lastUserPhraseForTopic?.let { phrase ->
                         viewModelScope.launch {
@@ -2773,7 +2685,7 @@ class ConversationViewModel(
                     deliverAssistantReplyWithoutSpeech(
                         robotText = robotText,
                         emotion = LlmEmotionMapper.fromLlmValue(result.emotion),
-                        rewardTaskCompletion = !wasHeartbeat && !wasPredictivity && !wasWellness,
+                        rewardTaskCompletion = !wasPredictivity && !wasWellness,
                     )
                     clearSilentNotificationTurnState()
                     return
@@ -2786,9 +2698,6 @@ class ConversationViewModel(
                 }
 
                 if (finalText.isBlank()) {
-                    if (wasHeartbeat && domainId != null) {
-                        viewModelScope.launch { proactiveTracker.recordSilent(domainId) }
-                    }
                     if (wasPredictivity) {
                         viewModelScope.launch { proactiveTracker.recordSilent("predictivity") }
                     }
@@ -2803,16 +2712,6 @@ class ConversationViewModel(
                     }
                     finalizeTurnWithoutSpeech(LlmEmotionMapper.fromLlmValue(emotion))
                 } else {
-                    if (wasHeartbeat) {
-                        val topic = extractTopicFromText(finalText)
-                        viewModelScope.launch {
-                            proactiveTracker.recordSpeak(
-                                domainId = domainId ?: "heartbeat",
-                                text = finalText,
-                                topic = topic ?: domainName.orEmpty(),
-                            )
-                        }
-                    }
                     if (wasPredictivity) {
                         val topic = extractTopicFromText(finalText)
                         viewModelScope.launch {
@@ -2846,14 +2745,13 @@ class ConversationViewModel(
                     )
                     deliverAssistantReply(
                         reply,
-                        rewardTaskCompletion = !wasHeartbeat && !wasPredictivity && !wasWellness,
+                        rewardTaskCompletion = !wasPredictivity && !wasWellness,
                     )
                 }
             }
 
             is ReasoningResult.Error -> {
-                currentInputIsHeartbeat = false
-                currentInputIsPredictivityDeviation = false
+                 currentInputIsPredictivityDeviation = false
                 if (currentInputIsWellnessCheck) clearWellnessInFlightWithoutDone()
                 currentInputIsWellnessCheck = false
                 currentWellnessPhase = null
@@ -2864,8 +2762,7 @@ class ConversationViewModel(
             is ReasoningResult.MaxStepsReached -> {
                 val maxStepsWellnessPhase =
                     if (currentInputIsWellnessCheck) currentWellnessPhase else null
-                currentInputIsHeartbeat = false
-                currentInputIsPredictivityDeviation = false
+                 currentInputIsPredictivityDeviation = false
                 currentInputIsWellnessCheck = false
                 currentWellnessPhase = null
                 if (maxStepsWellnessPhase != null) {
@@ -2887,8 +2784,7 @@ class ConversationViewModel(
             }
 
             is ReasoningResult.NeedsConfirmation -> {
-                currentInputIsHeartbeat = false
-                currentInputIsPredictivityDeviation = false
+                 currentInputIsPredictivityDeviation = false
                 currentInputIsWellnessCheck = false
                 currentWellnessPhase = null
                 confirmationPending = true
@@ -2968,16 +2864,6 @@ class ConversationViewModel(
         if (!currentInputIsPredictivityDeviation) return false
 
         val confidence = result.speakConfidence ?: return true
-        if (result.finalText.isBlank()) return true
-
-        val settings = heartbeatSettingsRepository.load()
-        return confidence < settings.proactiveThreshold
-    }
-
-    private suspend fun shouldSuppressHeartbeat(result: ReasoningResult.Success): Boolean {
-        if (!currentInputIsHeartbeat) return false
-
-        val confidence = result.speakConfidence ?: return false
         if (result.finalText.isBlank()) return true
 
         val settings = heartbeatSettingsRepository.load()
@@ -3536,8 +3422,72 @@ class ConversationViewModel(
                 pollPredictivityDeviation()
                 pollWellnessCheck()
                 pollIdleVisualReacquire()
+                pollIdleLookAround()
             }
         }.also { moodTickJob = it }
+    }
+
+    /**
+     * Silent idle look-around (ex heartbeat MICRO tick): eyes + optional ESP32 pan.
+     * Runs in the mood loop; does not use proactive speak budget.
+     */
+    private suspend fun pollIdleLookAround() {
+        if (!_uiState.value.isHotwordListeningActive) return
+        if (isAssistantTurnInProgress() || visionPipelineActive) return
+
+        val settings = heartbeatSettingsRepository.load()
+        val mood = moodManager.currentMood.value
+        val idleMinutes = if (settings.lastInteractionMillis > 0L) {
+            (System.currentTimeMillis() - settings.lastInteractionMillis) / 60_000L
+        } else {
+            0L
+        }
+        val deskSettings = deskPresenceSettingsRepository.load()
+        val occupancy = DeskPresenceStateStore.current()
+        val presenceAllows = DeskPresenceGate.allowsProactiveInteraction(
+            occupancy = occupancy,
+            lastInteractionMillis = settings.lastInteractionMillis,
+            monitorEnabled = deskSettings.enabled,
+        )
+        val stored = robotContextRepository.getStoredState()
+        val now = System.currentTimeMillis()
+        val currentHour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+        val eligible = IdleLookAroundEligibility.shouldRun(
+            microTickEnabled = settings.enabled,
+            voiceSessionActive = VoiceSessionState.isActive,
+            withinActiveWindow = IdleLookAroundEligibility.isWithinActiveWindow(
+                settings.startHour,
+                settings.endHour,
+                currentHour,
+            ),
+            isNightMode = _uiState.value.isNightMode,
+            robotContextSilent = RobotContextPolicy.shouldSuppressNotificationTts(stored, now),
+            presenceAllows = presenceAllows,
+            moodEmotion = mood.baseEmotion,
+            idleMinutes = idleMinutes,
+            lastLookAroundAtMs = sensingLogRepository.lastAt(SensingKind.LOOK_AROUND),
+            intervalMinutes = settings.intervalMinutes,
+            nowMs = now,
+        )
+        if (!eligible) return
+
+        Log.d(TAG, "Idle look-around: idle=${idleMinutes}m mood=${mood.baseEmotion}")
+        moodManager.setEphemeralExpression(
+            when (mood.baseEmotion) {
+                RobotEmotion.BORED -> RobotEmotion.BORED
+                RobotEmotion.DROWSY -> RobotEmotion.DROWSY
+                else -> mood.baseEmotion
+            },
+        )
+        refreshUiEmotionFromMood()
+
+        if (IdleLookAroundEligibility.suggestBodyLookAround(mood.baseEmotion)) {
+            val choreography = BodyExpressionMapper.resolveMicroTick(mood, idleMinutes)
+            if (choreography != null) {
+                bodyExpressionController.executeMicroTick(choreography, buildBodyExpressionContext())
+            }
+        }
+        sensingLogRepository.record(SensingKind.LOOK_AROUND)
     }
 
     private suspend fun pollIdleVisualReacquire() {
@@ -3796,58 +3746,13 @@ class ConversationViewModel(
         return if (log.isBlank()) line else "$log\n\n$line"
     }
 
-    private fun onMicroTickReceived(tick: HeartbeatMicroTick) {
-        if (!_uiState.value.isHotwordListeningActive) return
-        if (isAssistantTurnInProgress() || visionPipelineActive) {
-            Log.d(TAG, "Micro tick skipped: assistant busy")
-            return
-        }
-
-        Log.d(TAG, "Heartbeat MICRO tick: idle=${tick.idleMinutes}m mood=${tick.moodLabel}")
-
-        val mood = moodManager.currentMood.value
-        moodManager.setEphemeralExpression(
-            when (tick.moodLabel) {
-                "bored" -> RobotEmotion.BORED
-                "drowsy" -> RobotEmotion.DROWSY
-                else -> mood.baseEmotion
-            },
-        )
-        refreshUiEmotionFromMood()
-
-        if (tick.suggestBodyLookAround) {
-            val choreography = BodyExpressionMapper.resolveMicroTick(mood, tick.idleMinutes)
-            if (choreography != null) {
-                bodyExpressionController.executeMicroTick(choreography, buildBodyExpressionContext())
-            }
-        }
-    }
-
     private fun onSystemInputReceived(envelope: SystemInputEnvelope) {
         val uiState = _uiState.value
         if (!InputPolicyEngine.canAcceptInput(uiState)) {
             Log.d(TAG, "Mic not active, dropping system input")
             return
         }
-        if (envelope.input is RobotInput.Heartbeat) {
-            val stored = kotlinx.coroutines.runBlocking { robotContextRepository.getStoredState() }
-            if (RobotContextPolicy.shouldSuppressNotificationTts(stored)) {
-                Log.d(TAG, "DROP system heartbeat (robot context silent)")
-                return
-            }
-            val deskSettings = kotlinx.coroutines.runBlocking { deskPresenceSettingsRepository.load() }
-            val heartbeatSettings = kotlinx.coroutines.runBlocking { heartbeatSettingsRepository.load() }
-            val occupancy = DeskPresenceStateStore.current()
-            if (!DeskPresenceGate.allowsProactiveInteraction(
-                    occupancy = occupancy,
-                    lastInteractionMillis = heartbeatSettings.lastInteractionMillis,
-                    monitorEnabled = deskSettings.enabled,
-                )
-            ) {
-                Log.d(TAG, "DROP system heartbeat (desk absent ML Kit)")
-                return
-            }
-        }
+
         if (envelope.input !is RobotInput.ScheduledTaskFired &&
             InputPolicyEngine.shouldSuppressForNightMode(uiState, envelope.input.priority)
         ) {
@@ -3888,18 +3793,9 @@ class ConversationViewModel(
         val state = _uiState.value
         conversationLogBeforeCurrentTurn = state.conversationLog
 
-        currentInputIsHeartbeat = envelope.input is RobotInput.Heartbeat
         currentInputIsPredictivityDeviation = envelope.input is RobotInput.PredictivityDeviation
         currentInputIsWellnessCheck = envelope.input is RobotInput.WellnessCheck
         currentWellnessPhase = (envelope.input as? RobotInput.WellnessCheck)?.phase
-        if (envelope.input is RobotInput.Heartbeat) {
-            val hb = envelope.input
-            currentHeartbeatDomainId = hb.activeDomainId
-            currentHeartbeatDomainName = hb.activeDomainName
-            currentHeartbeatInterventions = hb.recentInterventionsOnDomain
-        } else {
-            clearHeartbeatDomainContext()
-        }
         val scheduledTaskId = (envelope.input as? RobotInput.ScheduledTaskFired)?.taskId
         scheduledTaskIdForFireAndCheckCompletion = if (scheduledTaskId != null &&
             kotlinx.coroutines.runBlocking {
@@ -3915,8 +3811,7 @@ class ConversationViewModel(
             is RobotInput.Notification -> input.appLabel
             is RobotInput.ScheduledTaskFired -> "Promemoria"
             is RobotInput.HardwareButton -> "Pulsante"
-            is RobotInput.SensorReading -> input.sensorType
-            is RobotInput.Heartbeat -> "Heartbeat"
+            is RobotInput.SensorReading -> input.sensorType 
             is RobotInput.WeeklyReflection -> "Riflessione"
             is RobotInput.PredictivityDeviation -> "Predittività"
             is RobotInput.WellnessCheck -> "Wellness"
@@ -3925,8 +3820,7 @@ class ConversationViewModel(
             is RobotInput.Notification -> input.text ?: input.title ?: "Nuova notifica"
             is RobotInput.ScheduledTaskFired -> input.message
             is RobotInput.HardwareButton -> input.action
-            is RobotInput.SensorReading -> "${input.value} ${input.unit}"
-            is RobotInput.Heartbeat -> "tick autonomo"
+            is RobotInput.SensorReading -> "${input.value} ${input.unit}" 
             is RobotInput.WeeklyReflection -> "auto-analisi settimanale"
             is RobotInput.PredictivityDeviation -> "deviazione abitudine"
             is RobotInput.WellnessCheck -> when (input.phase) {
@@ -3997,12 +3891,6 @@ class ConversationViewModel(
         Log.i(TAG, "Draining ${deferred.size} deferred system inputs")
         val first = deferred.first()
         sendSystemInputToLlm(first)
-    }
-
-    private fun clearHeartbeatDomainContext() {
-        currentHeartbeatDomainId = null
-        currentHeartbeatDomainName = null
-        currentHeartbeatInterventions = emptyList()
     }
 
     override fun onCleared() {

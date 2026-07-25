@@ -311,7 +311,7 @@
     <string name="heartbeat_settings_title">Proattività</string>
     <string name="heartbeat_enabled_label">Micro-tick (occhi/corpo, senza LLM)</string>
     <string name="heartbeat_enabled_hint">Solo look-around silenzioso in standby. Wellness e predittività hanno i loro interruttori sotto.</string>
-    <string name="heartbeat_interval_label">Intervallo controllo: %1$d min</string>
+    <string name="heartbeat_interval_label">Cooldownenza look-around: %1$d min</string>
     <string name="heartbeat_time_window_label">Fascia oraria: %1$d:00 – %2$d:00</string>
     <string name="heartbeat_start_hour">Da:</string>
     <string name="heartbeat_end_hour">A:</string>
