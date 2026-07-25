@@ -19,6 +19,7 @@ object MoodPromptFormatter {
         mood: RobotMood,
         promptHints: List<String> = emptyList(),
         ephemeral: EphemeralExpression? = null,
+        idleDistraction: IdleDistractionKind? = null,
         now: Long = System.currentTimeMillis(),
     ): String {
         val emotion = mood.baseEmotion.name.lowercase()
@@ -40,6 +41,13 @@ object MoodPromptFormatter {
             appendLine("- Emozione di fondo: $emotion ($intensityPct%)")
             if (reasonLine.isNotBlank()) {
                 appendLine("- Motivo di fondo: $reasonLine")
+            }
+            if (idleDistraction != null) {
+                appendLine("- Distrazione simbolica: ${idleDistraction.promptToken()}")
+                appendLine(
+                    "- Stai facendo una pausa mimica (non reale). " +
+                        "Se ti interrompono, rispondi normalmente; non inventare musica/libri veri.",
+                )
             }
             if (activeEphemeral != null) {
                 val face = activeEphemeral.emotion.name.lowercase()

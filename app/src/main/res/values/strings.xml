@@ -19,6 +19,7 @@
     <string name="wake_phrase_hint">Attivazione: «%1$s»</string>
     <string name="out_phrase_hint">Uscita: «%1$s» · pausa frase %2$s s</string>
     <string name="status_idle">Attiva il microfono per l\'ascolto always-on</string>
+    <string name="status_idle_distraction">Si sta svagando…</string>
     <string name="status_waiting_hotword">Standby — di\' «%1$s» per iniziare</string>
     <string name="status_waiting_hotword_night">Stanotte dormo — di\' «%1$s» per svegliarmi</string>
     <string name="status_active_listening">In ascolto… esci con «%1$s»</string>
@@ -100,6 +101,14 @@
     <string name="cd_thinking">Sto pensando</string>
     <string name="cd_memory_extracting">Analisi memoria in corso</string>
     <string name="cd_happy_mood">Felice</string>
+    <string name="cd_idle_distraction_headphones">Si svaga ascoltando musica</string>
+    <string name="cd_idle_distraction_reading">Si svaga leggendo</string>
+    <string name="cd_idle_distraction_away">Torno subito</string>
+    <string name="cd_idle_distraction_pong">Si svaga con Pong</string>
+    <string name="idle_distraction_book_title">Un libro qualsiasi</string>
+    <string name="idle_distraction_book_subtitle">…pagina dopo pagina</string>
+    <string name="idle_distraction_away_title">Torno subito</string>
+    <string name="idle_distraction_away_subtitle">Se hai bisogno, chiedi pure</string>
     <string name="cd_sleeping">Robot che dorme</string>
     <string name="cd_drowsy">Robot assonnato</string>
     <string name="cd_standby_sleeping">In standby — dorme</string>

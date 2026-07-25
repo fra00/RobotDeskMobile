@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import com.example.mydeskrobot.R
 import com.example.mydeskrobot.domain.interaction.EyePokeSide
 import com.example.mydeskrobot.domain.model.RobotEmotion
+import com.example.mydeskrobot.domain.mood.IdleDistractionKind
 import com.example.mydeskrobot.presentation.conversation.ConversationPhase
 import com.example.mydeskrobot.reasoning.model.RobotProfile
 import com.example.mydeskrobot.presentation.conversation.ConversationUiEvent
@@ -47,6 +48,7 @@ import com.example.mydeskrobot.presentation.conversation.ConversationUiState
 import com.example.mydeskrobot.presentation.settings.SettingsUiState
 import com.example.mydeskrobot.ui.components.BodySettingsDialog
 import com.example.mydeskrobot.ui.components.ConversationHistoryDialog
+import com.example.mydeskrobot.ui.components.IdleDistractionOverlay
 import com.example.mydeskrobot.ui.components.ReasoningLogDialog
 import com.example.mydeskrobot.ui.components.AttentionDomainDeleteConfirmDialog
 import com.example.mydeskrobot.ui.components.AttentionDomainEditorDialog
@@ -143,20 +145,43 @@ fun RobotScreen(
                 ),
             contentAlignment = Alignment.Center,
         ) {
-            RobotEyes(
-                emotion = uiState.emotion,
-                emotionIntensity = uiState.emotionIntensity,
-                modifier = Modifier.fillMaxSize(),
-                minEyeSize = layout.minEyeSize,
-                maxEyeSize = layout.maxEyeSize,
-                eyeGap = layout.eyeGap,
-                squishLeft = uiState.eyeSquishLeft,
-                squishRight = uiState.eyeSquishRight,
-                onLeftEyeClick = { onEvent(ConversationUiEvent.OnEyePoked(EyePokeSide.LEFT)) },
-                onRightEyeClick = { onEvent(ConversationUiEvent.OnEyePoked(EyePokeSide.RIGHT)) },
-                leftEyeContentDescription = stringResource(R.string.cd_robot_eye_left),
-                rightEyeContentDescription = stringResource(R.string.cd_robot_eye_right),
-            )
+            val idleDistraction = uiState.idleDistraction
+            val hideEyesForDistraction = idleDistraction == IdleDistractionKind.READING ||
+                idleDistraction == IdleDistractionKind.AWAY ||
+                idleDistraction == IdleDistractionKind.PONG
+
+            if (!hideEyesForDistraction) {
+                RobotEyes(
+                    emotion = uiState.emotion,
+                    emotionIntensity = uiState.emotionIntensity,
+                    modifier = Modifier.fillMaxSize(),
+                    minEyeSize = layout.minEyeSize,
+                    maxEyeSize = layout.maxEyeSize,
+                    eyeGap = layout.eyeGap,
+                    squishLeft = uiState.eyeSquishLeft,
+                    squishRight = uiState.eyeSquishRight,
+                    onLeftEyeClick = { onEvent(ConversationUiEvent.OnEyePoked(EyePokeSide.LEFT)) },
+                    onRightEyeClick = { onEvent(ConversationUiEvent.OnEyePoked(EyePokeSide.RIGHT)) },
+                    leftEyeContentDescription = stringResource(R.string.cd_robot_eye_left),
+                    rightEyeContentDescription = stringResource(R.string.cd_robot_eye_right),
+                )
+            }
+
+            if (idleDistraction != null) {
+                IdleDistractionOverlay(
+                    kind = idleDistraction,
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .then(
+                            if (idleDistraction == IdleDistractionKind.HEADPHONES) {
+                                Modifier.offset(y = -layout.happyMoodOffsetAboveCenter)
+                            } else {
+                                Modifier
+                            },
+                        )
+                        .zIndex(2f),
+                )
+            }
 
             if (
                 uiState.phase is ConversationPhase.Thinking ||
@@ -172,6 +197,7 @@ fun RobotScreen(
             }
 
             if (
+                idleDistraction == null &&
                 uiState.isNightMode &&
                 uiState.phase is ConversationPhase.WaitingForHotword &&
                 uiState.emotion == RobotEmotion.SLEEPING
@@ -184,7 +210,11 @@ fun RobotScreen(
                 )
             }
 
-            if (uiState.emotion == RobotEmotion.DROWSY && uiState.phase !is ConversationPhase.Thinking) {
+            if (
+                idleDistraction == null &&
+                uiState.emotion == RobotEmotion.DROWSY &&
+                uiState.phase !is ConversationPhase.Thinking
+            ) {
                 DrowsyMoodIndicator(
                     modifier = Modifier
                         .align(Alignment.Center)
@@ -195,6 +225,7 @@ fun RobotScreen(
             }
 
             if (
+                idleDistraction == null &&
                 uiState.emotion == RobotEmotion.HAPPY &&
                 uiState.phase !is ConversationPhase.Thinking &&
                 !uiState.isNightMode

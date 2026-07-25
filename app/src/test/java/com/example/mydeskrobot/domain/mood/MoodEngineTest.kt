@@ -294,6 +294,33 @@ class MoodEngineTest {
     }
 
     @Test
+    fun `clearIdleBoredomReason removes idle reason without changing valence or decay clock`() {
+        val bored = RobotMood.fromValence(
+            valence = -0.05f,
+            since = baseTime,
+            reason = MoodReason.IDLE_LISTENING,
+            lastDecayAtMs = baseTime - 60_000L,
+        )
+        val cleared = engine.clearIdleBoredomReason(bored, baseTime + 1000)
+
+        assertNotNull(cleared)
+        assertNull(cleared!!.reason)
+        assertEquals(bored.valence, cleared.valence, 0.001f)
+        assertEquals(bored.lastDecayAtMs, cleared.lastDecayAtMs)
+        assertEquals(RobotEmotion.NEUTRAL, cleared.baseEmotion)
+    }
+
+    @Test
+    fun `clearIdleBoredomReason no-op when reason is not idle`() {
+        val poke = RobotMood.fromValence(
+            valence = -0.2f,
+            since = baseTime,
+            reason = MoodReason.EYE_POKE,
+        )
+        assertNull(engine.clearIdleBoredomReason(poke, baseTime + 1000))
+    }
+
+    @Test
     fun `voice turn presence increases valence slightly`() {
         val neutral = neutralMood()
         val result = engine.evaluate(

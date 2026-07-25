@@ -62,6 +62,9 @@ class ConversationViewModelFactory(
             idleStatus = {
                 context.getString(R.string.status_idle)
             },
+            idleDistractionStatus = {
+                context.getString(R.string.status_idle_distraction)
+            },
             waitingForHotword = { phrase ->
                 context.getString(R.string.status_waiting_hotword, phrase)
             },

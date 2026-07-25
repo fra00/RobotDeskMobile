@@ -2,6 +2,7 @@ package com.example.mydeskrobot.presentation.conversation
 
 import com.example.mydeskrobot.domain.model.RobotEmotion
 import com.example.mydeskrobot.domain.mood.EphemeralExpression
+import com.example.mydeskrobot.domain.mood.IdleDistractionKind
 import com.example.mydeskrobot.domain.mood.MoodPromptFormatter
 import com.example.mydeskrobot.domain.mood.MoodValenceMapper
 import com.example.mydeskrobot.domain.mood.RobotMood
@@ -14,6 +15,7 @@ object MoodUiStateMapper {
         displayEmotion: RobotEmotion,
         displayIntensity: Float,
         idleMinutes: Long,
+        idleDistraction: IdleDistractionKind? = null,
         now: Long = System.currentTimeMillis(),
     ): MoodUiState {
         val activeEphemeral = ephemeral?.takeIf { it.isActive(now) }
@@ -41,6 +43,7 @@ object MoodUiStateMapper {
             promptSnapshot = MoodPromptFormatter.format(
                 mood = mood,
                 ephemeral = activeEphemeral,
+                idleDistraction = idleDistraction,
                 now = now,
             ),
         )

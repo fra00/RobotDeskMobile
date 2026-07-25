@@ -18,6 +18,7 @@ class MoodManager(
     private val scope: CoroutineScope,
     private val moodConfig: MoodConfig = MoodConfig(),
     private val turnMoodConfig: TurnMoodConfig = TurnMoodConfig(),
+    val idleBoredomController: IdleBoredomController = IdleBoredomController(),
 ) {
     private val _currentMood = MutableStateFlow(RobotMood.NEUTRAL)
     val currentMood: StateFlow<RobotMood> = _currentMood.asStateFlow()
@@ -57,13 +58,30 @@ class MoodManager(
     }
 
     fun checkIdleTransition() {
+        if (idleBoredomController.isSuppressingIdleBoredom()) return
         val idleMinutes = (System.currentTimeMillis() - lastInteractionTime) / 60_000L
         onTrigger(MoodTrigger.IdleTime(idleMinutes))
     }
 
     fun checkHotwordListeningIdle() {
+        if (idleBoredomController.isSuppressingIdleBoredom()) return
         val idleMinutes = (System.currentTimeMillis() - lastVoiceTurnTime) / 60_000L
         onTrigger(MoodTrigger.HotwordListeningIdle(idleMinutes))
+    }
+
+    /**
+     * Clears [MoodReason] idle boredom overrides; valence and decay clock unchanged.
+     */
+    fun clearIdleBoredomReason(now: Long = System.currentTimeMillis()) {
+        val current = _currentMood.value
+        val cleared = engine.clearIdleBoredomReason(current, now) ?: return
+        applyMoodIfChanged(current, cleared)
+    }
+
+    /** Resets both mood idle clocks so boredom can start counting again from zero. */
+    fun resetIdleClocks(now: Long = System.currentTimeMillis()) {
+        lastInteractionTime = now
+        lastVoiceTurnTime = now
     }
 
     fun checkDecay() {
@@ -75,7 +93,7 @@ class MoodManager(
     }
 
     fun touchLastInteraction() {
-        lastInteractionTime = System.currentTimeMillis()
+        resetIdleClocks()
     }
 
     fun recordTaskCompletedUseful() {

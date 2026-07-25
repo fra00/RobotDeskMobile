@@ -52,6 +52,22 @@ class MoodEngine(
         }
     }
 
+    /**
+     * Clears idle boredom reasons and remaps [RobotMood.baseEmotion] from valence alone.
+     * Does not change valence or [RobotMood.lastDecayAtMs].
+     */
+    fun clearIdleBoredomReason(current: RobotMood, now: Long = System.currentTimeMillis()): RobotMood? {
+        if (current.reason !in IDLE_BOREDOM_REASONS) return null
+        return RobotMood.fromValence(
+            valence = current.valence,
+            baseline = current.baseline,
+            since = now,
+            reason = null,
+            recentDeltas = current.recentDeltas,
+            lastDecayAtMs = current.lastDecayAtMs,
+        )
+    }
+
     fun checkDecay(current: RobotMood, now: Long = System.currentTimeMillis()): RobotMood? {
         val minutesSinceDecay = current.minutesSinceLastDecay(now)
 
@@ -272,4 +288,12 @@ class MoodEngine(
             (current.reason == MoodReason.USER_APOLOGY &&
                 (current.baseEmotion == RobotEmotion.ANGRY ||
                     current.baseEmotion == RobotEmotion.CONFUSED))
+
+    companion object {
+        private val IDLE_BOREDOM_REASONS = setOf(
+            MoodReason.IDLE_LISTENING,
+            MoodReason.IDLE_LONG,
+            MoodReason.IDLE_VERY_LONG,
+        )
+    }
 }

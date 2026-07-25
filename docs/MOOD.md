@@ -92,6 +92,20 @@ flowchart LR
 | `UserApology` | LLM `user_tone: "apology"` | Recovery delta if annoyed |
 | `EyePoked(tier)` | Tap on eyes UI | Tier 1–3 negative deltas |
 
+### Situational boredom vs wellbeing valence
+
+Idle boredom (`IDLE_*` reasons forcing a bored face) is **situational**, separate from lasting low valence.
+
+Cycle (in-memory [`IdleBoredomController`](../app/src/main/java/com/example/mydeskrobot/domain/mood/IdleBoredomController.kt), no DataStore):
+
+1. Robot is bored from idle → silent **look-around** (mood loop; see [`HEARTBEAT_ARCHITECTURE.md`](HEARTBEAT_ARCHITECTURE.md)).
+2. Look-around **clears `IDLE_*` reason** (face follows valence only) and starts **5 min** mild relief — **no valence change**.
+3. If still idle after relief → one symbolic **distraction overlay** (8 min): headphones / book cover / “Torno subito” sign / retro Pong TV. Mimica only (no Spotify, no real reading).
+4. While relieved or distracted, `IdleTime` / `HotwordListeningIdle` are **suppressed**.
+5. When distraction ends (or voice / night / mic-off interrupts): overlay clears; **idle clocks reset** (`MoodManager.resetIdleClocks` + heartbeat `recordInteraction`). Valence unchanged. Boredom can start counting again from zero.
+
+Config: [`IdleBoredomConfig`](../app/src/main/java/com/example/mydeskrobot/domain/mood/IdleBoredomConfig.kt) (5 + 8 min, no settings UI in v1).
+
 Praise (LLM `user_tone: "positive"`, cap/hour) does not shift valence directly: it promotes the LLM `happy`/`loving` on that turn to tier FULL (+0.12/+0.10). Insults are penalized through the LLM's own `sad`/`angry` reply emotion (FULL tier).
 
 ### Decay (`checkDecay()`) — inexorable
@@ -112,10 +126,12 @@ Constants: [`MoodConfig`](../app/src/main/java/com/example/mydeskrobot/domain/mo
 
 `ConversationViewModel` mood monitor (~30 s, only while hotword session active):
 
-1. If phase `WaitingForHotword`: `moodManager.checkHotwordListeningIdle()`
-2. `moodManager.checkIdleTransition()`
+1. If phase `WaitingForHotword`: `moodManager.checkHotwordListeningIdle()` (skipped while boredom relief/distraction active)
+2. `moodManager.checkIdleTransition()` (same skip)
 3. `moodManager.checkDecay()`
-4. `refreshUiEmotionFromMood()` → `DisplayEmotionResolver` → UI + `BodyExpressionController`
+4. `pollIdleBoredomCycle()` — advance relief → distraction → end/reset clocks
+5. `refreshUiEmotionFromMood()` → `DisplayEmotionResolver` → UI + `BodyExpressionController`
+6. … wellness / look-around (`pollIdleLookAround` blocked while relieved/distracted)
 
 Per user phrase: [`TurnMoodEvaluator`](../app/src/main/java/com/example/mydeskrobot/domain/mood/TurnMoodEvaluator.kt) + [`ConversationMoodSession`](../app/src/main/java/com/example/mydeskrobot/domain/mood/ConversationMoodSession.kt) (burst, repetition, praise cap). Session resets on mic off.
 

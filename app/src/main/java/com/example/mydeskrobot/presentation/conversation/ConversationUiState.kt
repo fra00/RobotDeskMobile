@@ -2,6 +2,7 @@ package com.example.mydeskrobot.presentation.conversation
 
 import com.example.mydeskrobot.domain.check.FireAndCheckEntry
 import com.example.mydeskrobot.domain.model.RobotEmotion
+import com.example.mydeskrobot.domain.mood.IdleDistractionKind
 import com.example.mydeskrobot.reasoning.model.RobotProfile
 
 data class ConversationUiState(
@@ -39,6 +40,11 @@ data class ConversationUiState(
     val deskOccupancyState: com.example.mydeskrobot.domain.presence.DeskOccupancyState =
         com.example.mydeskrobot.domain.presence.DeskOccupancyState.UNKNOWN,
     val deskPresenceMonitorEnabled: Boolean = false,
+    /**
+     * Symbolic idle distraction overlay (headphones / book / away sign / pong).
+     * Situational boredom only — does not change wellbeing valence.
+     */
+    val idleDistraction: IdleDistractionKind? = null,
 ) {
     val displayText: String
         get() = buildString {
