@@ -622,17 +622,18 @@ class ConversationViewModel(
         val now = System.currentTimeMillis()
         moodManager.clearIdleBoredomReason(now)
         moodManager.idleBoredomController.forceDistraction(kind, now)
-        applyIdleDistractionUi(kind, now)
+        beginIdleDistraction(kind, now)
         Log.i(TAG, "Debug idle distraction forced: $kind")
     }
 
     private fun debugClearIdleDistraction() {
+        val kind = _uiState.value.idleDistraction
         val result = moodManager.idleBoredomController.interrupt()
-        if (result == IdleBoredomTickResult.DistractionEnded) {
+        if (result == IdleBoredomTickResult.DistractionEnded || kind != null) {
             moodManager.resetIdleClocks()
             viewModelScope.launch { heartbeatSettingsRepository.recordInteraction() }
         }
-        clearIdleDistractionUi()
+        endIdleDistraction(kind)
         Log.i(TAG, "Debug idle distraction cleared")
     }
 
@@ -2182,7 +2183,7 @@ class ConversationViewModel(
         stopNightModeMonitor()
         stopMoodMonitor()
         moodManager.resetConversationSession()
-        interruptIdleBoredom()
+        dismissIdleDistractionForUserAttention()
         ttsRepository.stop()
         HotwordServiceStarter.stop(appContext)
         VoiceSessionState.setActive(false)
@@ -3469,26 +3470,28 @@ class ConversationViewModel(
     private suspend fun pollIdleBoredomCycle() {
         val now = System.currentTimeMillis()
         val night = _uiState.value.isNightMode
-        val stored = robotContextRepository.getStoredState()
-        val silent = RobotContextPolicy.shouldSuppressNotificationTts(stored, now)
+        // Boredom scenes are silent mimica: independent of WORK/SILENT notification mode.
         val result = moodManager.idleBoredomController.tick(
             nowMs = now,
             stillIdleEligible = true,
-            allowNewDistraction = !night && !silent,
+            allowNewDistraction = !night,
         )
         when (result) {
             is IdleBoredomTickResult.StartedDistraction -> {
                 moodManager.clearIdleBoredomReason(now)
-                applyIdleDistractionUi(result.kind, now)
+                beginIdleDistraction(result.kind, now)
                 Log.d(TAG, "Idle distraction started: ${result.kind}")
             }
             IdleBoredomTickResult.DistractionEnded -> {
+                val kind = _uiState.value.idleDistraction
                 moodManager.resetIdleClocks(now)
                 heartbeatSettingsRepository.recordInteraction()
-                clearIdleDistractionUi()
+                endIdleDistraction(kind)
                 Log.d(TAG, "Idle distraction ended; idle clocks reset")
             }
-            IdleBoredomTickResult.Cleared -> clearIdleDistractionUi()
+            IdleBoredomTickResult.Cleared -> {
+                endIdleDistraction(_uiState.value.idleDistraction)
+            }
             IdleBoredomTickResult.Unchanged -> {
                 val kind = moodManager.idleBoredomController.currentDistractionKind()
                 if (_uiState.value.idleDistraction != kind) {
@@ -3506,13 +3509,16 @@ class ConversationViewModel(
     }
 
     /**
-     * User attention (tap / hotword / voice): drop symbolic distraction and reset idle clocks
-     * so standby eyes return immediately.
+     * User attention or any autonomous/system action: drop symbolic distraction,
+     * log session end in conversationLog, reset idle clocks.
      */
     private fun dismissIdleDistractionForUserAttention() {
+        val kind = _uiState.value.idleDistraction
         val hadDistraction =
-            _uiState.value.idleDistraction != null ||
-                moodManager.idleBoredomController.isSuppressingIdleBoredom()
+            kind != null || moodManager.idleBoredomController.isSuppressingIdleBoredom()
+        if (kind != null) {
+            appendIdleDistractionLog(started = false, kind = kind)
+        }
         interruptIdleBoredom()
         if (hadDistraction) {
             moodManager.resetIdleClocks()
@@ -3520,6 +3526,52 @@ class ConversationViewModel(
             refreshUiEmotionFromMood()
         }
     }
+
+    private fun beginIdleDistraction(kind: IdleDistractionKind, now: Long = System.currentTimeMillis()) {
+        applyIdleDistractionUi(kind, now)
+        appendIdleDistractionLog(started = true, kind = kind)
+    }
+
+    private fun endIdleDistraction(kind: IdleDistractionKind?) {
+        if (kind != null && _uiState.value.idleDistraction == kind) {
+            appendIdleDistractionLog(started = false, kind = kind)
+        }
+        clearIdleDistractionUi()
+    }
+
+    private fun appendIdleDistractionLog(started: Boolean, kind: IdleDistractionKind) {
+        val text = idleDistractionLogText(started, kind)
+        val source = appContext.getString(R.string.idle_distraction_log_source)
+        _uiState.update { state ->
+            state.copy(
+                conversationLog = appendSystemLine(state.conversationLog, source, text),
+            )
+        }
+    }
+
+    private fun idleDistractionLogText(started: Boolean, kind: IdleDistractionKind): String =
+        when (kind) {
+            IdleDistractionKind.HEADPHONES -> if (started) {
+                appContext.getString(R.string.idle_distraction_log_started_headphones)
+            } else {
+                appContext.getString(R.string.idle_distraction_log_ended_headphones)
+            }
+            IdleDistractionKind.READING -> if (started) {
+                appContext.getString(R.string.idle_distraction_log_started_reading)
+            } else {
+                appContext.getString(R.string.idle_distraction_log_ended_reading)
+            }
+            IdleDistractionKind.AWAY -> if (started) {
+                appContext.getString(R.string.idle_distraction_log_started_away)
+            } else {
+                appContext.getString(R.string.idle_distraction_log_ended_away)
+            }
+            IdleDistractionKind.PONG -> if (started) {
+                appContext.getString(R.string.idle_distraction_log_started_pong)
+            } else {
+                appContext.getString(R.string.idle_distraction_log_ended_pong)
+            }
+        }
 
     private fun applyIdleDistractionUi(kind: IdleDistractionKind, now: Long = System.currentTimeMillis()) {
         _uiState.update { state ->
@@ -3549,6 +3601,7 @@ class ConversationViewModel(
     /**
      * Silent idle look-around (ex heartbeat MICRO tick): eyes + optional ESP32 pan.
      * Runs in the mood loop; does not use proactive speak budget.
+     * Independent of WORK/SILENT (mimica non disturbante).
      * On success: clears idle boredom reason (no valence change) and starts mild relief.
      */
     private suspend fun pollIdleLookAround() {
@@ -3570,7 +3623,6 @@ class ConversationViewModel(
             lastInteractionMillis = settings.lastInteractionMillis,
             monitorEnabled = deskSettings.enabled,
         )
-        val stored = robotContextRepository.getStoredState()
         val now = System.currentTimeMillis()
         val currentHour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
         val eligible = IdleLookAroundEligibility.shouldRun(
@@ -3582,7 +3634,8 @@ class ConversationViewModel(
                 currentHour,
             ),
             isNightMode = _uiState.value.isNightMode,
-            robotContextSilent = RobotContextPolicy.shouldSuppressNotificationTts(stored, now),
+            // Boredom fidget must not be blocked by WORK/SILENT notification mode.
+            robotContextSilent = false,
             presenceAllows = presenceAllows,
             moodEmotion = mood.baseEmotion,
             idleMinutes = idleMinutes,
@@ -3801,7 +3854,7 @@ class ConversationViewModel(
         moodManager.onTrigger(if (night) MoodTrigger.NightMode else MoodTrigger.DayMode)
 
         if (night) {
-            interruptIdleBoredom()
+            dismissIdleDistractionForUserAttention()
         }
 
         if (state.phase is ConversationPhase.WaitingForHotword) {
@@ -3894,6 +3947,8 @@ class ConversationViewModel(
         val turnId = ++llmTurnGeneration
         llmJob?.cancel()
         emotionTransitionJob?.cancel()
+        // Any autonomous/system action interrupts recreational idle scenes.
+        dismissIdleDistractionForUserAttention()
         HotwordController.beginAssistantTurn()
 
         val stored = kotlinx.coroutines.runBlocking { robotContextRepository.getStoredState() }

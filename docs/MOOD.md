@@ -102,7 +102,13 @@ Cycle (in-memory [`IdleBoredomController`](../app/src/main/java/com/example/myde
 2. Look-around **clears `IDLE_*` reason** (face follows valence only) and starts **5 min** mild relief — **no valence change**.
 3. If still idle after relief → one symbolic **distraction scene** (8 min): headphones (scaled eyes inside headset) / reading (scaled eyes above open book) / open door + “Torno subito” sign / retro Pong TV. Full-screen UI scenes (standby eyes hidden). Mimica only (no Spotify, no real reading).
 4. While relieved or distracted, `IdleTime` / `HotwordListeningIdle` are **suppressed**.
-5. When distraction ends (or voice / night / mic-off interrupts): overlay clears; **idle clocks reset** (`MoodManager.resetIdleClocks` + heartbeat `recordInteraction`). Valence unchanged. Boredom can start counting again from zero.
+5. When distraction ends (or is interrupted): overlay clears; **idle clocks reset** (`MoodManager.resetIdleClocks` + heartbeat `recordInteraction`). Valence unchanged. Boredom can start counting again from zero.
+
+**Policy (v1):**
+
+- **Independent of WORK/SILENT** — look-around and distraction scenes are silent mimica; they must not be gated by robot-context notification silence (they do not disturb work).
+- **Interrupt** — any user attention (voice, tap, hotword), night mode, mic-off, or **any system/autonomous LLM turn** (`sendSystemInputToLlm`: notifications, wellness, predictivity, reminders, …) dismisses an active scene immediately.
+- **Session log only** — start/end lines go to the current `conversationLog` with an explicit activity sentence (e.g. `Sistema (svago): Ha iniziato a leggere (mimica)` / `Ha smesso di leggere (mimica)`), not activity-log / durable user memory.
 
 Config: [`IdleBoredomConfig`](../app/src/main/java/com/example/mydeskrobot/domain/mood/IdleBoredomConfig.kt) (5 + 8 min, no settings UI in v1).
 
