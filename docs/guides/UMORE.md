@@ -19,7 +19,7 @@ In dialogo attivo l’espressione del turno **prevale** sugli occhi; in standby 
 ## Cosa cambia l’umore di fondo
 
 - **Mic attivo, nessun turno vocale:** dopo ~10 min in ascolto hotword senza che tu parli → noia (`IDLE_LISTENING`).
-- **Dopo la noia:** può **guardarsi intorno** (occhi/corpo), poi per qualche minuto si “svaga” in modo **solo simbolico** (cuffie, libro, cartello “Torno subito”, TV con Pong). Non parte musica vera né letture reali. Questo **toglie la noia situazionale** (timer idle) ma **non alza** l’umore di fondo: se era giù di morale, resta giù. A fine pausa il timer noia riparte da zero.
+- **Dopo la noia:** può **guardarsi intorno** (occhi/corpo), poi per qualche minuto si “svaga” con una **scena** simbolica (cuffie con occhi dentro, lettura con libro sotto gli occhi, porta con cartello “Torno subito”, TV con Pong). Non parte musica vera né letture reali. Questo **toglie la noia situazionale** (timer idle) ma **non alza** l’umore di fondo: se era giù di morale, resta giù. A fine pausa il timer noia riparte da zero.
 - **Mic spento:** il loop umore **non gira** — nessun cambiamento nel tempo.
 - **Tempo senza interazione (sessione):** dopo ~30 min senza dialogo → noia; molto più a lungo → sonnolenza (se l’umore era già basso).
 - **Notte:** in modalità notte gli occhi tendono a chiudersi / sonno.

@@ -100,7 +100,7 @@ Cycle (in-memory [`IdleBoredomController`](../app/src/main/java/com/example/myde
 
 1. Robot is bored from idle → silent **look-around** (mood loop; see [`HEARTBEAT_ARCHITECTURE.md`](HEARTBEAT_ARCHITECTURE.md)).
 2. Look-around **clears `IDLE_*` reason** (face follows valence only) and starts **5 min** mild relief — **no valence change**.
-3. If still idle after relief → one symbolic **distraction overlay** (8 min): headphones / book cover / “Torno subito” sign / retro Pong TV. Mimica only (no Spotify, no real reading).
+3. If still idle after relief → one symbolic **distraction scene** (8 min): headphones (scaled eyes inside headset) / reading (scaled eyes above open book) / open door + “Torno subito” sign / retro Pong TV. Full-screen UI scenes (standby eyes hidden). Mimica only (no Spotify, no real reading).
 4. While relieved or distracted, `IdleTime` / `HotwordListeningIdle` are **suppressed**.
 5. When distraction ends (or voice / night / mic-off interrupts): overlay clears; **idle clocks reset** (`MoodManager.resetIdleClocks` + heartbeat `recordInteraction`). Valence unchanged. Boredom can start counting again from zero.
 

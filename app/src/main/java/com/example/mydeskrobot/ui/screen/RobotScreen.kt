@@ -146,9 +146,7 @@ fun RobotScreen(
             contentAlignment = Alignment.Center,
         ) {
             val idleDistraction = uiState.idleDistraction
-            val hideEyesForDistraction = idleDistraction == IdleDistractionKind.READING ||
-                idleDistraction == IdleDistractionKind.AWAY ||
-                idleDistraction == IdleDistractionKind.PONG
+            val hideEyesForDistraction = idleDistraction != null
 
             if (!hideEyesForDistraction) {
                 RobotEyes(
@@ -170,16 +168,17 @@ fun RobotScreen(
             if (idleDistraction != null) {
                 IdleDistractionOverlay(
                     kind = idleDistraction,
+                    emotion = uiState.emotion,
+                    emotionIntensity = uiState.emotionIntensity,
                     modifier = Modifier
                         .align(Alignment.Center)
-                        .then(
-                            if (idleDistraction == IdleDistractionKind.HEADPHONES) {
-                                Modifier.offset(y = -layout.happyMoodOffsetAboveCenter)
-                            } else {
-                                Modifier
-                            },
-                        )
-                        .zIndex(2f),
+                        .fillMaxSize()
+                        .zIndex(2f)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = { onEvent(ConversationUiEvent.OnBackgroundTapActivateListening) },
+                        ),
                 )
             }
 
@@ -425,6 +424,12 @@ fun RobotScreen(
         MoodStatusDialog(
             moodState = uiState.moodUiState,
             onDismiss = { showMoodStatus = false },
+            onDebugIdleDistraction = { kind ->
+                onEvent(ConversationUiEvent.OnDebugIdleDistraction(kind))
+            },
+            onDebugClearIdleDistraction = {
+                onEvent(ConversationUiEvent.OnDebugClearIdleDistraction)
+            },
         )
     }
 

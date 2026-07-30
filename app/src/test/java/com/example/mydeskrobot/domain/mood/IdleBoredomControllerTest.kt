@@ -88,10 +88,11 @@ class IdleBoredomControllerTest {
     }
 
     @Test
-    fun `interrupt mid relief clears without distraction ended`() {
+    fun `forceDistraction starts distracted phase immediately`() {
         val controller = IdleBoredomController(config, Random(0))
-        controller.onLookAroundCompleted(base)
-        assertEquals(IdleBoredomTickResult.Cleared, controller.interrupt())
-        assertFalse(controller.isSuppressingIdleBoredom())
+        val result = controller.forceDistraction(IdleDistractionKind.READING, base)
+        assertTrue(result is IdleBoredomTickResult.StartedDistraction)
+        assertEquals(IdleDistractionKind.READING, controller.currentDistractionKind())
+        assertTrue(controller.isSuppressingIdleBoredom())
     }
 }

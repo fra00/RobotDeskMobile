@@ -23,6 +23,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -31,6 +35,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.mydeskrobot.R
+import com.example.mydeskrobot.domain.mood.IdleDistractionKind
 import com.example.mydeskrobot.domain.mood.MoodReason
 import com.example.mydeskrobot.domain.mood.MoodValenceMapper
 import com.example.mydeskrobot.presentation.conversation.MoodUiState
@@ -39,7 +44,11 @@ import com.example.mydeskrobot.presentation.conversation.MoodUiState
 fun MoodStatusDialog(
     moodState: MoodUiState,
     onDismiss: () -> Unit,
+    onDebugIdleDistraction: ((IdleDistractionKind) -> Unit)? = null,
+    onDebugClearIdleDistraction: (() -> Unit)? = null,
 ) {
+    var showDistractionPicker by remember { mutableStateOf(false) }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
@@ -158,6 +167,23 @@ fun MoodStatusDialog(
                     ),
                 )
 
+                if (onDebugIdleDistraction != null) {
+                    HorizontalDivider()
+                    Text(
+                        text = stringResource(R.string.mood_status_debug_section),
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        text = stringResource(R.string.mood_status_debug_distraction_hint),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    TextButton(onClick = { showDistractionPicker = true }) {
+                        Text(text = stringResource(R.string.mood_status_debug_distraction_button))
+                    }
+                }
+
                 HorizontalDivider()
                 Text(
                     text = stringResource(R.string.mood_status_prompt_section),
@@ -178,6 +204,95 @@ fun MoodStatusDialog(
             }
         },
     )
+
+    if (showDistractionPicker && onDebugIdleDistraction != null) {
+        IdleDistractionDebugDialog(
+            onDismiss = { showDistractionPicker = false },
+            onSelect = { kind ->
+                onDebugIdleDistraction(kind)
+                showDistractionPicker = false
+                onDismiss()
+            },
+            onClear = onDebugClearIdleDistraction?.let { clear ->
+                {
+                    clear()
+                    showDistractionPicker = false
+                    onDismiss()
+                }
+            },
+        )
+    }
+}
+
+@Composable
+private fun IdleDistractionDebugDialog(
+    onDismiss: () -> Unit,
+    onSelect: (IdleDistractionKind) -> Unit,
+    onClear: (() -> Unit)?,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(text = stringResource(R.string.mood_status_debug_distraction_title))
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 420.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text(
+                    text = stringResource(R.string.mood_status_debug_distraction_body),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                // Explicit order so TV/Pong is never clipped below a non-scrolling dialog.
+                listOf(
+                    IdleDistractionKind.HEADPHONES,
+                    IdleDistractionKind.READING,
+                    IdleDistractionKind.AWAY,
+                    IdleDistractionKind.PONG,
+                ).forEach { kind ->
+                    TextButton(
+                        onClick = { onSelect(kind) },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(
+                            text = debugDistractionLabel(kind),
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                }
+                if (onClear != null) {
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                    TextButton(
+                        onClick = onClear,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(
+                            text = stringResource(R.string.mood_status_debug_distraction_clear),
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(text = stringResource(R.string.mood_status_close))
+            }
+        },
+    )
+}
+
+@Composable
+private fun debugDistractionLabel(kind: IdleDistractionKind): String = when (kind) {
+    IdleDistractionKind.HEADPHONES -> stringResource(R.string.mood_status_debug_distraction_headphones)
+    IdleDistractionKind.READING -> stringResource(R.string.mood_status_debug_distraction_reading)
+    IdleDistractionKind.AWAY -> stringResource(R.string.mood_status_debug_distraction_away)
+    IdleDistractionKind.PONG -> stringResource(R.string.mood_status_debug_distraction_pong)
 }
 
 @Composable

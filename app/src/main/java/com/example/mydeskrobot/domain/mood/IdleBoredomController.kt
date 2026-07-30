@@ -80,4 +80,14 @@ class IdleBoredomController(
             is IdleBoredomPhase.None -> IdleBoredomTickResult.Unchanged
         }
     }
+
+    /**
+     * Debug/UI: jump straight into a symbolic distraction (bypasses look-around and relief).
+     * Does not change wellbeing valence.
+     */
+    fun forceDistraction(kind: IdleDistractionKind, nowMs: Long): IdleBoredomTickResult {
+        val endsAt = nowMs + config.distractionMinutes.coerceAtLeast(1) * 60_000L
+        _phase.value = IdleBoredomPhase.Distracted(kind = kind, endsAtMs = endsAt)
+        return IdleBoredomTickResult.StartedDistraction(kind)
+    }
 }

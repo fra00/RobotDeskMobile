@@ -2,6 +2,7 @@ package com.example.mydeskrobot.presentation.conversation
 
 import com.example.mydeskrobot.domain.interaction.EyePokeSide
 import com.example.mydeskrobot.domain.llm.LlmProvider
+import com.example.mydeskrobot.domain.mood.IdleDistractionKind
 import com.example.mydeskrobot.presentation.settings.BodySettingsFormState
 import com.example.mydeskrobot.presentation.settings.DeskPresenceSettingsFormState
 import com.example.mydeskrobot.presentation.settings.HeartbeatSettingsFormState
@@ -173,4 +174,10 @@ sealed interface ConversationUiEvent {
     data object OnDismissAttentionDomainEditor : ConversationUiEvent
 
     data object OnClearReasoningLog : ConversationUiEvent
+
+    /** Debug: force a symbolic idle distraction overlay (mood dialog). */
+    data class OnDebugIdleDistraction(val kind: IdleDistractionKind) : ConversationUiEvent
+
+    /** Debug: clear active idle distraction / relief. */
+    data object OnDebugClearIdleDistraction : ConversationUiEvent
 }

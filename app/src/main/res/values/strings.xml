@@ -64,6 +64,16 @@
 
     <string name="mood_status_title">Stato umore</string>
     <string name="mood_status_close">Chiudi</string>
+    <string name="mood_status_debug_section">Debug</string>
+    <string name="mood_status_debug_distraction_hint">Forza una distrazione simbolica idle (senza attendere noia/look-around). Non modifica la valenza.</string>
+    <string name="mood_status_debug_distraction_button">Prova distrazione…</string>
+    <string name="mood_status_debug_distraction_title">Distrazione idle</string>
+    <string name="mood_status_debug_distraction_body">Scegli un overlay. Dura quanto una distrazione normale (~8 min), oppure chiudila subito.</string>
+    <string name="mood_status_debug_distraction_headphones">Cuffie / musica</string>
+    <string name="mood_status_debug_distraction_reading">Libro (pagine)</string>
+    <string name="mood_status_debug_distraction_away">Cartello «Torno subito»</string>
+    <string name="mood_status_debug_distraction_pong">TV / Pong</string>
+    <string name="mood_status_debug_distraction_clear">Chiudi distrazione attiva</string>
     <string name="cd_show_mood_status">Mostra stato umore e benessere</string>
     <string name="mood_status_scale_label">Benessere (scala −1 … +1)</string>
     <string name="mood_status_valence_value">Valenza attuale: %1$s · baseline %2$s</string>

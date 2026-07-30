@@ -612,7 +612,28 @@ class ConversationViewModel(
             ConversationUiEvent.OnSaveBodySettings -> saveBodySettings()
             ConversationUiEvent.OnTestBodyConnection -> testBodyConnection()
             ConversationUiEvent.OnTestBodyMovement -> testBodyMovement()
+            is ConversationUiEvent.OnDebugIdleDistraction -> debugForceIdleDistraction(event.kind)
+            ConversationUiEvent.OnDebugClearIdleDistraction -> debugClearIdleDistraction()
         }
+    }
+
+    /** Mood-dialog debug: start a symbolic distraction immediately (no valence change). */
+    private fun debugForceIdleDistraction(kind: IdleDistractionKind) {
+        val now = System.currentTimeMillis()
+        moodManager.clearIdleBoredomReason(now)
+        moodManager.idleBoredomController.forceDistraction(kind, now)
+        applyIdleDistractionUi(kind, now)
+        Log.i(TAG, "Debug idle distraction forced: $kind")
+    }
+
+    private fun debugClearIdleDistraction() {
+        val result = moodManager.idleBoredomController.interrupt()
+        if (result == IdleBoredomTickResult.DistractionEnded) {
+            moodManager.resetIdleClocks()
+            viewModelScope.launch { heartbeatSettingsRepository.recordInteraction() }
+        }
+        clearIdleDistractionUi()
+        Log.i(TAG, "Debug idle distraction cleared")
     }
 
     private suspend fun refreshPendingInbox() {
@@ -2064,6 +2085,7 @@ class ConversationViewModel(
         if (isAssistantTurnInProgress()) return
         if (!HotwordController.isRunning()) return
 
+        dismissIdleDistractionForUserAttention()
         HotwordController.activateVoiceSession()
     }
 
@@ -2206,6 +2228,8 @@ class ConversationViewModel(
         if (!_uiState.value.isHotwordListeningActive) return
         voiceSessionActive = true
 
+        dismissIdleDistractionForUserAttention()
+
         val initial = initialText?.trim().orEmpty()
 
         _uiState.update {
@@ -2214,6 +2238,7 @@ class ConversationViewModel(
                 emotion = RobotEmotion.SURPRISED,
                 statusMessage = messages.activeListeningStatus(exitPhrase),
                 currentUtterance = initial,
+                idleDistraction = null,
             )
         }
 
@@ -3273,7 +3298,7 @@ class ConversationViewModel(
 
     private fun applyMoodTriggerForUserPhrase(phrase: String) {
         lastLlmUserTone = null
-        interruptIdleBoredom()
+        dismissIdleDistractionForUserAttention()
         moodManager.recordVoiceTurn(phrase)
     }
 
@@ -3475,8 +3500,24 @@ class ConversationViewModel(
 
     private fun interruptIdleBoredom() {
         val result = moodManager.idleBoredomController.interrupt()
-        if (result != IdleBoredomTickResult.Unchanged) {
+        if (result != IdleBoredomTickResult.Unchanged || _uiState.value.idleDistraction != null) {
             clearIdleDistractionUi()
+        }
+    }
+
+    /**
+     * User attention (tap / hotword / voice): drop symbolic distraction and reset idle clocks
+     * so standby eyes return immediately.
+     */
+    private fun dismissIdleDistractionForUserAttention() {
+        val hadDistraction =
+            _uiState.value.idleDistraction != null ||
+                moodManager.idleBoredomController.isSuppressingIdleBoredom()
+        interruptIdleBoredom()
+        if (hadDistraction) {
+            moodManager.resetIdleClocks()
+            viewModelScope.launch { heartbeatSettingsRepository.recordInteraction() }
+            refreshUiEmotionFromMood()
         }
     }
 
