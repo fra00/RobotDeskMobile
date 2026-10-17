@@ -22,13 +22,20 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.mydeskrobot.data.light.DeskLightController
 import com.example.mydeskrobot.data.light.ScreenBrightnessHelper
 import com.example.mydeskrobot.data.power.BatteryOptimizationHelper
+import com.example.mydeskrobot.data.proxy.DeviceModeRepository
 import com.example.mydeskrobot.data.vision.CameraXVisionImageCapture
 import com.example.mydeskrobot.data.vision.VisionCaptureActivityProvider
+import com.example.mydeskrobot.domain.proxy.DeviceMode
+import com.example.mydeskrobot.integration.input.notification.proxy.NotificationProxyForegroundService
+import com.example.mydeskrobot.integration.input.notification.proxy.NotificationProxyHttpServer
+import com.example.mydeskrobot.integration.proxy.capability.PhoneCapabilityHttpServer
 import com.example.mydeskrobot.presentation.conversation.ConversationUiEvent
 import com.example.mydeskrobot.presentation.conversation.ConversationViewModel
 import com.example.mydeskrobot.presentation.conversation.ConversationViewModelFactory
+import com.example.mydeskrobot.ui.screen.ProxyScreen
 import com.example.mydeskrobot.ui.screen.RobotScreen
 import com.example.mydeskrobot.ui.theme.MyDeskRobotTheme
+import kotlinx.coroutines.runBlocking
 
 class MainActivity : ComponentActivity() {
 
@@ -40,6 +47,8 @@ class MainActivity : ComponentActivity() {
             visionImageCapture = CameraXVisionImageCapture(),
         )
     }
+
+    private var deviceMode: DeviceMode = DeviceMode.ROBOT
 
     private var pendingEnableHotword = false
 
@@ -67,10 +76,40 @@ class MainActivity : ComponentActivity() {
         // Optional: denial does not block the app; resolve_phone_contact falls back to memories.
     }
 
+    private val requestProxyNotifications = registerForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { _ -> }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val modeRepo = DeviceModeRepository(applicationContext)
+        deviceMode = runBlocking {
+            val mode = modeRepo.getDeviceMode()
+            modeRepo.clearApplyModeRestart()
+            mode
+        }
+
+        if (deviceMode == DeviceMode.PROXY) {
+            configureProxyDisplay()
+            enableEdgeToEdge()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                requestProxyNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+            NotificationProxyForegroundService.start(this)
+            PhoneCapabilityHttpServer.startIfNeeded(this)
+            setContent {
+                MyDeskRobotTheme(darkTheme = true, deskLampMode = false, dynamicColor = true) {
+                    Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
+                        ProxyScreen(modifier = Modifier.padding(innerPadding))
+                    }
+                }
+            }
+            return
+        }
+
         configureAlwaysOnDisplay()
         enableEdgeToEdge()
+        NotificationProxyHttpServer.startIfNeeded(this)
         setContent {
             val uiState by viewModel.uiState.collectAsStateWithLifecycle()
             val settingsUiState by viewModel.settingsUiState.collectAsStateWithLifecycle()
@@ -112,28 +151,44 @@ class MainActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
-        VisionCaptureActivityProvider.setResumedActivity(this)
+        if (deviceMode == DeviceMode.ROBOT) {
+            VisionCaptureActivityProvider.setResumedActivity(this)
+        }
     }
 
     override fun onResume() {
         super.onResume()
-        VisionCaptureActivityProvider.setResumedActivity(this)
-        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        DeskLightController.attach(window, screenBrightnessHelper)
+        if (deviceMode == DeviceMode.ROBOT) {
+            VisionCaptureActivityProvider.setResumedActivity(this)
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            DeskLightController.attach(window, screenBrightnessHelper)
+            NotificationProxyHttpServer.startIfNeeded(this)
+        } else if (deviceMode == DeviceMode.PROXY) {
+            PhoneCapabilityHttpServer.startIfNeeded(this)
+        }
     }
 
     override fun onPause() {
-        DeskLightController.detach()
+        if (deviceMode == DeviceMode.ROBOT) {
+            DeskLightController.detach()
+        }
         super.onPause()
     }
 
     override fun onDestroy() {
-        if (DeskLightController.isBrightMode.value) {
-            DeskLightController.attach(window, screenBrightnessHelper)
-            DeskLightController.setBrightMode(false)
+        if (deviceMode == DeviceMode.ROBOT) {
+            if (DeskLightController.isBrightMode.value) {
+                DeskLightController.attach(window, screenBrightnessHelper)
+                DeskLightController.setBrightMode(false)
+            }
+            VisionCaptureActivityProvider.clearActivity(this)
+            NotificationProxyHttpServer.stop()
         }
-        VisionCaptureActivityProvider.clearActivity(this)
         super.onDestroy()
+    }
+
+    private fun configureProxyDisplay() {
+        // Proxy does not need always-on desk display.
     }
 
     private fun configureAlwaysOnDisplay() {

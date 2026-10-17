@@ -2,6 +2,7 @@ package com.example.mydeskrobot.data.predictivity
 
 import com.example.mydeskrobot.domain.predictivity.HabitSlot
 import com.example.mydeskrobot.domain.predictivity.HabitSlotEligibility
+import com.example.mydeskrobot.domain.activitylog.RobotSelfActivityFilter
 import com.example.mydeskrobot.domain.proactive.ProactivityConstants
 import com.example.mydeskrobot.memory.db.MemoryCategory
 import com.example.mydeskrobot.memory.unified.UnifiedMemoryRepository
@@ -29,7 +30,30 @@ class HabitSlotRepository(
             .filter { it.slotKey.isNotBlank() }
 
     suspend fun listEligibleForDeviation(): List<HabitSlot> =
-        listAll().filter { HabitSlotEligibility.isEligibleForDeviation(it) }
+        listAll()
+            .filterNot {
+                RobotSelfActivityFilter.isRobotSelfHabit(
+                    displayLabel = it.displayLabel,
+                    canonicalLabel = it.canonicalLabel,
+                    rawLabels = it.rawLabels,
+                )
+            }
+            .filter { HabitSlotEligibility.isEligibleForDeviation(it) }
+
+    suspend fun deleteRobotSelfSlots(): Int {
+        val matches = listAll().filter {
+            RobotSelfActivityFilter.isRobotSelfHabit(
+                displayLabel = it.displayLabel,
+                canonicalLabel = it.canonicalLabel,
+                rawLabels = it.rawLabels,
+            )
+        }
+        var deleted = 0
+        matches.forEach { slot ->
+            if (deleteBySlotKey(slot.slotKey)) deleted++
+        }
+        return deleted
+    }
 
     suspend fun deleteBySlotKey(slotKey: String): Boolean {
         val doc = unifiedMemoryRepository.getByExternalRef(HabitSlotCodec.externalRef(slotKey))

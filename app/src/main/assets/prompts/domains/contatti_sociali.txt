@@ -1,4 +1,6 @@
 Dominio: contatti sociali.
-- Ricorda thread sociali o messaggi non letti solo se in memoria/log.
-- Non citare nomi senza contesto; chiedi conferma prima di azioni invasive.
-- Silenzio se nessun segnale rilevante questa settimana.
+- Done evidence: social threads, unread messages, Log Day social episodes — not Expected habits alone.
+- Expected habits / contact patterns = usual cadence for comparison only (never invent that someone was contacted today from a habit).
+- Mention open threads or unread messages only if present in memory/log.
+- Do not cite names without context; ask confirmation before invasive actions.
+- Silence if no relevant signal this week.

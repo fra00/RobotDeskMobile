@@ -1,28 +1,45 @@
 package com.example.mydeskrobot.integration.telephony
 
+import android.util.Log
 import com.example.mydeskrobot.domain.telephony.ContactNameMatcher
 import com.example.mydeskrobot.domain.telephony.PhoneNumberExtractor
+import com.example.mydeskrobot.integration.proxy.capability.PhoneCapabilityClient
 import com.example.mydeskrobot.memory.MemoryTopicMatcher
 import com.example.mydeskrobot.memory.unified.UnifiedMemoryRepository
 
 /**
  * Resolves a spoken contact name to a phone number via rubrica and stored memories.
+ * When [remoteSearch] is set, merges contacts from the paired PROXY phone first.
  */
 class PhoneContactResolver(
-    private val contactsResolver: AndroidContactsPhoneResolver,
+    private val contactsResolver: ContactPhoneLookup,
     private val unifiedMemoryRepository: UnifiedMemoryRepository,
+    private val remoteSearch: (suspend (String) -> List<ContactPhoneMatch>?)? = null,
 ) {
+
+    constructor(
+        contactsResolver: ContactPhoneLookup,
+        unifiedMemoryRepository: UnifiedMemoryRepository,
+        capabilityClient: PhoneCapabilityClient?,
+    ) : this(
+        contactsResolver = contactsResolver,
+        unifiedMemoryRepository = unifiedMemoryRepository,
+        remoteSearch = capabilityClient?.let { client -> { q -> client.searchContacts(q) } },
+    )
 
     suspend fun resolve(query: String): PhoneContactResolveResult {
         val q = query.trim()
         if (q.isBlank()) return PhoneContactResolveResult.InvalidQuery
 
-        val contactMatches = contactsResolver.search(q)
+        val remoteMatches = fetchRemoteContacts(q)
+        val localMatches = contactsResolver.search(q)
+        val contactMatches = mergeMatches((remoteMatches.orEmpty()) + localMatches)
         val memoryMatches = searchMemory(q)
         val merged = mergeMatches(contactMatches + memoryMatches)
 
         if (merged.isEmpty()) {
-            return if (!contactsResolver.hasPermission()) {
+            val remoteTried = remoteMatches != null
+            return if (!contactsResolver.hasPermission() && !remoteTried) {
                 PhoneContactResolveResult.PermissionDenied
             } else {
                 PhoneContactResolveResult.NotFound(query)
@@ -38,6 +55,13 @@ class PhoneContactResolver(
         } else {
             PhoneContactResolveResult.Multiple(merged.take(MAX_CANDIDATES))
         }
+    }
+
+    private suspend fun fetchRemoteContacts(query: String): List<ContactPhoneMatch>? {
+        val search = remoteSearch ?: return null
+        return runCatching { search(query) }
+            .onFailure { e -> Log.w(TAG, "Remote contacts failed", e) }
+            .getOrNull()
     }
 
     private suspend fun searchMemory(query: String): List<ContactPhoneMatch> {
@@ -95,6 +119,7 @@ class PhoneContactResolver(
     }
 
     companion object {
+        private const val TAG = "PhoneContactResolver"
         private const val AMBIGUITY_GAP = 0.15f
         private const val MAX_CANDIDATES = 5
     }

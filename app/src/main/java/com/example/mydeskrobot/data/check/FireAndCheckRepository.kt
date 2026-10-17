@@ -4,7 +4,9 @@ import android.content.Context
 import androidx.room.Room
 import com.example.mydeskrobot.data.check.db.FireAndCheckDatabase
 import com.example.mydeskrobot.data.check.db.FireAndCheckEntity
+import com.example.mydeskrobot.domain.check.CommitmentFollowUpPolicy
 import com.example.mydeskrobot.domain.check.FireAndCheckEntry
+import com.example.mydeskrobot.domain.check.FireAndCheckKind
 import com.example.mydeskrobot.domain.check.FireAndCheckPhase
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
@@ -41,20 +43,30 @@ class FireAndCheckRepository(
         checkGoal: String?,
         triggerReason: String?,
         fireAndCheck: Boolean,
+        kind: FireAndCheckKind = FireAndCheckKind.PHYSICAL,
+        reRemindCount: Int = 0,
     ) {
         pendingPrimary = PendingPrimary(
             reminderId = reminderId,
             message = primaryMessage,
             dueAtMillis = primaryDueAtMillis,
+            kind = kind,
+            reRemindCount = reRemindCount,
         )
 
-        if (fireAndCheck || !checkGoal.isNullOrBlank() || !triggerReason.isNullOrBlank()) {
+        if (fireAndCheck ||
+            kind == FireAndCheckKind.COMMITMENT ||
+            !checkGoal.isNullOrBlank() ||
+            !triggerReason.isNullOrBlank()
+        ) {
             insertPrimaryEntity(
                 reminderId = reminderId,
                 primaryMessage = primaryMessage,
                 primaryDueAtMillis = primaryDueAtMillis,
                 checkGoal = checkGoal,
                 triggerReason = triggerReason,
+                kind = kind,
+                reRemindCount = reRemindCount,
             )
         }
     }
@@ -64,6 +76,11 @@ class FireAndCheckRepository(
         verificationMessage: String,
         verificationDueAtMillis: Long,
     ) {
+        val kindHint = if (CommitmentFollowUpPolicy.isCommitmentVerificationMessage(verificationMessage)) {
+            FireAndCheckKind.COMMITMENT
+        } else {
+            null
+        }
         val primary = dao.findLatestAwaitingVerificationLink()
             ?: pendingPrimary?.let { pending ->
                 insertPrimaryEntity(
@@ -72,6 +89,8 @@ class FireAndCheckRepository(
                     primaryDueAtMillis = pending.dueAtMillis,
                     checkGoal = null,
                     triggerReason = pending.message,
+                    kind = kindHint ?: pending.kind,
+                    reRemindCount = pending.reRemindCount,
                 )
                 dao.findByPrimaryReminderId(pending.reminderId)
             }
@@ -83,8 +102,46 @@ class FireAndCheckRepository(
             verificationMessage = verificationMessage.trim(),
             verificationDueAtMillis = verificationDueAtMillis,
             checkGoal = primary.checkGoal ?: verificationMessage.trim(),
+            kind = kindHint ?: primary.kind,
         )
         dao.update(updated)
+    }
+
+    /**
+     * Updates verification due time / reminder id after a speak-gate deferral.
+     */
+    suspend fun updateVerificationSchedule(
+        verificationReminderId: Long,
+        newVerificationReminderId: Long,
+        newDueAtMillis: Long,
+    ) {
+        val entry = dao.findByVerificationReminderId(verificationReminderId) ?: return
+        dao.update(
+            entry.copy(
+                verificationReminderId = newVerificationReminderId,
+                verificationDueAtMillis = newDueAtMillis,
+            ),
+        )
+    }
+
+    suspend fun findByVerificationReminderId(reminderId: Long): FireAndCheckEntity? =
+        dao.findByVerificationReminderId(reminderId)
+
+    suspend fun findByPrimaryReminderId(reminderId: Long): FireAndCheckEntity? =
+        dao.findByPrimaryReminderId(reminderId)
+
+    /**
+     * Prepares a new commitment follow-up loop.
+     * @return reRemindCount for the new entity, or null if capped (schedule plain reminder only).
+     */
+    suspend fun prepareNewCommitmentFollowUp(): Int? {
+        val active = dao.listByStatus(FireAndCheckStatus.ACTIVE)
+            .filter { it.kind == FireAndCheckKind.COMMITMENT }
+            .maxByOrNull { it.createdAtMillis }
+        if (active == null) return 0
+        if (!CommitmentFollowUpPolicy.canReRemind(active.reRemindCount)) return null
+        dao.updateStatus(active.id, FireAndCheckStatus.COMPLETED)
+        return active.reRemindCount + 1
     }
 
     private suspend fun insertPrimaryEntity(
@@ -93,12 +150,15 @@ class FireAndCheckRepository(
         primaryDueAtMillis: Long,
         checkGoal: String?,
         triggerReason: String?,
+        kind: FireAndCheckKind,
+        reRemindCount: Int,
     ) {
         if (dao.findByPrimaryReminderId(reminderId) != null) return
 
         val reason = triggerReason?.trim().orEmpty().ifBlank { primaryMessage }
         dao.insert(
             FireAndCheckEntity(
+                kind = kind,
                 triggerReason = reason,
                 checkGoal = checkGoal?.trim()?.takeIf { it.isNotBlank() },
                 primaryMessage = primaryMessage,
@@ -107,6 +167,7 @@ class FireAndCheckRepository(
                 verificationReminderId = null,
                 primaryDueAtMillis = primaryDueAtMillis,
                 verificationDueAtMillis = null,
+                reRemindCount = reRemindCount,
                 status = FireAndCheckStatus.ACTIVE,
                 createdAtMillis = System.currentTimeMillis(),
             ),
@@ -173,6 +234,7 @@ class FireAndCheckRepository(
         }
         return FireAndCheckEntry(
             id = id,
+            kind = kind,
             triggerReason = triggerReason,
             checkGoal = checkGoal,
             primaryMessage = primaryMessage,
@@ -180,6 +242,7 @@ class FireAndCheckRepository(
             primaryDueAtMillis = primaryDueAtMillis,
             verificationDueAtMillis = verificationDueAtMillis,
             phase = phase,
+            reRemindCount = reRemindCount,
         )
     }
 
@@ -187,12 +250,15 @@ class FireAndCheckRepository(
         val reminderId: Long,
         val message: String,
         val dueAtMillis: Long,
+        val kind: FireAndCheckKind = FireAndCheckKind.PHYSICAL,
+        val reRemindCount: Int = 0,
     )
 
     companion object {
         private const val ACTIVE_TICK_MS = 15_000L
 
         fun isVerificationMessage(message: String): Boolean {
+            if (CommitmentFollowUpPolicy.isCommitmentVerificationMessage(message)) return true
             val lower = message.trim().lowercase()
             return lower.startsWith("verifica") || lower.contains("controllo")
         }
@@ -202,7 +268,9 @@ class FireAndCheckRepository(
                 context.applicationContext,
                 FireAndCheckDatabase::class.java,
                 "fire_and_check.db",
-            ).build()
+            )
+                .addMigrations(FireAndCheckDatabase.MIGRATION_1_2)
+                .build()
             return FireAndCheckRepository(db)
         }
 

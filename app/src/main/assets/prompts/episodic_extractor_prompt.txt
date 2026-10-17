@@ -35,6 +35,7 @@ Do NOT extract:
 - explicit todos or shopping lists
 - fixed-time alarms already suitable as reminders only
 - robot heartbeat or autonomous goals
+- robot idle pastimes / boredom scenes — SYSTEM channel "svago", any line prefixed with "[robot]", Pong/cuffie/lettura/«Torno subito» of the robot. Those are the robot's activities, never the user's day.
 
 For system lines (SYSTEM: WhatsApp: …), use source_channel from the prefix and actor from the contact when visible in the text or channel context.
 

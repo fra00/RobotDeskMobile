@@ -1,5 +1,7 @@
 package com.example.mydeskrobot.memory.extract
 
+import com.example.mydeskrobot.domain.activitylog.RobotSelfActivityFilter
+
 /**
  * Parses the in-app conversation log into structured entries for background extractors.
  */
@@ -62,5 +64,11 @@ object ConversationLogParser {
         parseAllEntries(conversationLog).filter { it.role == "user" || it.role == "assistant" }
 
     fun parseEpisodicEntries(conversationLog: String): List<ChatLogEntry> =
-        parseAllEntries(conversationLog).filter { it.role == "user" || it.role == "assistant" || it.role == "system" }
+        parseAllEntries(conversationLog).filter { entry ->
+            when (entry.role) {
+                "user", "assistant" -> true
+                "system" -> !RobotSelfActivityFilter.isExcludedSystemEntryText(entry.text)
+                else -> false
+            }
+        }
 }

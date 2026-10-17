@@ -18,7 +18,7 @@ private val Context.deskPresenceDataStore: DataStore<Preferences> by preferences
 
 data class DeskPresenceSettings(
     val enabled: Boolean = true,
-    /** Target analysis rate while voice session is active (device is expected on charger). */
+    /** Target analysis rate during on-demand sample/centering sessions (2–10). */
     val analysisFps: Int = 5,
     val faceConfidenceThreshold: Float = 0.6f,
 )

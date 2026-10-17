@@ -20,6 +20,8 @@ class DelegatingMoodContextProvider : MoodContextProvider {
 
     var idleDistractionProvider: () -> IdleDistractionKind? = { null }
 
+    var recentIdleDistractionProvider: () -> IdleDistractionKind? = { null }
+
     override suspend fun buildContextSection(): String = buildString {
         append(
             MoodPromptFormatter.format(
@@ -27,6 +29,7 @@ class DelegatingMoodContextProvider : MoodContextProvider {
                 promptHints = promptHintsProvider(),
                 ephemeral = ephemeralProvider(),
                 idleDistraction = idleDistractionProvider(),
+                recentIdleDistraction = recentIdleDistractionProvider(),
             ),
         )
         append("\n\n")

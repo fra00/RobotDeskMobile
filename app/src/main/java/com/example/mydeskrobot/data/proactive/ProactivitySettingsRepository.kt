@@ -22,6 +22,8 @@ data class ProactivitySettings(
     val wellnessAnchorMinutes: Int = ProactivityConstants.WELLNESS_ANCHOR_MINUTES,
     val wellnessIdleMinutes: Int = ProactivityConstants.WELLNESS_IDLE_MINUTES,
     val wellnessPresenceMinutes: Int = ProactivityConstants.WELLNESS_PRESENCE_MINUTES,
+    /** Sync exercise sessions from Health Connect into Log Day (default off until user opts in). */
+    val healthConnectEnabled: Boolean = false,
 )
 
 class ProactivitySettingsRepository(
@@ -38,6 +40,7 @@ class ProactivitySettingsRepository(
                     ?: ProactivityConstants.WELLNESS_IDLE_MINUTES,
                 wellnessPresenceMinutes = prefs[KEY_WELLNESS_PRESENCE_MINUTES]
                     ?: ProactivityConstants.WELLNESS_PRESENCE_MINUTES,
+                healthConnectEnabled = prefs[KEY_HEALTH_CONNECT_ENABLED] ?: false,
             )
         }
 
@@ -49,6 +52,7 @@ class ProactivitySettingsRepository(
         wellnessAnchorMinutes: Int? = null,
         wellnessIdleMinutes: Int? = null,
         wellnessPresenceMinutes: Int? = null,
+        healthConnectEnabled: Boolean? = null,
     ) {
         context.proactivitySettingsDataStore.edit { prefs ->
             predictivityEnabled?.let { prefs[KEY_PREDICTIVITY_ENABLED] = it }
@@ -62,6 +66,7 @@ class ProactivitySettingsRepository(
             wellnessPresenceMinutes?.let {
                 prefs[KEY_WELLNESS_PRESENCE_MINUTES] = it.coerceIn(5, 60)
             }
+            healthConnectEnabled?.let { prefs[KEY_HEALTH_CONNECT_ENABLED] = it }
         }
     }
 
@@ -71,5 +76,6 @@ class ProactivitySettingsRepository(
         private val KEY_WELLNESS_ANCHOR_MINUTES = intPreferencesKey("wellness_anchor_minutes")
         private val KEY_WELLNESS_IDLE_MINUTES = intPreferencesKey("wellness_idle_minutes")
         private val KEY_WELLNESS_PRESENCE_MINUTES = intPreferencesKey("wellness_presence_minutes")
+        private val KEY_HEALTH_CONNECT_ENABLED = booleanPreferencesKey("health_connect_enabled")
     }
 }

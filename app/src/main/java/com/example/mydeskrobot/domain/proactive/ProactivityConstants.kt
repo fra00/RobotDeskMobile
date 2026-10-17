@@ -13,6 +13,11 @@ object ProactivityConstants {
     const val PREDICTIVITY_MIN_HIT_COUNT = 3
     const val PREDICTIVITY_MIN_CONFIDENCE = 0.70f
     const val PREDICTIVITY_TIME_TOLERANCE_MINUTES = 45
+    /**
+     * Max circular distance (minutes) to treat two slots/episodes as the same habit window
+     * during hybrid merge (same canonical). Wider than [TIME_BUCKET_MINUTES], typically ≥ tolerance.
+     */
+    const val PREDICTIVITY_MERGE_WINDOW_MINUTES = 90
 
     const val WELLNESS_ANCHOR_MINUTES = 60
     /** Buffer after last user turn so wellness does not overlap an ongoing dialog. */

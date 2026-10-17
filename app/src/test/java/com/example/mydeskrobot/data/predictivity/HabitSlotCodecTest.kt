@@ -27,4 +27,27 @@ class HabitSlotCodecTest {
         assertEquals(slot.slotKey, decoded!!.slotKey)
         assertEquals(slot.hitCount, decoded.hitCount)
     }
+
+    @Test
+    fun formatForPrompt_humanReadableExpectedHabit() {
+        val slot = HabitSlot(
+            slotKey = "tapis_roulant|1140",
+            canonicalLabel = "tapis_roulant",
+            displayLabel = "tapis roulant",
+            typicalTimeMinutes = 1140,
+        )
+        assertEquals(
+            "tapis roulant (di solito intorno alle 19:00)",
+            HabitSlotCodec.formatForPrompt(slot),
+        )
+        val encoded = HabitSlotCodec.encode(slot)
+        assertEquals(
+            "tapis roulant (di solito intorno alle 19:00)",
+            HabitSlotCodec.formatAutonomyValueForPrompt(encoded),
+        )
+        assertEquals(
+            "PATTERN: passeggiata serale",
+            HabitSlotCodec.formatAutonomyValueForPrompt("PATTERN: passeggiata serale"),
+        )
+    }
 }

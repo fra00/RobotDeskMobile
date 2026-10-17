@@ -8,6 +8,7 @@ import com.example.mydeskrobot.data.spatial.SpatialPlaceRepository
 import com.example.mydeskrobot.domain.activitylog.ActivitySource
 import com.example.mydeskrobot.domain.activitylog.EpisodeConfidence
 import com.example.mydeskrobot.domain.activitylog.EpisodeKind
+import com.example.mydeskrobot.domain.activitylog.RobotSelfActivityFilter
 import com.example.mydeskrobot.domain.list.ListItemType
 import com.example.mydeskrobot.memory.MemorySettingsRepository
 
@@ -47,6 +48,17 @@ class UnifiedMemoryWriter(
         isUnread: Boolean = false,
         externalRefOverride: String? = null,
     ): EpisodeWriteResult {
+        if (
+            !RobotSelfActivityFilter.isUserFacingEpisode(
+                label = label,
+                sourceChannel = sourceChannel,
+                actor = actor,
+            ) ||
+            (rawPhrase != null && RobotSelfActivityFilter.isRobotSelfActivity(rawPhrase))
+        ) {
+            Log.d(TAG, "Skipping robot self-activity episode write: $label")
+            return EpisodeWriteResult(eventId = -1L, indexOk = false, externalRef = "")
+        }
         val eventId = if (eventKind == EpisodeKind.PHYSICAL_NOW) {
             activityLogRepository.appendEvent(
                 label = label,

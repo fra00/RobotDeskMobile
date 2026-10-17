@@ -88,27 +88,37 @@ flowchart LR
 | `IdleTime(minutes)` | Mood loop ~30 s, `checkIdleTransition()` | 30 min idle + neutral → bored; 90 min + bored → drowsy (if valence low enough) |
 | `NightMode` / `DayMode` | Night mode monitor in VM | Sleeping / wake from night |
 | `TaskCompletedUseful` | Useful tool completion | +0.08 valence (single reward — happy ack stays ROUTINE) |
+| `SelfCareLookAround` | Idle look-around finished | +0.04 valence (`SELF_CARE`) |
+| `SelfCareDistraction` | Solo distraction scene finished | +0.08 valence (`SELF_CARE`) |
 | `LlmEmotion(emotion, tier)` | JSON `emotion` after turn | Ephemeral + valence delta if tier FULL (praise-gated for happy/loving) |
 | `UserApology` | LLM `user_tone: "apology"` | Recovery delta if annoyed |
 | `EyePoked(tier)` | Tap on eyes UI | Tier 1–3 negative deltas |
 
 ### Situational boredom vs wellbeing valence
 
-Idle boredom (`IDLE_*` reasons forcing a bored face) is **situational**, separate from lasting low valence.
+Idle boredom (`IDLE_*` reasons forcing a bored face) starts as a **situational** overlay, but look-around and symbolic distractions are **self-regulation** (“il robot si fa i fatti suoi e si sistema”), not only cosmetic idle clear.
+
+**Intent + runtime (ott 2026):** look-around and solo distractions are self-regulation — they **raise persistent valence** (small deltas) so the robot does not stay stuck looking sad after coping. Skipped while sleeping / night reason. Interrupted distractions do not get the distraction bump.
+
+| Event | Trigger | Delta (default) |
+|-------|---------|-----------------|
+| Look-around completed | `SelfCareLookAround` | `+0.04` (`MoodValenceConfig.selfCareLookAround`) |
+| Solo distraction finished | `SelfCareDistraction` | `+0.08` (`selfCareDistraction`) |
 
 Cycle (in-memory [`IdleBoredomController`](../app/src/main/java/com/example/mydeskrobot/domain/mood/IdleBoredomController.kt), no DataStore):
 
-1. Robot is bored from idle → silent **look-around** (mood loop; see [`HEARTBEAT_ARCHITECTURE.md`](HEARTBEAT_ARCHITECTURE.md)).
-2. Look-around **clears `IDLE_*` reason** (face follows valence only) and starts **5 min** mild relief — **no valence change**.
-3. If still idle after relief → one symbolic **distraction scene** (8 min): headphones (scaled eyes inside headset) / reading (scaled eyes above open book) / open door + “Torno subito” sign / retro Pong TV. Full-screen UI scenes (standby eyes hidden). Mimica only (no Spotify, no real reading).
+1. Robot is bored from idle → silent **look-around** (`base_pan`; mood loop — [`HEARTBEAT_ARCHITECTURE.md`](HEARTBEAT_ARCHITECTURE.md)).
+2. Look-around **clears `IDLE_*` reason**, starts **5 min** relief, applies `SelfCareLookAround`.
+3. If still idle after relief → one **distraction scene** (8 min): headphones / reading / “Torno subito” / Pong. Full-screen UI. For the **LLM persona this activity is real** (STATO ROBOT: in corso / recente + identity “own time” in `llm_system_prompt` §1); no Spotify or real book content is played — diegetic framing only (no invented titles). Soft companion-space framing, not a ask→say playbook.
 4. While relieved or distracted, `IdleTime` / `HotwordListeningIdle` are **suppressed**.
-5. When distraction ends (or is interrupted): overlay clears; **idle clocks reset** (`MoodManager.resetIdleClocks` + heartbeat `recordInteraction`). Valence unchanged. Boredom can start counting again from zero.
+5. When distraction **completes**: `SelfCareDistraction` + overlay clear + idle clocks reset. Interrupt → no distraction valence bump. Recent activity stays in STATO ROBOT for ~30 min.
 
-**Policy (v1):**
+**Policy (v1 runtime + intent):**
 
-- **Independent of WORK/SILENT** — look-around and distraction scenes are silent mimica; they must not be gated by robot-context notification silence (they do not disturb work).
+- **Independent of WORK/SILENT** — look-around and distraction scenes do not speak; they must not be gated by robot-context notification silence.
 - **Interrupt** — any user attention (voice, tap, hotword), night mode, mic-off, or **any system/autonomous LLM turn** (`sendSystemInputToLlm`: notifications, wellness, predictivity, reminders, …) dismisses an active scene immediately.
-- **Session log only** — start/end lines go to the current `conversationLog` with an explicit activity sentence (e.g. `Sistema (svago): Ha iniziato a leggere (mimica)` / `Ha smesso di leggere (mimica)`), not activity-log / durable user memory.
+- **Session log** — start/end lines go to `conversationLog` (e.g. `Sistema (svago): [robot] …`), not durable user memory. Prompt awareness is via **STATO ROBOT** (active + recent) plus system-prompt companion identity — **not** LLM chat history.
+- **Future (idea):** bond / sympathy toward the user (separate axis from wellbeing); play-*with*-user may affect bond and valence differently from solo distraction.
 
 Config: [`IdleBoredomConfig`](../app/src/main/java/com/example/mydeskrobot/domain/mood/IdleBoredomConfig.kt) (5 + 8 min, no settings UI in v1).
 
@@ -180,7 +190,7 @@ Set by VM, not LLM JSON: `LISTENING`, `SPEAKING`, `THINKING` (phase-driven).
 
 ## Out of scope / backlog
 
-- `UserAwarenessState` (keyword-based user-mood inference) **removed** July 2026 — user tone is LLM-judged (`user_tone`); H6 user-mood-in-proactive would need a new LLM-driven design.
+- `UserAwarenessState` (keyword-based user-mood inference) **removed** July 2026. H6 (user mood in proactive decisions) is **out of scope** — not planned. `user_tone` remains only for robot valence (praise / apology gates), not for Wellness/Predictivity.
 - No dedicated mood settings UI (thresholds in `MoodConfig` / `MoodValenceConfig` — hotword idle min, burst N/T, praise cap).
 
 ## Related

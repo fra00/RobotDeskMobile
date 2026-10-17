@@ -17,6 +17,7 @@ data class WellnessWatchContext(
     val bodyReachable: Boolean,
     val llmBusy: Boolean,
     val isNightMode: Boolean = false,
+    val translationModeActive: Boolean = false,
     val enabledDomainIds: Set<String> = WellnessDomains.ALL,
     /** Silent body locate; used only when body is configured and reachable. */
     val locateUser: suspend () -> Boolean = { false },
@@ -75,6 +76,8 @@ class WellnessWatcher(
         if (!context.proactivitySettings.wellnessEnabled) return false
         if (context.isNightMode) return false
         if (context.llmBusy) return false
+
+        if (context.translationModeActive) return false
 
         if (context.robotContext != null &&
             RobotContextPolicy.shouldSuppressNotificationTts(context.robotContext, nowMillis())

@@ -185,7 +185,7 @@ data class SystemInputEnvelope(
                     check.recentDailyActivities.forEach { append("- $it\n") }
                 }
                 if (check.activePatterns.isNotEmpty()) {
-                    append("Patterns:\n")
+                    append("Expected habits (not done today — compare vs Today activities only):\n")
                     check.activePatterns.take(5).forEach { append("- $it\n") }
                 }
                 if (check.recentObservations.isNotEmpty()) {

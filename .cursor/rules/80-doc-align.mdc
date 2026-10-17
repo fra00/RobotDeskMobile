@@ -1,0 +1,13 @@
+---
+description: When the user asks to check/align documentation (doc drift, AGENTS, TODO), follow the doc-align skill workflow.
+alwaysApply: true
+---
+
+# Doc alignment trigger
+
+If the user asks to **controllare / allineare / verificare la documentazione**, doc drift, or whether AGENTS/TODO/docs are out of date:
+
+1. Read and follow `.cursor/skills/doc-align/SKILL.md` (full workflow).
+2. Run `python scripts/check_docs_alignment.py` first (structural).
+3. Then do the semantic domain spot-check from that skill.
+4. Report in the skill’s template; fix only if the user asked to fix/allinea/sistema.

@@ -15,7 +15,7 @@ class BodyExpressionMapperTest {
     private val now = 1_000L
 
     @Test
-    fun eyePoke_angry_turnsDisplayAway() {
+    fun eyePoke_angry_turnsBaseAway() {
         val current = RobotMood.fromValence(
             valence = -0.2f,
             since = now,
@@ -26,7 +26,7 @@ class BodyExpressionMapperTest {
         val choreography = BodyExpressionMapper.resolve(neutral, current)
         assertNotNull(choreography)
         val joint = choreography!!.steps[0] as BodyMove.Joint
-        assertEquals(BodyJoint.DISPLAY_PAN, joint.joint)
+        assertEquals(BodyJoint.BASE_PAN, joint.joint)
         assertEquals(-12, joint.position)
     }
 
@@ -94,6 +94,9 @@ class BodyExpressionMapperTest {
         val choreography = BodyExpressionMapper.resolveMicroTick(mood, idleMinutes = 20)
         assertNotNull(choreography)
         assertEquals(3, choreography!!.steps.size)
+        assertTrue(choreography.steps.all { step ->
+            step is BodyMove.Joint && step.joint == BodyJoint.BASE_PAN
+        })
     }
 
     @Test

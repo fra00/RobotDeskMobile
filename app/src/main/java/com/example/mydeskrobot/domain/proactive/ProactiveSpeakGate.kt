@@ -15,6 +15,7 @@ data class ProactiveSpeakContext(
     val heartbeatSettings: HeartbeatSettings,
     val workingMemory: WorkingMemory?,
     val robotContext: RobotContextState?,
+    val translationModeActive: Boolean = false,
     val nowMs: Long = System.currentTimeMillis(),
 )
 
@@ -27,6 +28,10 @@ object ProactiveSpeakGate {
      */
     fun canSpeak(context: ProactiveSpeakContext): GateDecision {
         val settings = context.heartbeatSettings
+
+        if (context.translationModeActive) {
+            return GateDecision.Skip("translation mode active")
+        }
 
         if (context.robotContext != null &&
             RobotContextPolicy.shouldSuppressNotificationTts(context.robotContext, context.nowMs)

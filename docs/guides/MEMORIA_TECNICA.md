@@ -209,7 +209,7 @@ Il planner LLM espande parafrasi in `search_queries` (“che lavoro” → profe
 
 ### `upsertUserFacingFact` (memoria fattuale)
 
-Entry: [`UnifiedMemoryRepository.upsertUserFacingFact`](../app/src/main/java/com/example/mydeskrobot/memory/unified/UnifiedMemoryRepository.kt).
+Entry: [`UnifiedMemoryRepository.upsertUserFacingFact`](../../app/src/main/java/com/example/mydeskrobot/memory/unified/UnifiedMemoryRepository.kt).
 
 - **Dedup write path:** **exact match only** — same `category` + normalized value (`MemoryExactMatch`; trim, lowercase, collapsed whitespace). No semantic/fuzzy merge on save.
 - **`isPinned`:** optional on upsert; OR-merge on exact-match update (pinned wins). Set by LLM via `save_memory` / extractor `pinned: true`. Excluded from `pruneIfNeeded` and from consolidation LLM input.
@@ -227,7 +227,7 @@ Categorie user-facing: `MemoryCategory.USER_FACING` = IDENTITY, PREFERENCE, ROUT
 
 ### Consolidazione LLM (Riorganizza)
 
-Orchestrazione: [`MemoryReorganizeService`](../app/src/main/java/com/example/mydeskrobot/memory/MemoryReorganizeService.kt) + [`MemoryReorganizePolicy`](../app/src/main/java/com/example/mydeskrobot/memory/MemoryReorganizePolicy.kt).
+Orchestrazione: [`MemoryReorganizeService`](../../app/src/main/java/com/example/mydeskrobot/memory/MemoryReorganizeService.kt) + [`MemoryReorganizePolicy`](../../app/src/main/java/com/example/mydeskrobot/memory/MemoryReorganizePolicy.kt).
 
 | Trigger | Entry | `force` consolidation |
 |---------|-------|------------------------|
@@ -299,7 +299,7 @@ Schema USER_FACT: colonna `isPinned` (Room v3, migration 2→3).
 
 ## 8. Voce e memoria (nessun shortcut Kotlin)
 
-Tutte le frasi utente (salvo shortcut notifiche/debug) entrano in `sendPhraseToLlm` → `LlmMemoryRecallPlanner` decide se iniettare MEMORIA (`skip_recall`) → LLM dialogo e tool (`save_memory`, `delete_memory`, `list_memories`, …).
+Tutte le frasi utente (salvo shortcut debug) entrano in `sendPhraseToLlm` → `LlmMemoryRecallPlanner` decide se iniettare MEMORIA (`skip_recall`) → LLM dialogo e tool (`save_memory`, `delete_memory`, `list_memories`, …). Le notifiche non hanno più un router Kotlin a sottostringa.
 
 Reset totale profilo: solo UI `resetUserFacingMemory()` in Impostazioni → Memoria.
 

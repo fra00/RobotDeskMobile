@@ -19,7 +19,7 @@ In dialogo attivo l’espressione del turno **prevale** sugli occhi; in standby 
 ## Cosa cambia l’umore di fondo
 
 - **Mic attivo, nessun turno vocale:** dopo ~10 min in ascolto hotword senza che tu parli → noia (`IDLE_LISTENING`).
-- **Dopo la noia:** può **guardarsi intorno** (occhi/corpo), poi per qualche minuto si “svaga” con una **scena** simbolica (cuffie con occhi dentro, lettura con libro sotto gli occhi, porta con cartello “Torno subito”, TV con Pong). Non parte musica vera né letture reali. Questo **toglie la noia situazionale** (timer idle) ma **non alza** l’umore di fondo: se era giù di morale, resta giù. A fine pausa il timer noia riparte da zero. Lo svago **non dipende dal contesto lavoro/silenzio notifiche** (è mimica che non disturba). Qualsiasi richiesta tua, notifica o azione autonoma **interrompe** la scena; in cronologia conversazione vedi solo righe di sessione tipo «Ha iniziato a leggere…» / «Ha smesso di leggere…» (non memorie durature).
+- **Dopo la noia:** può **guardarsi intorno** (occhi/corpo), poi per qualche minuto si “svaga” (cuffie / lettura / «Torno subito» / Pong). Non parte Spotify né un libro vero sullo schermo, ma **per il robot è un’attività reale** (spazio proprio da compagno, in base a umore/noia): se lo interrompi sa (o ricorda per un po’) cosa stava facendo, restando comunque disponibile. Questo **toglie la noia situazionale** ma **non alza** l’umore di fondo. A fine pausa il timer noia riparte da zero. Lo svago **non dipende dal contesto lavoro/silenzio notifiche**. Qualsiasi richiesta tua, notifica o azione autonoma **interrompe** la scena; in cronologia vedi righe tipo «[robot] Ha iniziato a leggere…» (non nel tuo Log Day).
 - **Mic spento:** il loop umore **non gira** — nessun cambiamento nel tempo.
 - **Tempo senza interazione (sessione):** dopo ~30 min senza dialogo → noia; molto più a lungo → sonnolenza (se l’umore era già basso).
 - **Notte:** in modalità notte gli occhi tendono a chiudersi / sonno.
@@ -33,7 +33,7 @@ L’umore **torna sempre** verso un baseline (+0.1): gli eventi **spostano** la 
 
 ## Cosa vede l’LLM
 
-Nel prompt compare **STATO ROBOT** (valenza, emozione di fondo, motivo, **espressione occhi attuale** se effimera attiva, stile risposta). Se gli occhi sono bored/sad mentre il fondo è felice, **la faccia vince** su “come stai?” — non “va tutto bene”. Default `emotion` ancora `neutral`/`thinking`, `happy` solo quando ha senso emotivo.
+Nel prompt compare **STATO ROBOT** (valenza, emozione di fondo, motivo, **espressione occhi attuale** se effimera attiva, eventuale **attività in corso/recente**, stile risposta). I passatempi lì elencati sono reali per lui. Se gli occhi sono bored/sad mentre il fondo è felice, **la faccia vince** su “come stai?” — non “va tutto bene”. Default `emotion` ancora `neutral`/`thinking`, `happy` solo quando ha senso emotivo.
 
 ## Corpo ESP32
 

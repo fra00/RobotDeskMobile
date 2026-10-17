@@ -48,6 +48,15 @@ interface ActivityLogDao {
     @Query(
         """
         SELECT * FROM activity_log_events
+        WHERE sourceChannel = :sourceChannel
+        LIMIT 1
+        """,
+    )
+    suspend fun findBySourceChannel(sourceChannel: String): ActivityLogEventEntity?
+
+    @Query(
+        """
+        SELECT * FROM activity_log_events
         WHERE scheduledDayKey = :scheduledDayKey
           AND eventKind = :eventKind
           AND label = :label

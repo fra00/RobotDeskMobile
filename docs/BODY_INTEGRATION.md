@@ -72,10 +72,10 @@ Quando il corpo ESP32 è configurato, l'app esegue gesti **chiusi** (neutro test
 |-----------|----------------|
 | `sad` | `head_tilt` giù breve → ritorno 0 |
 | `happy` / `loving` | cenno sì (`head_tilt`) |
-| `surprised` | look-around `display_pan` |
+| `surprised` | look-around `base_pan` |
 | `confused` | `head_roll` breve → 0 |
-| `angry` | `display_pan` gira via |
-| `bored` | micro pan chiuso |
+| `angry` | `base_pan` gira via |
+| `bored` | look-around / fidget `base_pan` |
 | `sleeping` | `body_home` + `head_tilt` ≈ −10° |
 
 Priorità conflitti: **tool LLM body > visione > gesto ephemeral Kotlin > fidget standby**.
@@ -94,10 +94,10 @@ Preset principali (Kotlin, immediati):
 
 | Motivo mood | Movimento tipico |
 |-------------|------------------|
-| `EYE_POKE` angry | `display_pan` −12/−15 (gira via) |
+| `EYE_POKE` angry | `base_pan` −12/−15 (gira via) |
 | `EYE_POKE` confused | `head_roll` tilt → ritorno 0 |
 | `USER_APOLOGY` | `body_home` o leggero ritorno verso utente |
-| `IDLE_LONG` → bored | micro `display_pan` → 0 |
+| `IDLE_LONG` → bored | micro `base_pan` → 0 |
 | Decay da annoyance | `body_home` |
 | Entrata `SLEEPING` (notte) | Se non centrato → `body_home`; poi `head_tilt` ≈ −10° |
 
@@ -177,4 +177,4 @@ Phone-only (no ESP32) cannot pan — order assessment is skipped, not degraded t
 
 ## Riferimento firmware
 
-`myDeskBody/docs/DOCUMENTAZIONE_UTILIZZO.md`
+External sibling repo **myDeskBody** (utilization guide under that project’s docs folder — not shipped in this Android tree).

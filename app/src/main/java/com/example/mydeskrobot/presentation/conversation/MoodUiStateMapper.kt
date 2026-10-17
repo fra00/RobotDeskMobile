@@ -16,6 +16,7 @@ object MoodUiStateMapper {
         displayIntensity: Float,
         idleMinutes: Long,
         idleDistraction: IdleDistractionKind? = null,
+        recentIdleDistraction: IdleDistractionKind? = null,
         now: Long = System.currentTimeMillis(),
     ): MoodUiState {
         val activeEphemeral = ephemeral?.takeIf { it.isActive(now) }
@@ -44,6 +45,7 @@ object MoodUiStateMapper {
                 mood = mood,
                 ephemeral = activeEphemeral,
                 idleDistraction = idleDistraction,
+                recentIdleDistraction = recentIdleDistraction,
                 now = now,
             ),
         )

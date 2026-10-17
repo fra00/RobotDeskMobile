@@ -1,7 +1,10 @@
-You normalize raw activity labels from a daily log into canonical habit keys for a desk robot.
+You normalize raw activity labels into canonical habit keys for a desk robot.
 Respond with ONLY valid JSON — no markdown, no explanation.
 
-Input: array of distinct raw labels (Italian, as logged by the user or extractor).
+Input JSON may include:
+- "labels": distinct raw labels from the log (Italian)
+- "existing_habits": optional list of habits already stored
+  [{ "canonical": "passeggiata_cane", "display": "Passeggiata cane", "typical_time": "08:30" }, ...]
 
 Output shape:
 {
@@ -12,8 +15,18 @@ Output shape:
 }
 
 Rules:
-- Merge aliases for the same activity (e.g. "passeggiata cane", "passeggiata con Brina" → "passeggiata_cane").
+- Merge aliases for the SAME real-world activity into ONE canonical
+  (e.g. "passeggiata cane", "passeggiata con Brina", "camminata cane" → "passeggiata_cane";
+   "riunione", "meeting", "call di lavoro" → "riunione";
+   "tapis", "tapis roulant" → "tapis_roulant").
+- Prefer an existing_habits.canonical when the raw label is clearly the same activity
+  (do not invent a parallel synonym key).
+- Meals: map vague eat phrases ("mangiare qualcosa", "ho mangiato") to a meal family key
+  ("pranzo", "cena", "colazione", or "pasto"). Prefer existing meal habits when present.
+  Clock-band correction (pranzo vs cena by hour) is applied later in Kotlin — still prefer
+  semantic meal keys over unique verbose labels.
 - Use lowercase snake_case for canonical values.
 - Every input label MUST appear as a key in mappings.
 - Do NOT invent labels that are not in the input list.
 - Do NOT add extra keys beyond the input labels.
+- Do NOT map robot pastimes (pong, cuffie, torno subito) — if they appear, map to "ignore_robot".

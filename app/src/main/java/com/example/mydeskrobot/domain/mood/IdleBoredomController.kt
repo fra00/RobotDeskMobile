@@ -16,6 +16,8 @@ class IdleBoredomController(
     private val _phase = MutableStateFlow<IdleBoredomPhase>(IdleBoredomPhase.None)
     val phase: StateFlow<IdleBoredomPhase> = _phase.asStateFlow()
 
+    private var lastEnded: RecentIdleDistraction? = null
+
     fun isSuppressingIdleBoredom(): Boolean = _phase.value !is IdleBoredomPhase.None
 
     /** Look-around and new distractions are blocked while relieved or distracted. */
@@ -23,6 +25,18 @@ class IdleBoredomController(
 
     fun currentDistractionKind(): IdleDistractionKind? =
         (_phase.value as? IdleBoredomPhase.Distracted)?.kind
+
+    /**
+     * Last finished distraction still within [IdleBoredomConfig.recentMemoryMinutes],
+     * or null if none / expired / currently distracted.
+     */
+    fun recentDistractionKind(nowMs: Long): IdleDistractionKind? {
+        if (currentDistractionKind() != null) return null
+        val ended = lastEnded ?: return null
+        val windowMs = config.recentMemoryMinutes.coerceAtLeast(1) * 60_000L
+        if (nowMs - ended.endedAtMs > windowMs) return null
+        return ended.kind
+    }
 
     /**
      * Enter mild relief after a completed look-around.
@@ -39,7 +53,7 @@ class IdleBoredomController(
      * Advance timers: start distraction after relief, or end distraction when elapsed.
      *
      * @param stillIdleEligible true when user has not interacted since look-around (clocks still high)
-     * @param allowNewDistraction false at night / silent robot context
+     * @param allowNewDistraction false at night
      */
     fun tick(
         nowMs: Long,
@@ -57,12 +71,14 @@ class IdleBoredomController(
                 }
                 val kind = IdleDistractionKind.entries[random.nextInt(IdleDistractionKind.entries.size)]
                 val endsAt = nowMs + config.distractionMinutes.coerceAtLeast(1) * 60_000L
+                lastEnded = null
                 _phase.value = IdleBoredomPhase.Distracted(kind = kind, endsAtMs = endsAt)
                 IdleBoredomTickResult.StartedDistraction(kind)
             }
 
             is IdleBoredomPhase.Distracted -> {
                 if (nowMs < current.endsAtMs) return IdleBoredomTickResult.Unchanged
+                rememberEnded(current.kind, nowMs)
                 _phase.value = IdleBoredomPhase.None
                 IdleBoredomTickResult.DistractionEnded
             }
@@ -70,24 +86,37 @@ class IdleBoredomController(
     }
 
     /** Voice / night / mic-off: drop relief or distraction without valence change. */
-    fun interrupt(): IdleBoredomTickResult {
+    fun interrupt(nowMs: Long = System.currentTimeMillis()): IdleBoredomTickResult {
         val previous = _phase.value
         if (previous is IdleBoredomPhase.None) return IdleBoredomTickResult.Unchanged
         _phase.value = IdleBoredomPhase.None
         return when (previous) {
-            is IdleBoredomPhase.Distracted -> IdleBoredomTickResult.DistractionEnded
+            is IdleBoredomPhase.Distracted -> {
+                rememberEnded(previous.kind, nowMs)
+                IdleBoredomTickResult.DistractionEnded
+            }
             is IdleBoredomPhase.RelievedAfterLookAround -> IdleBoredomTickResult.Cleared
             is IdleBoredomPhase.None -> IdleBoredomTickResult.Unchanged
         }
     }
 
     /**
-     * Debug/UI: jump straight into a symbolic distraction (bypasses look-around and relief).
+     * Debug/UI: jump straight into a distraction (bypasses look-around and relief).
      * Does not change wellbeing valence.
      */
     fun forceDistraction(kind: IdleDistractionKind, nowMs: Long): IdleBoredomTickResult {
         val endsAt = nowMs + config.distractionMinutes.coerceAtLeast(1) * 60_000L
+        lastEnded = null
         _phase.value = IdleBoredomPhase.Distracted(kind = kind, endsAtMs = endsAt)
         return IdleBoredomTickResult.StartedDistraction(kind)
     }
+
+    private fun rememberEnded(kind: IdleDistractionKind, nowMs: Long) {
+        lastEnded = RecentIdleDistraction(kind = kind, endedAtMs = nowMs)
+    }
+
+    private data class RecentIdleDistraction(
+        val kind: IdleDistractionKind,
+        val endedAtMs: Long,
+    )
 }

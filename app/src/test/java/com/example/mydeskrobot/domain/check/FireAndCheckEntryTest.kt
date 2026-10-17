@@ -25,12 +25,25 @@ class FireAndCheckEntryTest {
         assertEquals("Svegliami alle 21", entry.detailText())
     }
 
+    @Test
+    fun isCommitment_trueForCommitmentKind() {
+        val entry = sampleEntry(
+            checkGoal = "Inviare documento",
+            verificationMessage = null,
+            triggerReason = "assolutamente",
+            kind = FireAndCheckKind.COMMITMENT,
+        )
+        assertEquals(true, entry.isCommitment)
+    }
+
     private fun sampleEntry(
         checkGoal: String?,
         verificationMessage: String?,
         triggerReason: String,
+        kind: FireAndCheckKind = FireAndCheckKind.PHYSICAL,
     ) = FireAndCheckEntry(
         id = 1L,
+        kind = kind,
         triggerReason = triggerReason,
         checkGoal = checkGoal,
         primaryMessage = "Sveglia",

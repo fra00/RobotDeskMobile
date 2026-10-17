@@ -1,6 +1,7 @@
 package com.example.mydeskrobot.ui.screen
 
 import android.content.res.Configuration
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -32,12 +33,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.health.connect.client.PermissionController
 import com.example.mydeskrobot.R
+import com.example.mydeskrobot.data.health.HealthConnectExerciseReaderImpl
+import com.example.mydeskrobot.data.health.HealthConnectModule
 import com.example.mydeskrobot.domain.interaction.EyePokeSide
 import com.example.mydeskrobot.domain.model.RobotEmotion
 import com.example.mydeskrobot.domain.mood.IdleDistractionKind
@@ -55,6 +60,8 @@ import com.example.mydeskrobot.ui.components.AttentionDomainEditorDialog
 import com.example.mydeskrobot.ui.components.AttentionDomainsSettingsDialog
 import com.example.mydeskrobot.ui.components.DeskPresenceIndicator
 import com.example.mydeskrobot.ui.components.DeskPresenceSettingsDialog
+import com.example.mydeskrobot.ui.components.HabitSlotsSettingsDialog
+import com.example.mydeskrobot.ui.components.HabitSlotDeleteConfirmDialog
 import com.example.mydeskrobot.ui.components.HeartbeatSettingsDialog
 import com.example.mydeskrobot.ui.components.LlmSettingsDialog
 import com.example.mydeskrobot.ui.components.MicButton
@@ -63,6 +70,7 @@ import com.example.mydeskrobot.ui.components.MoodStatusDialog
 import com.example.mydeskrobot.ui.components.ListSettingsDialog
 import com.example.mydeskrobot.ui.components.LogDaySettingsDialog
 import com.example.mydeskrobot.ui.components.MemorySettingsDialog
+import com.example.mydeskrobot.ui.components.ModeBotSettingsDialog
 import com.example.mydeskrobot.ui.components.SpatialSettingsDialog
 import com.example.mydeskrobot.ui.components.PhraseInfoCorner
 import com.example.mydeskrobot.ui.components.NotificationSettingsDialog
@@ -78,6 +86,7 @@ import com.example.mydeskrobot.domain.check.FireAndCheckEntry
 import com.example.mydeskrobot.ui.components.FireAndCheckDetailDialog
 import com.example.mydeskrobot.ui.components.FireAndCheckIndicator
 import com.example.mydeskrobot.ui.components.RobotContextProfileIndicator
+import com.example.mydeskrobot.ui.components.TranslationModeIndicator
 import com.example.mydeskrobot.ui.components.StandbyStatusIndicator
 import com.example.mydeskrobot.ui.components.DrowsyMoodIndicator
 import com.example.mydeskrobot.ui.components.HappyMoodIndicator
@@ -95,7 +104,6 @@ fun RobotScreen(
     var showHistory by remember { mutableStateOf(false) }
     var showReasoningLog by remember { mutableStateOf(false) }
     var showMoodStatus by remember { mutableStateOf(false) }
-    var showPresenceDebug by remember { mutableStateOf(false) }
     var selectedFireAndCheck by remember { mutableStateOf<FireAndCheckEntry?>(null) }
     var showPendingInbox by remember { mutableStateOf(false) }
     val showHistoryButton = uiState.isHotwordListeningActive || uiState.displayText.isNotBlank()
@@ -119,6 +127,20 @@ fun RobotScreen(
     val canTapBackgroundToWake =
         uiState.isHotwordListeningActive &&
             uiState.phase is ConversationPhase.WaitingForHotword
+    val context = LocalContext.current
+    val healthConnectPermissionLauncher = rememberLauncherForActivityResult(
+        contract = PermissionController.createRequestPermissionResultContract(),
+    ) { _ ->
+        // Grant/deny is checked at sync time; keep toggle as user intent.
+    }
+    val requestHealthConnectPermission: () -> Unit = {
+        val reader = HealthConnectModule.createReader(context)
+        if (reader.isAvailable()) {
+            healthConnectPermissionLauncher.launch(
+                HealthConnectExerciseReaderImpl.REQUIRED_PERMISSIONS,
+            )
+        }
+    }
 
     Box(
         modifier = modifier.fillMaxSize(),
@@ -256,12 +278,16 @@ fun RobotScreen(
                 )
                 DeskPresenceIndicator(
                     occupancyState = uiState.deskOccupancyState,
-                    monitorEnabled = uiState.deskPresenceMonitorEnabled,
+                    monitorEnabled = uiState.deskPresenceCameraActive,
                 )
             }
             if (uiState.robotContextProfile != RobotProfile.NORMAL) {
                 Spacer(modifier = Modifier.height(4.dp))
                 RobotContextProfileIndicator(profile = uiState.robotContextProfile)
+            }
+            if (uiState.translationModeActive) {
+                Spacer(modifier = Modifier.height(4.dp))
+                TranslationModeIndicator(active = true)
             }
             uiState.pendingFireAndChecks.forEach { entry ->
                 Spacer(modifier = Modifier.height(4.dp))
@@ -352,7 +378,7 @@ fun RobotScreen(
 
         if (showPresenceDebugButton) {
             IconButton(
-                onClick = { showPresenceDebug = true },
+                onClick = { onEvent(ConversationUiEvent.OnOpenPresenceDebug) },
                 modifier = Modifier
                     .align(Alignment.TopEnd)
                     .padding(
@@ -433,9 +459,9 @@ fun RobotScreen(
         )
     }
 
-    if (showPresenceDebug) {
+    if (uiState.showPresenceDebugDialog) {
         PresenceDebugDialog(
-            onDismiss = { showPresenceDebug = false },
+            onDismiss = { onEvent(ConversationUiEvent.OnDismissPresenceDebug) },
         )
     }
 
@@ -463,6 +489,7 @@ fun RobotScreen(
         }
         SettingsDialog(
             onDismiss = { onEvent(ConversationUiEvent.OnDismissSettings) },
+            onOpenModeBotSettings = { onEvent(ConversationUiEvent.OnOpenModeBotSettings) },
             onOpenLlmSettings = { onEvent(ConversationUiEvent.OnOpenLlmSettings) },
             onOpenMemorySettings = { onEvent(ConversationUiEvent.OnOpenMemorySettings) },
             onOpenSpatialSettings = { onEvent(ConversationUiEvent.OnOpenSpatialSettings) },
@@ -614,6 +641,13 @@ fun RobotScreen(
         )
     }
 
+    if (settingsUiState.showModeBotDialog) {
+        ModeBotSettingsDialog(
+            onDismiss = { onEvent(ConversationUiEvent.OnDismissModeBotSettings) },
+            onOpenNotificationSettings = { onEvent(ConversationUiEvent.OnOpenNotificationSettings) },
+        )
+    }
+
     if (settingsUiState.showHeartbeatDialog) {
         HeartbeatSettingsDialog(
             form = settingsUiState.heartbeatForm,
@@ -621,8 +655,32 @@ fun RobotScreen(
             onManageDomains = {
                 onEvent(ConversationUiEvent.OnOpenAttentionDomainsSettings(returnToMain = false))
             },
+            onManageHabitSlots = {
+                onEvent(ConversationUiEvent.OnOpenHabitSlotsSettings)
+            },
+            onRequestHealthConnectPermission = requestHealthConnectPermission,
             onSave = { onEvent(ConversationUiEvent.OnSaveHeartbeatSettings) },
             onDismiss = { onEvent(ConversationUiEvent.OnDismissHeartbeatSettings) },
+        )
+    }
+
+    if (settingsUiState.showHabitSlotsDialog) {
+        HabitSlotsSettingsDialog(
+            slots = settingsUiState.habitSlots,
+            onDeleteSlot = { key -> onEvent(ConversationUiEvent.OnDeleteHabitSlot(key)) },
+            onDismiss = { onEvent(ConversationUiEvent.OnDismissHabitSlotsSettings) },
+        )
+    }
+
+    settingsUiState.habitSlotDeleteConfirmKey?.let { deleteKey ->
+        val label = settingsUiState.habitSlots
+            .find { it.slotKey == deleteKey }
+            ?.displayLabel
+            .orEmpty()
+        HabitSlotDeleteConfirmDialog(
+            displayLabel = label,
+            onConfirm = { onEvent(ConversationUiEvent.OnConfirmDeleteHabitSlot) },
+            onDismiss = { onEvent(ConversationUiEvent.OnDismissDeleteHabitSlot) },
         )
     }
 

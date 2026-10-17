@@ -61,7 +61,6 @@ class WorkingMemoryRepository(
         context.workingMemoryDataStore.edit { prefs ->
             prefs[KEY_DATE_KEY] = memory.dateKey
             prefs[KEY_TODAY_INTERACTIONS] = memory.todayInteractions
-            prefs.remove(KEY_LAST_USER_MOOD)
             prefs[KEY_TOPICS] = memory.topicsDiscussedToday
                 .take(WorkingMemory.MAX_TOPICS)
                 .joinToString(TOPIC_SEPARATOR)
@@ -166,7 +165,6 @@ class WorkingMemoryRepository(
     companion object {
         private val KEY_DATE_KEY = intPreferencesKey("wm_date_key")
         private val KEY_TODAY_INTERACTIONS = intPreferencesKey("wm_today_interactions")
-        private val KEY_LAST_USER_MOOD = stringPreferencesKey("wm_last_user_mood")
         private val KEY_TOPICS = stringPreferencesKey("wm_topics")
         private val KEY_PROACTIVE_SPEAKS = intPreferencesKey("wm_proactive_speaks")
         private val KEY_IGNORED_SUGGESTIONS = intPreferencesKey("wm_ignored_suggestions")

@@ -24,7 +24,7 @@ While hotword session is active, every ~30 s mood poll may call `pollIdleLookAro
 3. Desk presence allows interaction (ML Kit / policy)
 4. `HeartbeatMicroTickPolicy` (idle ≥15 min + bored/drowsy, or idle ≥20)
 5. Cooldown since last `SensingKind.LOOK_AROUND` ≥ `intervalMinutes`
-6. Ephemeral bored/drowsy eyes + optional ESP32 `display_pan` sweep via `BodyExpressionMapper.resolveMicroTick`
+6. Ephemeral bored/drowsy eyes + optional ESP32 `base_pan` look-around via `BodyExpressionMapper.resolveMicroTick`
 
 Zero LLM. Does **not** use `ProactiveSpeakGate` (speak cap must not block silent fidget).
 

@@ -63,6 +63,16 @@ class ScheduledTaskRepository(
         dao.updateStatus(id, ScheduledTaskStatus.FIRED)
     }
 
+    /**
+     * Keeps the task PENDING and moves its trigger time (speak-gate deferral).
+     */
+    suspend fun deferPending(id: Long, newTriggerAtMillis: Long): Boolean {
+        val task = dao.getById(id) ?: return false
+        if (task.status != ScheduledTaskStatus.PENDING) return false
+        dao.update(task.copy(triggerAtMillis = newTriggerAtMillis))
+        return true
+    }
+
     suspend fun cancel(id: Long): Boolean {
         val task = dao.getById(id) ?: return false
         if (task.status != ScheduledTaskStatus.PENDING) return false

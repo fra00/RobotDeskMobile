@@ -48,7 +48,9 @@ class MoodManager(
             trigger is MoodTrigger.TaskCompletedUseful ||
             trigger is MoodTrigger.LlmEmotion ||
             trigger is MoodTrigger.VoiceTurnPresence ||
-            trigger is MoodTrigger.ValenceDelta
+            trigger is MoodTrigger.ValenceDelta ||
+            trigger is MoodTrigger.SelfCareLookAround ||
+            trigger is MoodTrigger.SelfCareDistraction
         ) {
             lastInteractionTime = now
         }

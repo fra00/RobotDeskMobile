@@ -1,9 +1,11 @@
 package com.example.mydeskrobot.integration.tool.local
 
 import android.content.Context
+import com.example.mydeskrobot.domain.memory.MemoryWriteTurnContext
+import com.example.mydeskrobot.domain.memory.UserNameIdentityPolicy
+import com.example.mydeskrobot.domain.time.RelativeDateNormalizer
 import com.example.mydeskrobot.integration.tool.Tool
 import com.example.mydeskrobot.integration.tool.ToolLocality
-import com.example.mydeskrobot.domain.time.RelativeDateNormalizer
 import com.example.mydeskrobot.memory.AutonomyUpsertResult
 import com.example.mydeskrobot.memory.UserMemoryRepository
 import com.example.mydeskrobot.memory.db.MemoryCategory
@@ -67,6 +69,12 @@ class SaveMemoryTool private constructor(
                     description = "If true, fact is never pruned (user name, allergies, emergencies, explicit \"ricordalo sempre\"). Default false.",
                     required = false,
                 ),
+                ToolParameter(
+                    name = "replace_user_name",
+                    type = "boolean",
+                    description = "Only for IDENTITY user-self name claims: if true, replace a different existing self-name. Default false (conflict → error).",
+                    required = false,
+                ),
             ),
             returns = "memory_id (integer), category, value",
             example = """{"name": "save_memory", "params": {"value": "L'utente si chiama Francesco", "category": "IDENTITY", "pinned": true}, "await_result": true}""",
@@ -91,6 +99,7 @@ class SaveMemoryTool private constructor(
         val confidence = MemoryToolSupport.parseConfidence(invocation.params["confidence"])
         val ttlDays = MemoryToolSupport.parseTtlDays(invocation.params["ttl_days"])
         val pinned = MemoryToolSupport.parsePinned(invocation.params["pinned"])
+        val replaceUserName = MemoryToolSupport.parsePinned(invocation.params["replace_user_name"])
 
         if (MemoryCategory.isUserFacing(category) && ttlDays != null) {
             return ToolResult.Error(
@@ -128,6 +137,23 @@ class SaveMemoryTool private constructor(
             }
         }
 
+        val nameGate = gateUserSelfNameWrite(
+            category = category,
+            value = value,
+            replaceUserName = replaceUserName,
+            listExistingSelfNames = {
+                unified.getByCategories(listOf(MemoryCategory.IDENTITY), limitPerCategory = 32)
+                    .filter { UserNameIdentityPolicy.isUserSelfNameClaim(it.value) }
+            },
+            deleteConflicting = { conflictingDocs ->
+                conflictingDocs.forEach { doc ->
+                    unified.deleteById(doc.id)
+                }
+            },
+            valueOf = { it.value },
+        )
+        if (nameGate != null) return nameGate
+
         val id = unified.upsertUserFacingFact(
             category = category,
             value = value,
@@ -161,6 +187,7 @@ class SaveMemoryTool private constructor(
         val category = MemoryToolSupport.parseCategory(invocation.params["category"]) ?: MemoryCategory.FACT
         val confidence = MemoryToolSupport.parseConfidence(invocation.params["confidence"])
         val ttlDays = MemoryToolSupport.parseTtlDays(invocation.params["ttl_days"])
+        val replaceUserName = MemoryToolSupport.parsePinned(invocation.params["replace_user_name"])
         if (MemoryCategory.isUserFacing(category) && ttlDays != null) {
             return ToolResult.Error(message = "ttl_days applies only to OBSERVATION, INTENT, or PATTERN", code = "INVALID_PARAM")
         }
@@ -184,12 +211,65 @@ class SaveMemoryTool private constructor(
                 AutonomyUpsertResult.InvalidValue -> ToolResult.Error(message = "Impossibile salvare la memoria", code = "SAVE_FAILED")
             }
         }
+        val nameGate = gateUserSelfNameWrite(
+            category = category,
+            value = value,
+            replaceUserName = replaceUserName,
+            listExistingSelfNames = {
+                legacy.getByCategory(MemoryCategory.IDENTITY, limit = 32)
+                    .filter { UserNameIdentityPolicy.isUserSelfNameClaim(it.value) }
+            },
+            deleteConflicting = { conflictingDocs ->
+                conflictingDocs.forEach { doc ->
+                    legacy.deleteById(doc.id)
+                }
+            },
+            valueOf = { it.value },
+        )
+        if (nameGate != null) return nameGate
+
         val id = legacy.upsert(category, value, confidence, MemoryToolSupport.SOURCE_MESSAGE_LLM_TOOL)
         if (id < 0L) return ToolResult.Error(message = "Impossibile salvare la memoria", code = "SAVE_FAILED")
         legacy.pruneIfNeeded(DEFAULT_MAX_ITEMS)
         return ToolResult.Success(
             data = mapOf("success" to true, "memory_id" to id, "category" to category.name, "value" to value),
         )
+    }
+
+    private suspend fun <T> gateUserSelfNameWrite(
+        category: MemoryCategory,
+        value: String,
+        replaceUserName: Boolean,
+        listExistingSelfNames: suspend () -> List<T>,
+        deleteConflicting: suspend (List<T>) -> Unit,
+        valueOf: (T) -> String,
+    ): ToolResult.Error? {
+        if (category != MemoryCategory.IDENTITY) return null
+        if (!UserNameIdentityPolicy.isUserSelfNameClaim(value)) return null
+
+        if (MemoryWriteTurnContext.blockUserSelfNameIdentity) {
+            return ToolResult.Error(
+                message = "Nome utente non salvabile da turno sistema/notifica; serve auto-assegnazione formale in dialogo",
+                code = "USER_NAME_BLOCKED_SYSTEM_TURN",
+            )
+        }
+
+        val newName = UserNameIdentityPolicy.extractDisplayedName(value) ?: return null
+        val existing = listExistingSelfNames()
+        val conflicting = existing.filter { old ->
+            val oldName = UserNameIdentityPolicy.extractDisplayedName(valueOf(old)) ?: return@filter false
+            !UserNameIdentityPolicy.sameUserName(oldName, newName)
+        }
+        if (conflicting.isEmpty()) return null
+
+        if (!replaceUserName) {
+            return ToolResult.Error(
+                message = "Esiste già un nome utente diverso in memoria; chiedi conferma formale e usa replace_user_name=true per sostituirlo",
+                code = "USER_NAME_CONFLICT",
+            )
+        }
+        deleteConflicting(conflicting)
+        return null
     }
 
     companion object {

@@ -123,6 +123,10 @@ sealed interface ConversationUiEvent {
 
     data object OnDismissNotificationSettings : ConversationUiEvent
 
+    data object OnOpenModeBotSettings : ConversationUiEvent
+
+    data object OnDismissModeBotSettings : ConversationUiEvent
+
     data class OnNotificationEnabledChange(val enabled: Boolean) : ConversationUiEvent
 
     data class OnNotificationPackageToggle(val packageName: String) : ConversationUiEvent
@@ -137,9 +141,24 @@ sealed interface ConversationUiEvent {
 
     data object OnSaveHeartbeatSettings : ConversationUiEvent
 
+    data object OnOpenHabitSlotsSettings : ConversationUiEvent
+
+    data object OnDismissHabitSlotsSettings : ConversationUiEvent
+
+    data class OnDeleteHabitSlot(val slotKey: String) : ConversationUiEvent
+
+    data object OnConfirmDeleteHabitSlot : ConversationUiEvent
+
+    data object OnDismissDeleteHabitSlot : ConversationUiEvent
+
     data object OnOpenDeskPresenceSettings : ConversationUiEvent
 
     data object OnDismissDeskPresenceSettings : ConversationUiEvent
+
+    /** Opens ML Kit presence debug overlay and wakes the analysis camera. */
+    data object OnOpenPresenceDebug : ConversationUiEvent
+
+    data object OnDismissPresenceDebug : ConversationUiEvent
 
     data class OnDeskPresenceFormChange(val form: DeskPresenceSettingsFormState) : ConversationUiEvent
 

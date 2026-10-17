@@ -24,6 +24,8 @@ data class ConversationUiState(
     val isHotwordListeningActive: Boolean = false,
     /** Active robot context profile (WORK, CALL, …); NORMAL when no special context. */
     val robotContextProfile: RobotProfile = RobotProfile.NORMAL,
+    /** Continuous translation mode (set_translation_mode). */
+    val translationModeActive: Boolean = false,
     /** Pending fire-and-check verification loops. */
     val pendingFireAndChecks: List<FireAndCheckEntry> = emptyList(),
     /** Pending reminders and deferred notifications. */
@@ -36,10 +38,15 @@ data class ConversationUiState(
     val eyeSquishLeft: Boolean = false,
     /** User poked right eye — force closed until cleared. */
     val eyeSquishRight: Boolean = false,
-    /** Latest ML Kit desk occupancy (when presence monitor enabled). */
+    /** Latest ML Kit desk occupancy (meaningful while [deskPresenceCameraActive]). */
     val deskOccupancyState: com.example.mydeskrobot.domain.presence.DeskOccupancyState =
         com.example.mydeskrobot.domain.presence.DeskOccupancyState.UNKNOWN,
+    /** Feature enabled in settings (does not mean camera is streaming). */
     val deskPresenceMonitorEnabled: Boolean = false,
+    /** True only during an on-demand ML Kit analysis session. */
+    val deskPresenceCameraActive: Boolean = false,
+    /** Presence ML Kit debug dialog (keeps camera on while shown). */
+    val showPresenceDebugDialog: Boolean = false,
     /**
      * Symbolic idle distraction overlay (headphones / book / away sign / pong).
      * Situational boredom only — does not change wellbeing valence.

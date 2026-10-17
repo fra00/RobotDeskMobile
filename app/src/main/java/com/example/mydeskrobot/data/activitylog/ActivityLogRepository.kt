@@ -12,6 +12,7 @@ import com.example.mydeskrobot.domain.activitylog.ActivitySource
 import com.example.mydeskrobot.domain.activitylog.DayActivityGroup
 import com.example.mydeskrobot.domain.activitylog.EpisodeConfidence
 import com.example.mydeskrobot.domain.activitylog.EpisodeKind
+import com.example.mydeskrobot.domain.activitylog.RobotSelfActivityFilter
 import com.example.mydeskrobot.domain.predictivity.HabitSlot
 import com.example.mydeskrobot.domain.predictivity.HabitSlotKey
 import kotlinx.coroutines.flow.Flow
@@ -37,6 +38,15 @@ class ActivityLogRepository(
         sourceChannel: String? = null,
         isUnread: Boolean = false,
     ): Long {
+        if (
+            !RobotSelfActivityFilter.isUserFacingEpisode(
+                label = label,
+                sourceChannel = sourceChannel,
+                actor = actor,
+            )
+        ) {
+            return -1L
+        }
         val normalizedLabel = normalizeLabel(label)
         if (normalizedLabel.isBlank()) return -1L
 
@@ -56,10 +66,19 @@ class ActivityLogRepository(
             )
         }
 
+        val trimmedChannel = sourceChannel?.trim()?.takeIf { it.isNotBlank() }
+        if (trimmedChannel != null) {
+            dao.findBySourceChannel(trimmedChannel)?.let { return it.id }
+        }
+
         val dayKey = dayKeyFor(timestampMs)
-        val existing = dao.findLatestByDayAndLabel(dayKey, normalizedLabel)
-        if (existing != null && timestampMs - existing.timestampMs < DEDUP_WINDOW_MS) {
-            return existing.id
+        // Label+day window dedup only when no stable channel (voice/tool).
+        // Distinct Health Connect sessions share labels but must stay separate.
+        if (trimmedChannel == null) {
+            val existing = dao.findLatestByDayAndLabel(dayKey, normalizedLabel)
+            if (existing != null && timestampMs - existing.timestampMs < DEDUP_WINDOW_MS) {
+                return existing.id
+            }
         }
 
         val id = dao.insert(
@@ -74,11 +93,16 @@ class ActivityLogRepository(
                 scheduledAtMs = scheduledAtMs,
                 scheduledDayKey = scheduledDayKey,
                 actor = normalizeActor(actor),
-                sourceChannel = sourceChannel?.trim()?.takeIf { it.isNotBlank() },
+                sourceChannel = trimmedChannel,
                 isUnread = isUnread,
             ),
         )
         return id
+    }
+
+    suspend fun findBySourceChannel(sourceChannel: String): ActivityLogEntry? {
+        val trimmed = sourceChannel.trim().takeIf { it.isNotBlank() } ?: return null
+        return dao.findBySourceChannel(trimmed)?.toDomain()
     }
 
     suspend fun upsertEpisodicEvent(
@@ -149,7 +173,15 @@ class ActivityLogRepository(
     }
 
     suspend fun getConfirmedPhysicalEvents(dayKey: String): List<ActivityLogEntry> =
-        dao.getConfirmedPhysicalForDay(dayKey).map { it.toDomain() }
+        dao.getConfirmedPhysicalForDay(dayKey)
+            .map { it.toDomain() }
+            .filter { entry ->
+                RobotSelfActivityFilter.isUserFacingEpisode(
+                    label = entry.label,
+                    sourceChannel = entry.sourceChannel,
+                    actor = entry.actor,
+                )
+            }
 
     fun pendingDayKeys(lastMined: String?, todayKey: String, allDayKeys: List<String>): List<String> =
         allDayKeys
@@ -224,6 +256,13 @@ class ActivityLogRepository(
         val sinceMs = System.currentTimeMillis() - RETENTION_MS
         return dao.getSince(sinceMs)
             .map { it.toDomain() }
+            .filter { entry ->
+                RobotSelfActivityFilter.isUserFacingEpisode(
+                    label = entry.label,
+                    sourceChannel = entry.sourceChannel,
+                    actor = entry.actor,
+                )
+            }
             .groupBy { it.dayKey }
             .map { (dayKey, events) ->
                 DayActivityGroup(dayKey = dayKey, events = events.sortedByDescending { it.timestampMs })
@@ -241,6 +280,13 @@ class ActivityLogRepository(
         return dao.getSince(calendar.timeInMillis)
             .map { it.toDomain() }
             .filter { it.eventKind == EpisodeKind.PHYSICAL_NOW }
+            .filter { entry ->
+                RobotSelfActivityFilter.isUserFacingEpisode(
+                    label = entry.label,
+                    sourceChannel = entry.sourceChannel,
+                    actor = entry.actor,
+                )
+            }
             .sortedByDescending { it.timestampMs }
             .take(maxEvents)
     }
@@ -355,6 +401,7 @@ class ActivityLogRepository(
                 .addMigrations(
                     ActivityLogDatabase.MIGRATION_1_2,
                     ActivityLogDatabase.MIGRATION_2_3,
+                    ActivityLogDatabase.MIGRATION_3_4,
                 )
                 .build()
             return ActivityLogRepository(db.activityLogDao())

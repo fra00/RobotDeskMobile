@@ -55,6 +55,9 @@ Sono i **fatti su di te** che il robot dovrebbe ricordare tra una settimana e l�
 | Categoria | Esempi |
 |-----------|--------|
 | **IDENTITY** | Nome, professione (“sviluppatore web”), ruolo |
+
+**Nome utente:** si salva in IDENTITY **solo** se lo dichiari tu in modo formale (“mi chiamo…”, “ricordati che mi chiamo…”, “il mio nome è…”). Non da notifiche, contatti, omonimi o indizi di contesto. Se in memoria ci sono più nomi in conflitto, il robot non deve sceglierne uno a caso.
+
 | **PREFERENCE** | Sport che segui (MotoGP), musica, cibi preferiti |
 | **ROUTINE** | Orari di lavoro (lun 9–13 / 14–18, ven 9–13), abitudini ricorrenti |
 | **FACT** | Altri fatti stabili (nome del cane, allergie, …) |
@@ -75,7 +78,7 @@ Sono i **fatti su di te** che il robot dovrebbe ricordare tra una settimana e l�
 | **“ricordati che …”** | LLM → `save_memory` |
 | **Reset totale** | Solo **Impostazioni → Memoria** (non comando vocale) |
 
-Nessun bypass Kotlin: stesso ingresso `sendPhraseToLlm` per tutte le frasi (salvo shortcut notifiche/debug documentati altrove).
+Nessun bypass Kotlin: stesso ingresso `sendPhraseToLlm` per tutte le frasi (salvo shortcut debug documentati altrove). Le richieste sulle notifiche passano dall’LLM + MEMORIA (`NOTIFICHE_NON_LETTE` / EPISODI), non da un match sulla parola «notifiche».
 
 ### Cosa non compare in Impostazioni → Memoria
 
@@ -131,9 +134,11 @@ Le notifiche accettate creano episodi con `isUnread=true`. In dialogo compaiono 
 
 ### Riepilogo abitudini (PROFILO ABITUDINI)
 
-Periodicamente il sistema genera un **testo sintetico** delle tue abitudini (es. “colazione verso le 8, pausa pranzo verso le 13”) a partire dagli episodi. Compare nel blocco MEMORIA come **PROFILO ABITUDINI** solo se il **recall planner** imposta `include_habit_summary: true` (domande ampie su abitudini o periodi — non automatico su ogni “questa settimana”).
+Periodicamente il sistema genera un **testo sintetico** delle tue abitudini (es. “colazione verso le 8, pausa pranzo verso le 13”) a partire dagli episodi. Compare nel blocco MEMORIA come **PROFILO ABITUDINI** quando il **recall planner** imposta `include_habit_summary: true` (domande esplicite su abitudini o profilo ampio) — pin del profilo in prosa.
 
-È utile per risposte generali, ma può **affogare** il dettaglio se chiedi qualcosa di specifico (es. un allenamento su tapis roulant) senza parole che attivano il recall episodico mirato.
+Gli **slot abitudine** (Predictivity) possono entrare anche via ricerca semantica e appaiono sotto **ABITUDINI ATTESE**, mai sotto FATTI: sono **pattern attesi**. Le **ROUTINE** dichiarate (save_memory) appaiono sotto **ROUTINE DICHIARATE**. Per “cosa ho fatto / quando?” la prova resta negli **EPISODI** datati; le abitudini possono servire solo come contesto (“di solito…”).
+
+È utile per risposte sulle abitudini, ma non deve sostituire il Log Day quando chiedi cosa è successo.
 
 ---
 
@@ -161,7 +166,7 @@ Il robot può salvare per sé:
 | **INTENT** | 1 giorno | Obiettivo attivo (max 3), es. “intervieni se salta il pranzo alle 13:30” |
 | **PATTERN** | 30 giorni | Schema emergente non ancora promosso a ROUTINE |
 
-Questi dati entrano nel payload `[SYSTEM_INPUT: heartbeat]` come **OBIETTIVI ATTIVI**, **OSSERVAZIONI RECENTI**, **PATTERN EMERGENTI** — non nel blocco MEMORIA del dialogo vocale normale.
+Questi dati entrano nel payload `[SYSTEM_INPUT: heartbeat]` come **OBIETTIVI ATTIVI**, **OSSERVAZIONI RECENTI**, **PATTERN EMERGENTI**. Gli slot Predictivity (`HABIT_SLOT`) possono anche comparire nel dialogo sotto **ABITUDINI ATTESE** (non FATTI) quando il recall li include — mai come prova di attività fatte.
 
 Il heartbeat legge anche fino a **5 routine** dalla memoria fattuale e il riepilogo abitudini, ma **non** l’intera lista fatti.
 
@@ -269,7 +274,7 @@ FATTI:
 2. (IDENTITY) L'utente è sviluppatore web
 ```
 
-Sezioni possibili: NOTIFICHE_NON_LETTE, EPISODI, PROMEMORIA, LISTE, SPAZIO, PROFILO ABITUDINI, FATTI.
+Sezioni possibili: NOTIFICHE_NON_LETTE, EPISODI, PROMEMORIA, LISTE, SPAZIO, PROFILO ABITUDINI, ABITUDINI ATTESE, NOTE ROBOT, ROUTINE DICHIARATE, FATTI (IDENTITY/PREFERENCE/FACT).
 
 ### Passo 4 — Il LLM risponde
 

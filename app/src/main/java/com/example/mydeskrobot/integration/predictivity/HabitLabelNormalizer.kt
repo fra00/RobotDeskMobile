@@ -1,34 +1,62 @@
 package com.example.mydeskrobot.integration.predictivity
 
 import com.example.mydeskrobot.data.activitylog.ActivityLogRepository
+import com.example.mydeskrobot.domain.predictivity.HabitCanonicalPolicy
 import com.example.mydeskrobot.reasoning.llm.LlmClient
 import com.example.mydeskrobot.reasoning.model.ConversationMessage
+import org.json.JSONArray
 import org.json.JSONObject
 
 class HabitLabelNormalizer(
     private val llmClient: LlmClient,
     private val normalizePrompt: String,
 ) {
-    suspend fun normalize(distinctRawLabels: List<String>): Map<String, String> {
+    suspend fun normalize(
+        distinctRawLabels: List<String>,
+        existingHabits: List<HabitNormalizeExisting> = emptyList(),
+    ): Map<String, String> {
         if (distinctRawLabels.isEmpty()) return emptyMap()
         val identity = distinctRawLabels.associateWith { fallbackCanonical(it) }
-        if (!llmClient.isConfigured()) return identity
+        if (!llmClient.isConfigured()) {
+            return identity.mapValues { HabitCanonicalPolicy.applyLocalAliases(it.value) }
+        }
 
-        val inputJson = buildLabelsInputJson(distinctRawLabels)
-
+        val inputJson = buildInputJson(distinctRawLabels, existingHabits)
         val response = llmClient.chat(
             messages = listOf(ConversationMessage.User(content = inputJson)),
             systemPrompt = normalizePrompt,
-        ).getOrNull()?.content ?: return identity
+        ).getOrNull()?.content ?: return identity.mapValues {
+            HabitCanonicalPolicy.applyLocalAliases(it.value)
+        }
 
-        return parseMappings(response, distinctRawLabels, identity)
+        val parsed = parseMappings(response, distinctRawLabels, identity)
+        return parsed.mapValues { (_, canonical) ->
+            val cleaned = HabitCanonicalPolicy.applyLocalAliases(canonical)
+            if (cleaned == "ignore_robot") cleaned else cleaned
+        }
     }
 
-    private fun buildLabelsInputJson(labels: List<String>): String {
-        val encoded = labels.distinct().sorted().joinToString(separator = ",") { label ->
-            "\"${label.replace("\\", "\\\\").replace("\"", "\\\"")}\""
+    private fun buildInputJson(
+        labels: List<String>,
+        existingHabits: List<HabitNormalizeExisting>,
+    ): String {
+        val root = JSONObject()
+        val labelsArray = JSONArray()
+        labels.distinct().sorted().forEach { labelsArray.put(it) }
+        root.put("labels", labelsArray)
+        if (existingHabits.isNotEmpty()) {
+            val habitsArray = JSONArray()
+            existingHabits.forEach { habit ->
+                habitsArray.put(
+                    JSONObject()
+                        .put("canonical", habit.canonicalLabel)
+                        .put("display", habit.displayLabel)
+                        .put("typical_time", formatClock(habit.typicalTimeMinutes)),
+                )
+            }
+            root.put("existing_habits", habitsArray)
         }
-        return """{"labels":[$encoded]}"""
+        return root.toString()
     }
 
     private fun parseMappings(
@@ -59,12 +87,19 @@ class HabitLabelNormalizer(
     }
 
     private fun fallbackCanonical(label: String): String =
-        ActivityLogRepository.normalizeLabel(label)
-            .lowercase()
-            .replace(Regex("[^a-z0-9\\s]"), " ")
-            .replace(Regex("\\s+"), "_")
-            .trim('_')
-            .ifBlank { "activity" }
+        HabitCanonicalPolicy.applyLocalAliases(
+            ActivityLogRepository.normalizeLabel(label)
+                .lowercase()
+                .replace(Regex("[^a-z0-9\\s]"), " ")
+                .replace(Regex("\\s+"), "_")
+                .trim('_')
+                .ifBlank { "activity" },
+        )
+
+    private fun formatClock(minutes: Int): String {
+        val normalized = minutes.mod(24 * 60)
+        return "%02d:%02d".format(normalized / 60, normalized % 60)
+    }
 
     companion object {
         fun displayLabelFromCanonical(canonical: String): String =

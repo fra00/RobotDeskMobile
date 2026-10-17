@@ -45,8 +45,12 @@ data class SettingsUiState(
     val showVoskModelDialog: Boolean = false,
     val showSttDialog: Boolean = false,
     val showNotificationDialog: Boolean = false,
+    val showModeBotDialog: Boolean = false,
     val showHeartbeatDialog: Boolean = false,
     val showDeskPresenceDialog: Boolean = false,
+    val showHabitSlotsDialog: Boolean = false,
+    val habitSlots: List<HabitSlotUiState> = emptyList(),
+    val habitSlotDeleteConfirmKey: String? = null,
     val showAttentionDomainsDialog: Boolean = false,
     val showAttentionDomainEditor: Boolean = false,
     val attentionDomainEditorForm: AttentionDomainEditorFormState = AttentionDomainEditorFormState(),
@@ -117,6 +121,7 @@ data class HeartbeatSettingsFormState(
     val wellnessAnchorMinutes: Int = 60,
     val wellnessIdleMinutes: Int = ProactivityConstants.WELLNESS_IDLE_MINUTES,
     val wellnessPresenceMinutes: Int = 15,
+    val healthConnectEnabled: Boolean = false,
 )
 
 fun HeartbeatSettings.toFormState(
@@ -133,6 +138,7 @@ fun HeartbeatSettings.toFormState(
     wellnessAnchorMinutes = proactivity.wellnessAnchorMinutes,
     wellnessIdleMinutes = proactivity.wellnessIdleMinutes,
     wellnessPresenceMinutes = proactivity.wellnessPresenceMinutes,
+    healthConnectEnabled = proactivity.healthConnectEnabled,
 )
 
 data class DeskPresenceSettingsFormState(

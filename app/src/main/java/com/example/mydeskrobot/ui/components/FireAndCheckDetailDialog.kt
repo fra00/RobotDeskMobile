@@ -48,8 +48,16 @@ fun FireAndCheckDetailDialog(
 @Composable
 private fun buildDetailBody(entry: FireAndCheckEntry): String {
     val lines = mutableListOf<String>()
+    if (entry.isCommitment) {
+        lines += stringResource(R.string.fire_and_check_kind_commitment)
+    }
     entry.checkGoal?.trim()?.takeIf { it.isNotBlank() }?.let {
-        lines += stringResource(R.string.fire_and_check_label_goal, it)
+        val labelRes = if (entry.isCommitment) {
+            R.string.fire_and_check_label_commitment_goal
+        } else {
+            R.string.fire_and_check_label_goal
+        }
+        lines += stringResource(labelRes, it)
     }
     entry.verificationMessage?.trim()?.takeIf { it.isNotBlank() }?.let {
         lines += stringResource(R.string.fire_and_check_label_verification, it)
@@ -60,13 +68,25 @@ private fun buildDetailBody(entry: FireAndCheckEntry): String {
     ) {
         lines += stringResource(R.string.fire_and_check_label_trigger, entry.triggerReason)
     }
-    if (lines.isEmpty()) {
-        lines += entry.primaryMessage
+    if (lines.isEmpty() || (lines.size == 1 && entry.isCommitment)) {
+        if (entry.primaryMessage.isNotBlank()) {
+            lines += entry.primaryMessage
+        }
     }
     val phaseLabel = when (entry.phase) {
         FireAndCheckPhase.SCHEDULED -> stringResource(R.string.fire_and_check_phase_scheduled)
-        FireAndCheckPhase.AWAITING_VERIFICATION -> stringResource(R.string.fire_and_check_phase_awaiting)
-        FireAndCheckPhase.CHECK_PENDING -> stringResource(R.string.fire_and_check_phase_pending)
+        FireAndCheckPhase.AWAITING_VERIFICATION ->
+            if (entry.isCommitment) {
+                stringResource(R.string.fire_and_check_phase_awaiting_commitment)
+            } else {
+                stringResource(R.string.fire_and_check_phase_awaiting)
+            }
+        FireAndCheckPhase.CHECK_PENDING ->
+            if (entry.isCommitment) {
+                stringResource(R.string.fire_and_check_phase_pending_commitment)
+            } else {
+                stringResource(R.string.fire_and_check_phase_pending)
+            }
     }
     lines += stringResource(R.string.fire_and_check_label_phase, phaseLabel)
     return lines.joinToString("\n\n")

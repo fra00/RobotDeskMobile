@@ -28,6 +28,8 @@ fun HeartbeatSettingsDialog(
     form: HeartbeatSettingsFormState,
     onFormChange: (HeartbeatSettingsFormState) -> Unit,
     onManageDomains: () -> Unit,
+    onManageHabitSlots: () -> Unit,
+    onRequestHealthConnectPermission: () -> Unit = {},
     onSave: () -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -166,6 +168,32 @@ fun HeartbeatSettingsDialog(
                     )
                 }
 
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = stringResource(R.string.proactivity_health_connect_enabled),
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Switch(
+                        checked = form.healthConnectEnabled,
+                        onCheckedChange = { enabled ->
+                            onFormChange(form.copy(healthConnectEnabled = enabled))
+                            if (enabled) onRequestHealthConnectPermission()
+                        },
+                    )
+                }
+                Text(
+                    text = stringResource(R.string.proactivity_health_connect_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                TextButton(onClick = onRequestHealthConnectPermission) {
+                    Text(stringResource(R.string.proactivity_health_connect_connect))
+                }
+
                 Spacer(modifier = Modifier.height(8.dp))
 
                 Text(
@@ -205,6 +233,10 @@ fun HeartbeatSettingsDialog(
                 )
 
                 Spacer(modifier = Modifier.height(12.dp))
+
+                TextButton(onClick = onManageHabitSlots) {
+                    Text(stringResource(R.string.proactivity_manage_habit_slots))
+                }
 
                 TextButton(onClick = onManageDomains) {
                     Text(stringResource(R.string.heartbeat_manage_domains))

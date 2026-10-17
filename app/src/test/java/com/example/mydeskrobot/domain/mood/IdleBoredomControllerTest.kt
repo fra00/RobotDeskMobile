@@ -71,20 +71,26 @@ class IdleBoredomControllerTest {
         val controller = IdleBoredomController(config, Random(2))
         controller.onLookAroundCompleted(base)
         controller.tick(base + 5 * 60_000L, stillIdleEligible = true, allowNewDistraction = true)
+        val kind = controller.currentDistractionKind()
         val end = base + 5 * 60_000L + 8 * 60_000L
         val result = controller.tick(end, stillIdleEligible = true, allowNewDistraction = true)
         assertEquals(IdleBoredomTickResult.DistractionEnded, result)
         assertFalse(controller.isSuppressingIdleBoredom())
         assertNull(controller.currentDistractionKind())
+        assertEquals(kind, controller.recentDistractionKind(end))
+        assertNull(controller.recentDistractionKind(end + 31 * 60_000L))
     }
 
     @Test
-    fun `interrupt mid distraction clears phase`() {
+    fun `interrupt mid distraction remembers recent activity`() {
         val controller = IdleBoredomController(config, Random(3))
         controller.onLookAroundCompleted(base)
         controller.tick(base + 5 * 60_000L, stillIdleEligible = true, allowNewDistraction = true)
-        assertEquals(IdleBoredomTickResult.DistractionEnded, controller.interrupt())
+        val kind = controller.currentDistractionKind()
+        val at = base + 5 * 60_000L + 60_000L
+        assertEquals(IdleBoredomTickResult.DistractionEnded, controller.interrupt(at))
         assertFalse(controller.isSuppressingIdleBoredom())
+        assertEquals(kind, controller.recentDistractionKind(at))
     }
 
     @Test

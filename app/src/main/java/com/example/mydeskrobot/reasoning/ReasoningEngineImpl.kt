@@ -35,6 +35,7 @@ class ReasoningEngineImpl(
     private val spatialContextProvider: SpatialContextProvider? = null,
     private val bodyCapabilitiesProvider: BodyCapabilitiesProvider? = null,
     private val robotContextProvider: RobotContextProvider? = null,
+    private val translationModeProvider: TranslationModeProvider? = null,
     private val moodContextProvider: MoodContextProvider? = null,
     private val heartbeatPlaybookProvider: HeartbeatPlaybookProvider? = null,
     maxChainSteps: Int = 10,
@@ -216,6 +217,7 @@ PHYSICAL BODY — NOT CONNECTED
             )
             .orEmpty()
         val robotContext = robotContextProvider?.buildContextSection().orEmpty()
+        val translationContext = translationModeProvider?.buildContextSection().orEmpty()
         val moodContext = moodContextProvider?.buildContextSection().orEmpty()
 
         return Result.success(
@@ -240,6 +242,10 @@ PHYSICAL BODY — NOT CONNECTED
                 if (robotContext.isNotBlank()) {
                     append("\n\n")
                     append(robotContext)
+                }
+                if (translationContext.isNotBlank()) {
+                    append("\n\n")
+                    append(translationContext)
                 }
                 if (moodContext.isNotBlank()) {
                     append("\n\n")

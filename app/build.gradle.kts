@@ -115,6 +115,9 @@ dependencies {
     implementation(libs.retrofit)
     implementation(libs.retrofit.converter.moshi)
     implementation(libs.okhttp)
+    implementation(libs.nanohttpd)
+    implementation(libs.zxing.core)
+    implementation(libs.zxing.android.embedded)
     implementation(libs.jsoup)
     implementation(libs.readability4j) {
         exclude(group = "org.jsoup", module = "jsoup")
@@ -123,6 +126,8 @@ dependencies {
     implementation(libs.androidx.camera.core)
     implementation(libs.androidx.camera.camera2)
     implementation(libs.androidx.camera.lifecycle)
+    // CameraX / ProcessCameraProvider return ListenableFuture; keep explicit after Health Connect.
+    implementation("com.google.guava:guava:33.3.1-android")
     implementation(libs.mlkit.face.detection)
     implementation(libs.mlkit.pose.detection)
     implementation(libs.androidx.datastore.preferences)
@@ -130,6 +135,7 @@ dependencies {
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
     ksp(libs.androidx.room.compiler)
+    implementation(libs.androidx.health.connect.client)
     implementation(libs.vosk.android) {
         exclude(group = "net.java.dev.jna", module = "jna")
     }

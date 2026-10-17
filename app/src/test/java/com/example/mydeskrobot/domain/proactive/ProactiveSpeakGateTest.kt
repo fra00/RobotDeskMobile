@@ -46,6 +46,21 @@ class ProactiveSpeakGateTest {
     }
 
     @Test
+    fun `canSpeak skips when translation mode active`() {
+        val decision = ProactiveSpeakGate.canSpeak(
+            ProactiveSpeakContext(
+                heartbeatSettings = HeartbeatSettings(enabled = true),
+                workingMemory = WorkingMemory.forToday(),
+                robotContext = null,
+                translationModeActive = true,
+                nowMs = activeNowMs,
+            ),
+        )
+        assertTrue(decision is GateDecision.Skip)
+        assertEquals("translation mode active", (decision as GateDecision.Skip).reason)
+    }
+
+    @Test
     fun `canSpeak skips on silent robot context`() {
         val decision = ProactiveSpeakGate.canSpeak(
             ProactiveSpeakContext(

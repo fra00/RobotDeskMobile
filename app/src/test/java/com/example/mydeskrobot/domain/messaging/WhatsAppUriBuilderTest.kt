@@ -9,8 +9,8 @@ class WhatsAppUriBuilderTest {
     @Test
     fun buildSendUri_encodesMessage() {
         val uri = WhatsAppUriBuilder.buildSendUri("393331234567", "ciao mondo")
-        assertTrue(uri.toString().contains("phone=393331234567"))
-        assertTrue(uri.toString().contains("text=ciao+mondo"))
+        assertTrue(uri.contains("phone=393331234567"))
+        assertTrue(uri.contains("text=ciao+mondo"))
     }
 
     @Test

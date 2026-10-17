@@ -8,6 +8,7 @@ import com.example.mydeskrobot.data.predictivity.PredictivityMiningStore
 import com.example.mydeskrobot.domain.activitylog.ActivitySource
 import com.example.mydeskrobot.domain.activitylog.EpisodeConfidence
 import com.example.mydeskrobot.domain.activitylog.EpisodeKind
+import com.example.mydeskrobot.domain.predictivity.HabitSlot
 import com.example.mydeskrobot.domain.predictivity.HabitSlotKey
 import com.example.mydeskrobot.memory.unified.UnifiedMemoryRepository
 import com.example.mydeskrobot.memory.unified.FakeMemoryDocumentDao
@@ -76,6 +77,77 @@ class RecurringHabitSlotMinerTest {
         assertTrue(slot != null)
         assertEquals(2, slot!!.hitCount)
         assertEquals(0.257f, slot.confidence, 0.02f)
+    }
+
+    @Test
+    fun `minePendingDays merges evening meal fragments on consolidate`() = runTest {
+        val unifiedMemory = UnifiedMemoryRepository.createForTest(FakeMemoryDocumentDao())
+        val habitSlots = HabitSlotRepository(unifiedMemory)
+        // Pre-seed fragmented dinner-like slots (as seen in UI before hybrid merge).
+        listOf(
+            HabitSlot(
+                slotKey = "mangiare_qualcosa|1230",
+                canonicalLabel = "mangiare_qualcosa",
+                displayLabel = "Mangiare qualcosa",
+                typicalTimeMinutes = 20 * 60 + 54,
+                hitCount = 1,
+                confidence = 0.13f,
+                rawLabels = setOf("Mangiare qualcosa"),
+            ),
+            HabitSlot(
+                slotKey = "pranzo|1290",
+                canonicalLabel = "pranzo",
+                displayLabel = "Pranzo",
+                typicalTimeMinutes = 21 * 60 + 51,
+                hitCount = 1,
+                confidence = 0.13f,
+                rawLabels = setOf("Pranzo"),
+            ),
+            HabitSlot(
+                slotKey = "cena|1245",
+                canonicalLabel = "cena",
+                displayLabel = "Cena",
+                typicalTimeMinutes = 20 * 60 + 45,
+                hitCount = 2,
+                confidence = 0.26f,
+                rawLabels = setOf("Cena"),
+            ),
+        ).forEach { habitSlots.upsert(it) }
+
+        val dao = FakeActivityLogDao(emptyList())
+        val miner = RecurringHabitSlotMiner(
+            activityLogRepository = ActivityLogRepository.createForTest(dao),
+            habitSlotRepository = habitSlots,
+            miningRepository = FakeMiningStore(lastMined = dayKeyOffset(daysAgo = 1)),
+            labelNormalizer = HabitLabelNormalizer(
+                llmClient = object : com.example.mydeskrobot.reasoning.llm.LlmClient {
+                    override suspend fun chat(
+                        messages: List<com.example.mydeskrobot.reasoning.model.ConversationMessage>,
+                        systemPrompt: String,
+                    ) = Result.failure<com.example.mydeskrobot.reasoning.llm.LlmResponse>(
+                        IllegalStateException("offline"),
+                    )
+
+                    override suspend fun chatWithImage(
+                        messages: List<com.example.mydeskrobot.reasoning.model.ConversationMessage>,
+                        systemPrompt: String,
+                        imageBytes: ByteArray,
+                    ) = Result.failure<com.example.mydeskrobot.reasoning.llm.LlmResponse>(
+                        IllegalStateException("offline"),
+                    )
+
+                    override fun isConfigured() = false
+                },
+                normalizePrompt = "test",
+            ),
+        )
+
+        miner.minePendingDays()
+
+        val remaining = habitSlots.listAll()
+        assertEquals(1, remaining.size)
+        assertEquals("cena", remaining.single().canonicalLabel)
+        assertEquals(4, remaining.single().hitCount)
     }
 
     private class FakeMiningStore(var lastMined: String?) : PredictivityMiningStore {

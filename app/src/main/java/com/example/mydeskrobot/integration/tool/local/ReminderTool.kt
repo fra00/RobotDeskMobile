@@ -5,6 +5,8 @@ import android.util.Log
 import com.example.mydeskrobot.data.check.FireAndCheckRepository
 import com.example.mydeskrobot.data.scheduled.ScheduledTaskAlarmScheduler
 import com.example.mydeskrobot.data.scheduled.ScheduledTaskRepository
+import com.example.mydeskrobot.domain.check.CommitmentFollowUpPolicy
+import com.example.mydeskrobot.domain.check.FireAndCheckKind
 import com.example.mydeskrobot.memory.unified.UnifiedMemoryWriter
 import com.example.mydeskrobot.integration.tool.Tool
 import com.example.mydeskrobot.integration.tool.ToolLocality
@@ -31,7 +33,9 @@ class ReminderTool(
         return ToolDefinition(
             name = name,
             description = "Schedule a reminder the robot will announce aloud at the given time. " +
-                "Use 'delay_minutes' for relative times, or 'hour' + 'minute' for absolute times.",
+                "Use 'delay_minutes' for relative times, or 'hour' + 'minute' for absolute times. " +
+                "For urgent user commitments, set commitment_follow_up=true (Kotlin auto-schedules " +
+                "a dialogic 'Verifica impegno' follow-up +60 min).",
             parameters = listOf(
                 ToolParameter(
                     name = "message",
@@ -60,13 +64,13 @@ class ReminderTool(
                 ToolParameter(
                     name = "fire_and_check",
                     type = "boolean",
-                    description = "True for fire-and-check loops (wake-up, state verification)",
+                    description = "True for physical fire-and-check loops (wake-up, desk presence)",
                     required = false,
                 ),
                 ToolParameter(
                     name = "check_goal",
                     type = "string",
-                    description = "What to verify later (e.g. user is awake, still at desk)",
+                    description = "What to verify later for physical check (e.g. user is awake)",
                     required = false,
                 ),
                 ToolParameter(
@@ -75,9 +79,22 @@ class ReminderTool(
                     description = "User phrase or reason that started this fire-and-check",
                     required = false,
                 ),
+                ToolParameter(
+                    name = "commitment_follow_up",
+                    type = "boolean",
+                    description = "True when user urgency is clear (assolutamente / molto importante / …). " +
+                        "Schedules dialogic follow-up asking if they did the task.",
+                    required = false,
+                ),
+                ToolParameter(
+                    name = "commitment_goal",
+                    type = "string",
+                    description = "Short description of the commitment to ask about later",
+                    required = false,
+                ),
             ),
-            returns = "success, reminder_id, scheduled_time",
-            example = """{"name": "set_reminder", "params": {"message": "Prendi le medicine", "delay_minutes": 10}, "await_result": true}""",
+            returns = "success, reminder_id, scheduled_time, commitment_follow_up, verification_reminder_id",
+            example = """{"name": "set_reminder", "params": {"message": "Invia il documento", "hour": 9, "minute": 0, "commitment_follow_up": true, "commitment_goal": "Inviare il documento"}, "await_result": true}""",
         )
     }
 
@@ -97,17 +114,65 @@ class ReminderTool(
             )
 
         return try {
+            val commitmentRequested = parseBoolean(invocation.params["commitment_follow_up"])
+            var commitmentFollowUp = commitmentRequested
+            var reRemindCount = 0
+            if (commitmentFollowUp) {
+                val slot = fireAndCheckRepository.prepareNewCommitmentFollowUp()
+                if (slot == null) {
+                    // Max re-remind already used — schedule plain reminder only.
+                    commitmentFollowUp = false
+                    Log.i(TAG, "commitment_follow_up capped — scheduling plain reminder")
+                } else {
+                    reRemindCount = slot
+                }
+            }
+
             val taskId = repository.schedule(message, triggerMillis)
             ScheduledTaskAlarmScheduler.schedule(context, taskId, triggerMillis)
             val scheduledTime = repository.formatScheduledTime(triggerMillis)
             Log.i(TAG, "Scheduled task id=$taskId at $scheduledTime: $message")
 
-            trackFireAndCheck(
-                reminderId = taskId,
-                message = message,
-                triggerMillis = triggerMillis,
-                params = invocation.params,
-            )
+            var verificationReminderId: Long? = null
+            if (commitmentFollowUp) {
+                val goal = invocation.params["commitment_goal"]?.toString()?.trim()
+                    ?.takeIf { it.isNotBlank() }
+                    ?: message
+                val verifyMessage = CommitmentFollowUpPolicy.buildVerificationMessage(goal)
+                val verifyAt = CommitmentFollowUpPolicy.followUpDueAt(triggerMillis)
+                verificationReminderId = repository.schedule(verifyMessage, verifyAt)
+                ScheduledTaskAlarmScheduler.schedule(context, verificationReminderId, verifyAt)
+
+                fireAndCheckRepository.onPrimaryReminderScheduled(
+                    reminderId = taskId,
+                    primaryMessage = message,
+                    primaryDueAtMillis = triggerMillis,
+                    checkGoal = goal,
+                    triggerReason = invocation.params["trigger_reason"]?.toString()
+                        ?: message,
+                    fireAndCheck = true,
+                    kind = FireAndCheckKind.COMMITMENT,
+                    reRemindCount = reRemindCount,
+                )
+                fireAndCheckRepository.onVerificationReminderScheduled(
+                    verificationReminderId = verificationReminderId,
+                    verificationMessage = verifyMessage,
+                    verificationDueAtMillis = verifyAt,
+                )
+                Log.i(
+                    TAG,
+                    "Commitment follow-up verify id=$verificationReminderId at " +
+                        repository.formatScheduledTime(verifyAt),
+                )
+            } else {
+                trackFireAndCheck(
+                    reminderId = taskId,
+                    message = message,
+                    triggerMillis = triggerMillis,
+                    params = invocation.params,
+                )
+            }
+
             memoryWriter.onReminderScheduled(
                 taskId = taskId,
                 message = message,
@@ -115,12 +180,19 @@ class ReminderTool(
             )
 
             ToolResult.Success(
-                data = mapOf(
-                    "success" to true,
-                    "message" to message,
-                    "scheduled_time" to scheduledTime,
-                    "reminder_id" to taskId,
-                ),
+                data = buildMap {
+                    put("success", true)
+                    put("message", message)
+                    put("scheduled_time", scheduledTime)
+                    put("reminder_id", taskId)
+                    put("commitment_follow_up", commitmentFollowUp)
+                    if (verificationReminderId != null) {
+                        put("verification_reminder_id", verificationReminderId)
+                    }
+                    if (commitmentRequested && !commitmentFollowUp) {
+                        put("commitment_capped", true)
+                    }
+                },
             )
         } catch (e: SecurityException) {
             ToolResult.Error(
@@ -159,6 +231,7 @@ class ReminderTool(
             checkGoal = params["check_goal"]?.toString(),
             triggerReason = params["trigger_reason"]?.toString(),
             fireAndCheck = parseBoolean(params["fire_and_check"]),
+            kind = FireAndCheckKind.PHYSICAL,
         )
     }
 

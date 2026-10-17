@@ -16,7 +16,7 @@ Episodic timeline of the user's day — physical activities, future plans, socia
 
 | Layer | Location |
 |-------|----------|
-| Events | Room `activity_log.db` → `activity_log_events` (v2: episodic fields) |
+| Events | Room `activity_log.db` → `activity_log_events` (v4: episodic fields + `sourceChannel` index) |
 | Habit profile | Room → `activity_habit_profile` (single row) |
 | Settings | DataStore `activity_log_settings` |
 
@@ -29,16 +29,17 @@ Episodic timeline of the user's day — physical activities, future plans, socia
 | `scheduledDayKey` | Target day `yyyy-MM-dd` for upcoming episodes |
 | `scheduledAtMs` | Optional precise time on that day |
 | `actor` | Contact name (e.g. WhatsApp title) |
-| `sourceChannel` | e.g. WhatsApp, dialogo |
+| `sourceChannel` | e.g. WhatsApp, dialogo, `health_connect:<metadataId>` |
+| `source` | `EXTRACTOR` / `TOOL` / `VOICE` / `NOTIFICATION` / **`HEALTH_CONNECT`** |
 
 `timestampMs` / `dayKey` = when the event was logged; `scheduled*` = when it matters for the user's life.
 
 ## Capture channels
 
-1. **Background extraction** — `ActivityLogExtractionScheduler` in standby reads new `conversationLog` lines (Tu/Robot/**Sistema**) via `episodic_extractor_prompt.txt`.
-2. **Tool** — `log_daily_activity` during dialogue (optional kind, scheduled_day, actor, confidence).
-
-Do **not** store ephemeral activities in `save_memory`. Do **not** dump all notifications — organizer returns empty for spam/irrelevant content.
+1. **Background extraction** — `ActivityLogExtractionScheduler` in standby reads new `conversationLog` lines (Tu/Robot/**Sistema**) via `episodic_extractor_prompt.txt`. Robot pastimes (`Sistema (svago): [robot] …`) are **excluded** before extraction and never written as user episodes.
+2. **Tool** — `log_daily_activity` during dialogue (optional kind, scheduled_day, actor, confidence), via `UnifiedMemoryWriter` (same rejection for `[robot]` / channel `svago`).
+3. **Notifications** — selective archive through the same writer when actionable.
+4. **Health Connect** — `HealthConnectExerciseSync` imports `ExerciseSessionRecord` (last 7 days) as `PHYSICAL_NOW` + `CONFIRMED` with `source=HEALTH_CONNECT` and stable `sourceChannel=health_connect:<id>` (dedup). Triggered before Wellness `DOMAIN_SCORE` and on voice session start / app catch-up when `ProactivitySettings.healthConnectEnabled` is on and exercise read permission is granted. These are **done** episodes (dialogue + Wellness “Today activities”), never habit slots.
 
 ## Predictivity mining (incremental)
 

@@ -66,9 +66,9 @@ object EmotionGestureMapper {
 
     private fun surprisedLookAround(): BodyChoreography = BodyChoreography(
         steps = listOf(
-            BodyMove.Joint(BodyJoint.DISPLAY_PAN, position = 10, speed = 32, delayAfterMs = 250L),
-            BodyMove.Joint(BodyJoint.DISPLAY_PAN, position = -10, speed = 32, delayAfterMs = 250L),
-            BodyMove.Joint(BodyJoint.DISPLAY_PAN, position = 0, speed = 32),
+            BodyMove.Joint(BodyJoint.BASE_PAN, position = 10, speed = 32, delayAfterMs = 250L),
+            BodyMove.Joint(BodyJoint.BASE_PAN, position = -10, speed = 32, delayAfterMs = 250L),
+            BodyMove.Joint(BodyJoint.BASE_PAN, position = 0, speed = 32),
         ),
     )
 
@@ -86,17 +86,18 @@ object EmotionGestureMapper {
         val away = -scaled(12, intensity)
         return BodyChoreography(
             steps = listOf(
-                BodyMove.Joint(BodyJoint.DISPLAY_PAN, position = away, speed = 35),
+                BodyMove.Joint(BodyJoint.BASE_PAN, position = away, speed = 35),
             ),
             returnHeadAfter = false,
         )
     }
 
+    /** Yaw look-around uses [BodyJoint.BASE_PAN] (neck/base axis); not display_pan. */
     private fun boredLookAround(): BodyChoreography = BodyChoreography(
         steps = listOf(
-            BodyMove.Joint(BodyJoint.DISPLAY_PAN, position = 10, speed = 22, delayAfterMs = 450L),
-            BodyMove.Joint(BodyJoint.DISPLAY_PAN, position = -10, speed = 22, delayAfterMs = 450L),
-            BodyMove.Joint(BodyJoint.DISPLAY_PAN, position = 0, speed = 22),
+            BodyMove.Joint(BodyJoint.BASE_PAN, position = 10, speed = 22, delayAfterMs = 450L),
+            BodyMove.Joint(BodyJoint.BASE_PAN, position = -10, speed = 22, delayAfterMs = 450L),
+            BodyMove.Joint(BodyJoint.BASE_PAN, position = 0, speed = 22),
         ),
     )
 }

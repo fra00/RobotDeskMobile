@@ -80,7 +80,7 @@ class SendWhatsAppTool(
             )
         }
 
-        val httpsUri = WhatsAppUriBuilder.buildSendUri(sendId, message)
+        val httpsUri = Uri.parse(WhatsAppUriBuilder.buildSendUri(sendId, message))
         return try {
             openWhatsApp(httpsUri)
             Log.i(TAG, "WhatsApp opened sendId=$sendId")
@@ -115,7 +115,7 @@ class SendWhatsAppTool(
 
     private fun tryFallbackScheme(sendId: String, message: String): ToolResult {
         return try {
-            val uri = WhatsAppUriBuilder.buildFallbackSchemeUri(sendId, message)
+            val uri = Uri.parse(WhatsAppUriBuilder.buildFallbackSchemeUri(sendId, message))
             val intent = Intent(Intent.ACTION_VIEW, uri).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }

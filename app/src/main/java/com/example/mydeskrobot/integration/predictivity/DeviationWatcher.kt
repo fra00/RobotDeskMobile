@@ -23,6 +23,7 @@ data class DeviationWatchContext(
     val bodyConfigured: Boolean,
     val bodyReachable: Boolean,
     val micSessionActive: Boolean,
+    val translationModeActive: Boolean = false,
 )
 
 class DeviationWatcher(
@@ -40,6 +41,7 @@ class DeviationWatcher(
                 heartbeatSettings = context.heartbeatSettings,
                 workingMemory = context.workingMemory,
                 robotContext = context.robotContext,
+                translationModeActive = context.translationModeActive,
                 nowMs = nowMillis(),
             ),
         )

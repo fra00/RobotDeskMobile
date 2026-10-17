@@ -90,6 +90,11 @@ class WellnessWatcherTest {
     }
 
     @Test
+    fun `nextPhase null when translation mode active`() = runTest {
+        assertNull(watcher.nextPhase(baseContext(translationModeActive = true)))
+    }
+
+    @Test
     fun `nextPhase null when idle below threshold`() = runTest {
         val wm = WorkingMemory.forToday()
             .withFirstHotwordOn(anchorMs)
@@ -223,6 +228,7 @@ class WellnessWatcherTest {
         robotContext: RobotContextState? = null,
         micSessionActive: Boolean = true,
         isNightMode: Boolean = false,
+        translationModeActive: Boolean = false,
         enabledDomainIds: Set<String> = com.example.mydeskrobot.domain.wellness.WellnessDomains.ALL,
         locateUser: suspend () -> Boolean = { false },
     ) = WellnessWatchContext(
@@ -234,6 +240,7 @@ class WellnessWatcherTest {
         bodyReachable = bodyReachable,
         llmBusy = false,
         isNightMode = isNightMode,
+        translationModeActive = translationModeActive,
         enabledDomainIds = enabledDomainIds,
         locateUser = locateUser,
     )

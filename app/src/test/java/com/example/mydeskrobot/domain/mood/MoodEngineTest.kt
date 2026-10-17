@@ -346,6 +346,31 @@ class MoodEngineTest {
         assertNull(result)
     }
 
+    @Test
+    fun `self care look around bumps valence`() {
+        val low = RobotMood.fromValence(valence = 0.0f, since = baseTime, reason = MoodReason.IDLE_LONG)
+        val result = engine.evaluate(low, MoodTrigger.SelfCareLookAround, baseTime + 1000)
+        assertNotNull(result)
+        assertEquals(0.04f, result!!.valence, 0.001f)
+        assertEquals(MoodReason.SELF_CARE, result.reason)
+    }
+
+    @Test
+    fun `self care distraction bumps valence more than look around`() {
+        val low = RobotMood.fromValence(valence = 0.0f, since = baseTime, reason = null)
+        val result = engine.evaluate(low, MoodTrigger.SelfCareDistraction, baseTime + 1000)
+        assertNotNull(result)
+        assertEquals(0.08f, result!!.valence, 0.001f)
+        assertEquals(MoodReason.SELF_CARE, result.reason)
+    }
+
+    @Test
+    fun `self care skipped while sleeping`() {
+        val sleeping = engine.evaluate(neutralMood(), MoodTrigger.NightMode, baseTime)!!
+        assertNull(engine.evaluate(sleeping, MoodTrigger.SelfCareLookAround, baseTime + 1000))
+        assertNull(engine.evaluate(sleeping, MoodTrigger.SelfCareDistraction, baseTime + 1000))
+    }
+
     private fun neutralMood(): RobotMood =
         RobotMood.fromValence(
             valence = MoodValenceConfig.DEFAULT_BASELINE,

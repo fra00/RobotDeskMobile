@@ -59,9 +59,10 @@ flowchart TB
 | `predictivityMinHitCount` | 3 | Minimum slot hits before deviation speak is eligible |
 | `predictivityMinConfidence` | 0.70 | Minimum slot confidence before deviation speak |
 | `predictivityTimeToleranceMinutes` | 45 | ± window around `typicalTimeMinutes` for match and deviation |
+| `predictivityMergeWindowMinutes` | 90 | Same-canonical slots/episodes within this circular distance are merged (hybrid miner) |
 | `predictivityPatternTtlDays` | 30 | TTL for `PATTERN` habit slots in unified memory |
 
-Configurable in **Impostazioni → Proattività** (future UI).
+Configurable in **Impostazioni → Proattività** (toggles, wellness timing, **Abitudini dedotte** list/delete).
 
 ---
 
@@ -80,10 +81,12 @@ Does **not** use user-initiated photos or the Wellness tick.
 ### Input
 
 - [`activity_log.db`](ACTIVITY_LOG.md) episodes: `label`, `dayKey`, `timestampMs`, `eventKind`, optional `scheduledAtMs`
-- Capture: `log_daily_activity` tool + background `ActivityExtractionService` from `conversationLog`
+- Capture: `log_daily_activity` tool + background `ActivityExtractionService` from `conversationLog` + optional **Health Connect** exercise sync (`ActivitySource.HEALTH_CONNECT`, `sourceChannel=health_connect:<id>`)
 - Miner reads only `PHYSICAL_NOW` + `CONFIRMED` for habit hits ( `PLAN` optional later for forward-looking patterns)
 
 Log Day retention is **7 days**. Habit knowledge must live in **PATTERN** (30-day TTL), not in the log.
+
+**Robot self-activity exclusion:** robot pastimes are written with prefix `[robot]` (channel `svago` for idle overlays). They must **never** enter user Log Day mining, habit slots, habit summary, or episodic recall (“cosa ho fatto oggi”). Filtered at parse, write, activity-log reads, unified episode lists, miner, and purged from habit slots on mine / Abitudini dedotte open.
 
 ---
 
@@ -120,15 +123,17 @@ Persist in DataStore (e.g. `predictivity_mining_v1`):
 
 Patterns already promoted survive in `memory_documents` / PATTERN.
 
-#### Label normalization (one LLM call per mining run)
+#### Label normalization + Kotlin merge (hybrid)
 
-Once per mining execution, batch all **raw labels** from pending days into **one** lightweight LLM call (`habit_label_normalize_prompt.txt`):
+Once per mining execution:
 
-- Input: distinct labels from unmined days only
-- Output: map `rawLabel → canonicalLabel`
-- Rules: merge aliases ("passeggiata cane", "passeggiata Brina" → `passeggiata_cane`); do not invent labels absent from input
+1. Collect distinct raw labels from pending days **and** existing habit slots.
+2. **One** lightweight LLM call (`habit_label_normalize_prompt.txt`) with optional `existing_habits` context → `rawLabel → canonicalLabel`.
+3. Kotlin applies local aliases + **meal-by-clock** refine (e.g. “pranzo” at 21:50 → `cena`).
+4. Kotlin **merges** slots that share the same canonical and fall within `predictivityMergeWindowMinutes` (default **90**) — hit counts sum, typical time is weighted, slot key rewritten.
+5. New episode hits attach to a compatible existing slot when possible (same canonical + time window) instead of always opening a new 30-minute bucket.
 
-Kotlin applies the map before slot assignment. Cost is negligible (one call per app open / pre-prune, not per event).
+Cost remains one LLM call per mining run (app open / pre-prune). Hit counts and watermark stay Kotlin SSOT.
 
 ---
 
@@ -197,7 +202,7 @@ advance lastMinedDayKey to D
 }
 ```
 
-`ActivityHabitSummarizer` prose remains for human recall — **not** SSOT for the deviation watcher.
+`ActivityHabitSummarizer` prose remains for human recall — **not** SSOT for the deviation watcher. In dialogue MEMORIA, habit slots and habit summary are **expected patterns** (`ABITUDINI ATTESE` / `PROFILO ABITUDINI`), never under `FATTI` and never treated as done episodes.
 
 ---
 
@@ -208,9 +213,10 @@ advance lastMinedDayKey to D
 | Confirms skip ("sì oggi salto") | OBSERVATION; optional temporary suppress for today |
 | Denies deviation ("l'ho già fatto") | Improve logging / extraction; no penalty |
 | **"Non lo faccio più" / "non è più un'abitudine"** | **`delete_memory`** on matching PATTERN slot (or all slots for topic) |
+| **Impostazioni → Proattività → Abitudini dedotte** | List mined slots (label, typical time, window, hits/confidence, eligible); delete removes the PATTERN slot so deviation stops |
 | Pattern absent for long period | Future: decay (out of scope v1) |
 
-Voice or explicit forget flows must remove the slot so deviation stops.
+Voice, settings delete, or explicit forget flows must remove the slot so deviation stops.
 
 ---
 
@@ -245,7 +251,7 @@ predictivityUserPresentEnough =
 
 | Kotlin | LLM |
 |--------|-----|
-| Watermark, catch-up days, pre-prune order, slot keys, hitCount, confidence, gates, deviation window | One batch label normalize per mining run; deviation phrasing |
+| Watermark, catch-up days, pre-prune order, slot keys, hitCount, confidence, gates, deviation window, meal-by-clock refine, same-canonical time-window merge | One batch label normalize per mining run (with existing habit context); deviation phrasing |
 
 ### Source files (target)
 
@@ -268,6 +274,10 @@ Once per day (when gates pass), run a **unified check**:
 3. Speak **at most one** short sentence if the top domain is clearly deficient and presence allows.
 
 **Silence is the default** (80–95% of ticks).
+
+### Health Connect (exercise → Log Day)
+
+When `ProactivitySettings.healthConnectEnabled` is on and the user granted Health Connect **exercise read** permission, `HealthConnectExerciseSync` runs **before** Wellness `DOMAIN_SCORE` (and on voice session / app catch-up). Sessions become confirmed `PHYSICAL_NOW` episodes so **Today activities** and dialogue EPISODI see real workouts (e.g. bike from Google Fit via Health Connect). Expected habits remain comparison-only. Sync is best-effort no-op if HC is missing or permission denied.
 
 ### Timing gates (Kotlin)
 
@@ -439,7 +449,7 @@ Evaluated at **deviation window** time. Body locate = on-demand scan (pan + face
 | Spoke 30 min ago, no body | No | No |
 | Mic on, never spoke, body scan empty | No | No |
 
-ML Kit [`DeskPresenceMonitor`](DESK_PRESENCE.md) remains for conversational centering and debug — not mandatory gate for Wellness.
+ML Kit [`DeskPresenceMonitor`](DESK_PRESENCE.md) runs **on-demand** (not continuous) for conversational centering, look-around occupancy samples, and body locate — not a mandatory always-on gate for Wellness.
 
 ---
 

@@ -108,6 +108,8 @@ enum class MoodReason {
     EYE_POKE,
     USER_APOLOGY,
     LLM_EXPRESSION,
+    /** Solo self-regulation (look-around / symbolic distraction). */
+    SELF_CARE,
 }
 
 sealed interface MoodTrigger {
@@ -122,6 +124,10 @@ sealed interface MoodTrigger {
     data object NightMode : MoodTrigger
     data object DayMode : MoodTrigger
     data object TaskCompletedUseful : MoodTrigger
+    /** Idle look-around finished — small wellbeing bump. */
+    data object SelfCareLookAround : MoodTrigger
+    /** Solo distraction scene finished — larger wellbeing bump. */
+    data object SelfCareDistraction : MoodTrigger
     data class LlmEmotion(
         val emotion: RobotEmotion,
         val tier: LlmEmotionValenceTier = LlmEmotionValenceTier.FULL,

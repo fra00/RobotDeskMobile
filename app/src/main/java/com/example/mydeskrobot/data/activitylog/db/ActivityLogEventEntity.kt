@@ -13,6 +13,7 @@ import com.example.mydeskrobot.domain.activitylog.EpisodeKind
         Index(value = ["dayKey"]),
         Index(value = ["timestampMs"]),
         Index(value = ["scheduledDayKey"]),
+        Index(value = ["sourceChannel"]),
     ],
 )
 data class ActivityLogEventEntity(

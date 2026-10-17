@@ -55,4 +55,18 @@ class ConversationLogParserTest {
         assertEquals(2, entries.size)
         assertTrue(entries.none { it.role == "system" })
     }
+
+    @Test
+    fun `parseEpisodicEntries excludes robot svago distraction lines`() {
+        val log = """
+            Tu: ok
+            Sistema (svago): [robot] Ha iniziato a giocare a Pong
+            Sistema (WhatsApp): Mario: ci vediamo stasera?
+            Robot: va bene
+        """.trimIndent()
+        val entries = ConversationLogParser.parseEpisodicEntries(log)
+        assertEquals(3, entries.size)
+        assertTrue(entries.none { it.text.contains("Pong", ignoreCase = true) })
+        assertTrue(entries.any { it.text.startsWith("WhatsApp:") })
+    }
 }

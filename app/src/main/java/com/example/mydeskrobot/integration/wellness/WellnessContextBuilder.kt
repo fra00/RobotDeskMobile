@@ -1,6 +1,7 @@
 package com.example.mydeskrobot.integration.wellness
 
 import com.example.mydeskrobot.data.activitylog.ActivityLogRepository
+import com.example.mydeskrobot.data.predictivity.HabitSlotCodec
 import com.example.mydeskrobot.domain.wellness.WellnessCustomDomain
 import com.example.mydeskrobot.domain.wellness.WellnessDomains
 import com.example.mydeskrobot.domain.wellness.WellnessPhase
@@ -30,7 +31,7 @@ class WellnessContextBuilder(
             }
         val activePatterns = unifiedMemoryRepository
             .getToolByCategory(MemoryCategory.PATTERN, limit = 8)
-            .map { it.value }
+            .map { HabitSlotCodec.formatAutonomyValueForPrompt(it.value) }
         val recentObservations = unifiedMemoryRepository
             .getRecentObservations(limit = 6)
             .map { it.value }

@@ -11,9 +11,16 @@ object HabitSlotKey {
         bucketMinutes: Int = ProactivityConstants.TIME_BUCKET_MINUTES,
         timeZone: TimeZone = TimeZone.getDefault(),
     ): Int {
-        val calendar = Calendar.getInstance(timeZone).apply { timeInMillis = timestampMs }
-        val minutes = calendar.get(Calendar.HOUR_OF_DAY) * 60 + calendar.get(Calendar.MINUTE)
-        return (minutes / bucketMinutes) * bucketMinutes
+        val minutes = minutesSinceMidnight(timestampMs, timeZone)
+        return timeBucketMinutesFromClock(minutes, bucketMinutes)
+    }
+
+    fun timeBucketMinutesFromClock(
+        minutesSinceMidnight: Int,
+        bucketMinutes: Int = ProactivityConstants.TIME_BUCKET_MINUTES,
+    ): Int {
+        val normalized = minutesSinceMidnight.mod(24 * 60)
+        return (normalized / bucketMinutes) * bucketMinutes
     }
 
     fun minutesSinceMidnight(

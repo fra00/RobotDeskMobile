@@ -19,6 +19,10 @@ data class MoodValenceConfig(
     val eyePokeTier3: Float = -0.30f,
     val idleBored: Float = -0.05f,
     val idleDrowsy: Float = -0.10f,
+    /** After idle look-around completes (self-regulation). */
+    val selfCareLookAround: Float = 0.04f,
+    /** After a full solo distraction scene (music / reading / pong / away). */
+    val selfCareDistraction: Float = 0.08f,
     val decayTowardBaseline: Float = 0.15f,
     val maxRecentDeltas: Int = 5,
     val llmSad: Float = LLM_SAD_DELTA,

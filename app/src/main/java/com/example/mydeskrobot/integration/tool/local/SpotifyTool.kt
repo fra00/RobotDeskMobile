@@ -44,7 +44,7 @@ class SpotifyTool(
     override suspend fun execute(invocation: ToolInvocation): ToolResult {
         val rawQuery = invocation.params["query"]?.toString().orEmpty()
         val searchQuery = normalizeQuery(rawQuery)
-        val httpsUri = buildSearchUri(searchQuery)
+        val httpsUri = Uri.parse(buildSearchUri(searchQuery))
 
         return try {
             openUri(httpsUri)
@@ -76,7 +76,7 @@ class SpotifyTool(
     }
 
     private fun tryFallbackSpotifyScheme(query: String): ToolResult {
-        val fallbackUri = buildSpotifySchemeUri(query)
+        val fallbackUri = Uri.parse(buildSpotifySchemeUri(query))
         return try {
             openUri(fallbackUri)
             Log.i(TAG, "Spotify aperto (fallback scheme): query=$query")
@@ -107,16 +107,16 @@ class SpotifyTool(
             return trimmed
         }
 
-        fun buildSearchUri(query: String): Uri {
+        fun buildSearchUri(query: String): String {
             val normalized = normalizeQuery(query)
-            val encoded = Uri.encode(normalized)
-            return Uri.parse("$HTTPS_SEARCH_BASE$encoded")
+            val encoded = java.net.URLEncoder.encode(normalized, java.nio.charset.StandardCharsets.UTF_8)
+            return "$HTTPS_SEARCH_BASE$encoded"
         }
 
-        fun buildSpotifySchemeUri(query: String): Uri {
+        fun buildSpotifySchemeUri(query: String): String {
             val normalized = normalizeQuery(query)
-            val encoded = Uri.encode(normalized)
-            return Uri.parse("spotify:search:$encoded")
+            val encoded = java.net.URLEncoder.encode(normalized, java.nio.charset.StandardCharsets.UTF_8)
+            return "spotify:search:$encoded"
         }
     }
 }

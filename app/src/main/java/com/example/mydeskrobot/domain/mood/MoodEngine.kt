@@ -46,6 +46,20 @@ class MoodEngine(
                     now = now,
                     guard = { !isAnnoyedFromEyePoke(current) },
                 )
+            is MoodTrigger.SelfCareLookAround ->
+                applySelfCare(
+                    current = current,
+                    delta = valenceConfig.selfCareLookAround,
+                    event = "svago_look_around",
+                    now = now,
+                )
+            is MoodTrigger.SelfCareDistraction ->
+                applySelfCare(
+                    current = current,
+                    delta = valenceConfig.selfCareDistraction,
+                    event = "svago_distrazione",
+                    now = now,
+                )
             is MoodTrigger.LlmEmotion -> evaluateLlmEmotion(current, trigger.emotion, trigger.tier, now)
             is MoodTrigger.UserApology -> transitionOnApology(current, now)
             is MoodTrigger.EyePoked -> transitionOnEyePoke(current, trigger.tier, now)
@@ -104,6 +118,25 @@ class MoodEngine(
             reason = MoodReason.LLM_EXPRESSION,
             now = now,
             guard = { delta < 0f || !isAnnoyedFromEyePoke(current) },
+        )
+    }
+
+    private fun applySelfCare(
+        current: RobotMood,
+        delta: Float,
+        event: String,
+        now: Long,
+    ): RobotMood? {
+        if (current.baseEmotion == RobotEmotion.SLEEPING || current.reason == MoodReason.NIGHT_TIME) {
+            return null
+        }
+        return applyDelta(
+            current = current,
+            delta = delta,
+            event = event,
+            reason = MoodReason.SELF_CARE,
+            now = now,
+            guard = { !isAnnoyedFromEyePoke(current) },
         )
     }
 

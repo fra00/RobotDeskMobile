@@ -1,8 +1,8 @@
 # My Desk Robot — Autonomous Agent Vision
 
-> **Scopo:** Documento di riferimento per l'evoluzione verso un agente autonomo.  
-> **Stato:** Draft v1  
-> **Data:** Maggio 2026
+> **NON È LA ROADMAP.** SSOT aperto: [`docs/TODO.md`](../TODO.md).  
+> Questo file è **visione / draft storico** (maggio 2026). Le checklist H1–H6 qui sotto possono risultare «fatte» rispetto a `TODO.md` — **fidarsi sempre di `TODO.md`**.  
+> **Stato:** Draft v1 — riferimento concettuale OODA / companion, non checklist implementativa.
 
 ---
 
@@ -283,8 +283,9 @@ Il silenzio intelligente è il feature principale.
 | `docs/ROBOT_CONTEXT.md` | Profili e silenzi |
 | `docs/ROBOT_EXPRESSIONS.md` | Emozioni occhi |
 | `docs/SCHEDULED_TASKS.md` | Reminder (stesso pattern) |
-| `docs/Drafts/AgentEvolution-GapAnalysis.md` | Gap analysis vs draft Claude |
+| `docs/TODO.md` | **SSOT roadmap aperta** |
+| `docs/PROACTIVE_ARCHITECTURE.md` | Predittività + Wellness (H7) |
 
 ---
 
-*Ultimo aggiornamento: maggio 2026*
+*Banner allineamento: settembre 2026. Contenuto vision: maggio 2026.*

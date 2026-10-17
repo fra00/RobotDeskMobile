@@ -30,4 +30,6 @@ Rules:
 - If nothing useful is found, return {"facts": []}.
 - pinned: true only for user-declared IDENTITY (name), allergies/emergencies, or explicit "ricordalo sempre". Default false.
 - Never set pinned for WhatsApp senders, phone contacts, episodic mentions, or homonym surnames inferred from third parties.
+- IDENTITY **user display name** ("L'utente si chiama …"): only from a **USER** line that is a formal self-assignment. Never from SYSTEM/notification lines, greetings to others, or contact titles. If the snippet has no USER line, never emit a user-self name IDENTITY.
 - IDENTITY name comes only from the user's own statement — never merge a contact name (e.g. "Francesco Rossi contatto") with the user's name.
+- Contact / pet / third-party names → FACT (or skip), never user-self IDENTITY.

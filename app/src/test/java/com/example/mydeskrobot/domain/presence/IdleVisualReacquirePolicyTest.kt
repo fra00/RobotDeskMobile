@@ -17,7 +17,6 @@ class IdleVisualReacquirePolicyTest {
                 lastFaceSeenAtMs = null,
                 lastIdleAttemptAtMs = null,
                 isWaitingForHotword = true,
-                suppressForRobotContext = false,
             ),
         )
     }
@@ -31,7 +30,6 @@ class IdleVisualReacquirePolicyTest {
                 lastFaceSeenAtMs = null,
                 lastIdleAttemptAtMs = null,
                 isWaitingForHotword = true,
-                suppressForRobotContext = false,
             ),
         )
     }
@@ -46,7 +44,6 @@ class IdleVisualReacquirePolicyTest {
                 lastFaceSeenAtMs = lastFace,
                 lastIdleAttemptAtMs = null,
                 isWaitingForHotword = true,
-                suppressForRobotContext = false,
             ),
         )
         assertTrue(
@@ -56,7 +53,6 @@ class IdleVisualReacquirePolicyTest {
                 lastFaceSeenAtMs = lastFace,
                 lastIdleAttemptAtMs = null,
                 isWaitingForHotword = true,
-                suppressForRobotContext = false,
             ),
         )
     }
@@ -71,7 +67,6 @@ class IdleVisualReacquirePolicyTest {
                 lastFaceSeenAtMs = null,
                 lastIdleAttemptAtMs = now - 1_000L,
                 isWaitingForHotword = true,
-                suppressForRobotContext = false,
             ),
         )
     }
@@ -85,21 +80,6 @@ class IdleVisualReacquirePolicyTest {
                 lastFaceSeenAtMs = null,
                 lastIdleAttemptAtMs = null,
                 isWaitingForHotword = false,
-                suppressForRobotContext = false,
-            ),
-        )
-    }
-
-    @Test
-    fun `skips when robot context suppresses`() {
-        assertFalse(
-            IdleVisualReacquirePolicy.shouldScan(
-                nowMs = sessionStart + IdleVisualReacquirePolicy.NO_FACE_THRESHOLD_MS,
-                sessionStartedAtMs = sessionStart,
-                lastFaceSeenAtMs = null,
-                lastIdleAttemptAtMs = null,
-                isWaitingForHotword = true,
-                suppressForRobotContext = true,
             ),
         )
     }

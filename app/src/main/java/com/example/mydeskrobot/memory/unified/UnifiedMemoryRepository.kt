@@ -11,6 +11,7 @@ import com.example.mydeskrobot.data.spatial.SpatialContextRepository
 import com.example.mydeskrobot.data.spatial.SpatialPlaceRepository
 import com.example.mydeskrobot.domain.activitylog.EpisodeConfidence
 import com.example.mydeskrobot.domain.activitylog.EpisodeKind
+import com.example.mydeskrobot.domain.activitylog.RobotSelfActivityFilter
 import com.example.mydeskrobot.domain.list.ListItemType
 import com.example.mydeskrobot.domain.spatial.SpatialPlace
 import com.example.mydeskrobot.memory.MemoryExactMatch
@@ -402,7 +403,12 @@ class UnifiedMemoryRepository(
         return dao.getAllActive()
             .filter { doc ->
                 doc.kind == MemoryDocumentKind.EPISODE.name &&
-                    (doc.dayKey == normalizedDayKey || doc.scheduledDayKey == normalizedDayKey)
+                    (doc.dayKey == normalizedDayKey || doc.scheduledDayKey == normalizedDayKey) &&
+                    RobotSelfActivityFilter.isUserFacingEpisode(
+                        label = doc.value,
+                        sourceChannel = doc.sourceChannel,
+                        actor = doc.actor,
+                    )
             }
             .sortedBy { it.scheduledAtMs ?: it.createdAt }
     }
@@ -415,7 +421,12 @@ class UnifiedMemoryRepository(
         return dao.getAllActive()
             .filter { doc ->
                 doc.kind == MemoryDocumentKind.EPISODE.name &&
-                    (doc.dayKey ?: "") >= sinceDayKey
+                    (doc.dayKey ?: "") >= sinceDayKey &&
+                    RobotSelfActivityFilter.isUserFacingEpisode(
+                        label = doc.value,
+                        sourceChannel = doc.sourceChannel,
+                        actor = doc.actor,
+                    )
             }
             .sortedByDescending { it.scheduledAtMs ?: it.createdAt }
             .take(limit)
@@ -527,20 +538,16 @@ class UnifiedMemoryRepository(
         }
 
         val allActive = dao.getAllActive(now)
-        val searchableDocuments = if (request.excludeSpatialLandmarks || request.localizeQuery) {
-            allActive.filter { doc ->
-                doc.kind != MemoryDocumentKind.SPATIAL.name &&
-                    !(request.preferEpisodicDetail && doc.kind == MemoryDocumentKind.HABIT_SUMMARY.name)
+        val searchableDocuments = allActive.filter { doc ->
+            if (request.excludeSpatialLandmarks || request.localizeQuery) {
+                if (doc.kind == MemoryDocumentKind.SPATIAL.name) return@filter false
             }
-        } else if (request.preferEpisodicDetail) {
-            allActive.filter { it.kind != MemoryDocumentKind.HABIT_SUMMARY.name }
-        } else if (request.preferUserFacts) {
-            allActive.filter {
-                it.kind != MemoryDocumentKind.HABIT_SUMMARY.name &&
-                    it.kind != MemoryDocumentKind.EPISODE.name
+            if (request.preferUserFacts && doc.kind == MemoryDocumentKind.EPISODE.name) {
+                return@filter false
             }
-        } else {
-            allActive
+            // AUTONOMY / HABIT_SUMMARY stay searchable; RecallContextFormatter labels them
+            // as expected habits (never under FATTI). preferEpisodicDetail does not hide them.
+            true
         }
         val semanticQueries = buildSemanticQueries(request)
         semanticQueries.forEach { searchQuery ->
@@ -679,7 +686,12 @@ class UnifiedMemoryRepository(
         return dao.getActiveByKind(MemoryDocumentKind.EPISODE.name, limit * 4)
             .filter {
                 it.category == EpisodeKind.PHYSICAL_NOW.name &&
-                    (it.dayKey ?: "") >= sinceDayKey
+                    (it.dayKey ?: "") >= sinceDayKey &&
+                    RobotSelfActivityFilter.isUserFacingEpisode(
+                        label = it.value,
+                        sourceChannel = it.sourceChannel,
+                        actor = it.actor,
+                    )
             }
             .sortedByDescending { it.createdAt }
             .take(limit)

@@ -17,13 +17,13 @@ Cognitive projections (`memory_documents.db`) are synced **synchronously** (`sus
 | Component | Role |
 |-----------|------|
 | [`MemoryProjectionGuard`](../app/src/main/java/com/example/mydeskrobot/memory/unified/MemoryProjectionGuard.kt) | Wraps each projection write: verify `externalRef` + `isActive` + non-blank value; **one retry**; on double failure → drift counter in DataStore |
-| [`MemoryProjectionSync`](../app/src/main/java/com/example/mydeskrobot/memory/unified/MemoryProjectionSync.kt) | All handlers delegate to guard |
+| [`UnifiedMemoryWriter`](../app/src/main/java/com/example/mydeskrobot/memory/unified/UnifiedMemoryWriter.kt) | Single write path; projections go through the guard (legacy `MemoryProjectionSync` removed) |
 | [`MemoryProjectionReconciler`](../app/src/main/java/com/example/mydeskrobot/memory/unified/MemoryProjectionReconciler.kt) | Idempotent rebuild from `ScheduledTaskRepository`, `ListItemRepository`, `ActivityLogRepository`, spatial stores |
 | [`MemoryProjectionBootstrap`](../app/src/main/java/com/example/mydeskrobot/memory/unified/MemoryProjectionBootstrap.kt) | Weekly reconcile (7 days) on app start via `ConversationViewModel` |
 
 **DataStore keys** (`MemorySettingsRepository`): `projection_drift_count`, `last_projection_drift_at_ms`, `last_projection_reconcile_at_ms`.
 
-**Wiring:** `UnifiedMemoryFactory` always provides `projectionSync`. `ReminderTool` logs a warning if `projectionSync == null` (Context-only test constructors).
+**Wiring:** `UnifiedMemoryFactory` / `UnifiedMemoryWriter` always use the guard. `ReminderTool` logs a warning if writer/projection is unavailable (Context-only test constructors).
 
 ## 2.2 SHOULD — Recall budget + temporal scope
 
@@ -37,8 +37,7 @@ Cognitive projections (`memory_documents.db`) are synced **synchronously** (`sus
 |-----------|------|
 | [`MemoryRecallBudget`](../app/src/main/java/com/example/mydeskrobot/memory/unified/MemoryRecallBudget.kt) | `TOTAL=60`, `EPISODE_MAX_SINGLE_DAY=40`, `NON_EPISODE_MIN_SINGLE_DAY=20`, `EPISODE_MAX_WIDE_RANGE=10`, `USER_FACT_MIN_DEFAULT=15` |
 | [`applyRecallBudget`](../app/src/main/java/com/example/mydeskrobot/memory/unified/UnifiedMemoryRepository.kt) | Partition by `MemoryDocumentKind` before global cap |
-| [`TemporalScope`](../app/src/main/java/com/example/mydeskrobot/reasoning/memory/TemporalScope.kt) | `NONE`, `SINGLE_DAY`, `WEEK`, `MONTH` |
-| [`MemoryRecallCueResolver`](../app/src/main/java/com/example/mydeskrobot/reasoning/memory/MemoryRecallCueResolver.kt) | Italian cues: *questa settimana*, *settimana scorsa*, *questo mese*, *mese scorso* |
+| [`TemporalScope`](../app/src/main/java/com/example/mydeskrobot/reasoning/memory/TemporalScope.kt) | `NONE`, `SINGLE_DAY`, `WEEK`, `MONTH` — set by **LLM recall planner** JSON (legacy `MemoryRecallCueResolver` keyword rules removed) |
 
 **Routing:**
 

@@ -47,6 +47,9 @@ class FakeActivityLogDao(
         events.filter { it.dayKey == dayKey && it.label == label }
             .maxByOrNull { it.timestampMs }
 
+    override suspend fun findBySourceChannel(sourceChannel: String): ActivityLogEventEntity? =
+        events.firstOrNull { it.sourceChannel == sourceChannel }
+
     override suspend fun findEpisodicForMerge(
         scheduledDayKey: String,
         eventKind: EpisodeKind,

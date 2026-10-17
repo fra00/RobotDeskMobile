@@ -11,7 +11,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         ActivityLogEventEntity::class,
         ActivityHabitProfileEntity::class,
     ],
-    version = 3,
+    version = 4,
     exportSchema = false,
 )
 @TypeConverters(ActivityLogConverters::class)
@@ -50,6 +50,15 @@ abstract class ActivityLogDatabase : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL(
                     "ALTER TABLE activity_log_events ADD COLUMN isUnread INTEGER NOT NULL DEFAULT 0",
+                )
+            }
+        }
+
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_activity_log_events_sourceChannel " +
+                        "ON activity_log_events(sourceChannel)",
                 )
             }
         }

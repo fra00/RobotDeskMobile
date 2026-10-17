@@ -73,18 +73,19 @@ Prompt asset: [`memory_recall_planner_prompt.txt`](../app/src/main/assets/prompt
 | Focus | Effect |
 |-------|--------|
 | `USER_FACTS` | `preferUserFacts=true`; rank all user facts via `search_queries` |
-| `EPISODIC` | `preferEpisodicDetail=true` |
+| `EPISODIC` | `preferEpisodicDetail=true`; habit kinds may still match semantically and are labeled expected (not done) |
 | `MESSAGES` | If scope `NONE` → expand to `WEEK` |
-| `GENERAL` | If scope `NONE` → expand to `WEEK`; auto `include_habit_summary` when scope is `WEEK`; pins all user-facing facts + recent episodes for broad profile |
+| `GENERAL` | If scope `NONE` → expand to `WEEK`; `include_habit_summary` only if planner sets it (broad profile / explicit habits) |
 | `PLANNING` | Uses plan temporal scope / day |
 | `SPATIAL` | `localizeQuery=true`; spatial landmarks excluded from RAG pool |
-| `GENERAL` | No prefer flags |
+
+`include_habit_summary` **pins** `HABIT_SUMMARY` prose when true. Habit slots (`AUTONOMY`/`PATTERN`) can enter via semantic search regardless; `RecallContextFormatter` always puts them under `ABITUDINI ATTESE`, never `FATTI`.
 
 ## RAG (unchanged role)
 
 After the plan: `MemorySearchScorer` + `MemoryRecallBudget` (60) + `RecallContextFormatter`. Multiple `search_queries` each run rank; documents keep **max score** across queries.
 
-`include_habit_summary` pins `HABIT_SUMMARY` only when the planner sets it `true` (not automatic on WEEK anymore).
+`include_habit_summary` pins `HABIT_SUMMARY` only when the planner sets it `true` (not automatic on WEEK anymore). Habit slots may still match via semantic search and are labeled in MEMORIA as expected habits.
 
 ## Key files
 

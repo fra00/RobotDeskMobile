@@ -38,7 +38,7 @@ Target: ~**1.8s** from last committed words to `UtteranceReadyForLlm`, then VM â
 - `data/speech/VoskSpeechToTextDataSource.kt`
 - `data/speech/SpeechToTextDataSource.kt` (contract KDoc)
 
-See also: `docs/Drafts/STT-Analysis.md` (problem analysis + implemented notes).
+See also: historical STT latency notes were retired; current SSOT is this file.
 
 ## Beep suppression (Android STT)
 

@@ -24,10 +24,14 @@ class AndroidTextToSpeechDataSource(
     private val activeSpeakContinuation =
         AtomicReference<CancellableContinuation<Result<Unit>>?>(null)
 
+    companion object {
+        private const val DEFAULT_LANGUAGE_TAG = "it-IT"
+    }
+
     init {
         tts = TextToSpeech(appContext) { status ->
             if (status == TextToSpeech.SUCCESS) {
-                tts?.language = Locale.forLanguageTag("it-IT")
+                tts?.language = Locale.forLanguageTag(DEFAULT_LANGUAGE_TAG)
             }
             initDeferred.complete(status == TextToSpeech.SUCCESS)
         }
@@ -36,6 +40,7 @@ class AndroidTextToSpeechDataSource(
     suspend fun speak(
         text: String,
         prosody: TtsProsody = TtsProsody.NEUTRAL,
+        languageTag: String? = null,
     ): Result<Unit> = withContext(Dispatchers.Main) {
         if (!initDeferred.await()) {
             return@withContext Result.failure(IllegalStateException("TextToSpeech init failed"))
@@ -50,58 +55,70 @@ class AndroidTextToSpeechDataSource(
             return@withContext Result.failure(IllegalArgumentException("Empty TTS text"))
         }
 
+        val overrideTag = languageTag?.trim().orEmpty()
+        if (overrideTag.isNotEmpty()) {
+            engine.language = Locale.forLanguageTag(overrideTag)
+        } else {
+            engine.language = Locale.forLanguageTag(DEFAULT_LANGUAGE_TAG)
+        }
+
         // Mood-driven voice shaping; reset to defaults happens on the next call.
         engine.setPitch(prosody.pitch)
         engine.setSpeechRate(prosody.rate)
 
-        suspendCancellableCoroutine { continuation ->
-            activeSpeakContinuation.set(continuation)
-            val utteranceId = "robot_response_${System.currentTimeMillis()}"
+        try {
+            suspendCancellableCoroutine { continuation ->
+                activeSpeakContinuation.set(continuation)
+                val utteranceId = "robot_response_${System.currentTimeMillis()}"
 
-            engine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-                override fun onStart(utteranceId: String?) = Unit
+                engine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+                    override fun onStart(utteranceId: String?) = Unit
 
-                override fun onDone(utteranceId: String?) {
-                    activeSpeakContinuation.compareAndSet(continuation, null)
+                    override fun onDone(utteranceId: String?) {
+                        activeSpeakContinuation.compareAndSet(continuation, null)
+                        if (continuation.isActive) {
+                            continuation.resume(Result.success(Unit))
+                        }
+                    }
+
+                    @Deprecated("Deprecated in Java")
+                    override fun onError(utteranceId: String?) {
+                        activeSpeakContinuation.compareAndSet(continuation, null)
+                        if (continuation.isActive) {
+                            continuation.resume(
+                                Result.failure(IllegalStateException("TTS playback error")),
+                            )
+                        }
+                    }
+
+                    override fun onError(utteranceId: String?, errorCode: Int) {
+                        activeSpeakContinuation.compareAndSet(continuation, null)
+                        if (continuation.isActive) {
+                            continuation.resume(
+                                Result.failure(
+                                    IllegalStateException("TTS playback error ($errorCode)"),
+                                ),
+                            )
+                        }
+                    }
+                })
+
+                val params = Bundle()
+                val result = engine.speak(trimmed, TextToSpeech.QUEUE_FLUSH, params, utteranceId)
+                if (result == TextToSpeech.ERROR) {
                     if (continuation.isActive) {
-                        continuation.resume(Result.success(Unit))
+                        continuation.resume(Result.failure(IllegalStateException("TTS speak failed")))
                     }
                 }
 
-                @Deprecated("Deprecated in Java")
-                override fun onError(utteranceId: String?) {
+                continuation.invokeOnCancellation {
                     activeSpeakContinuation.compareAndSet(continuation, null)
-                    if (continuation.isActive) {
-                        continuation.resume(
-                            Result.failure(IllegalStateException("TTS playback error")),
-                        )
-                    }
-                }
-
-                override fun onError(utteranceId: String?, errorCode: Int) {
-                    activeSpeakContinuation.compareAndSet(continuation, null)
-                    if (continuation.isActive) {
-                        continuation.resume(
-                            Result.failure(
-                                IllegalStateException("TTS playback error ($errorCode)"),
-                            ),
-                        )
-                    }
-                }
-            })
-
-            val params = Bundle()
-            val result = engine.speak(trimmed, TextToSpeech.QUEUE_FLUSH, params, utteranceId)
-            if (result == TextToSpeech.ERROR) {
-                if (continuation.isActive) {
-                    continuation.resume(Result.failure(IllegalStateException("TTS speak failed")))
+                    engine.stop()
                 }
             }
-
-            continuation.invokeOnCancellation {
-                activeSpeakContinuation.compareAndSet(continuation, null)
-                engine.stop()
-            }
+        } finally {
+            // Always restore default Italian voice for the next (non-override) speak.
+            engine.language = Locale.forLanguageTag(DEFAULT_LANGUAGE_TAG)
         }
     }
 

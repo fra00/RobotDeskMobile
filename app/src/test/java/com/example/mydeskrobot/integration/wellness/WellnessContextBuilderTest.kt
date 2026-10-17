@@ -117,6 +117,38 @@ class WellnessContextBuilderTest {
         assertNull(input.orderObservationFresh)
     }
 
+    @Test
+    fun `build formats habit slots as expected habits not raw json`() = runTest {
+        val slot = com.example.mydeskrobot.domain.predictivity.HabitSlot(
+            slotKey = "tapis_roulant|1140",
+            canonicalLabel = "tapis_roulant",
+            displayLabel = "tapis roulant",
+            typicalTimeMinutes = 1140,
+            hitCount = 5,
+            confidence = 0.8f,
+        )
+        val patternDoc = MemoryDocumentEntity(
+            id = 99L,
+            value = com.example.mydeskrobot.data.predictivity.HabitSlotCodec.encode(slot),
+            kind = MemoryDocumentKind.AUTONOMY.name,
+            category = MemoryCategory.PATTERN.name,
+            source = MemoryDocumentSource.EXTRACTOR.name,
+            confidence = 0.8f,
+            createdAt = now,
+            updatedAt = now,
+        )
+        val builder = createBuilder(observations = listOf(patternDoc))
+
+        val input = builder.build(
+            phase = WellnessPhase.DOMAIN_SCORE,
+            bodyConfigured = false,
+            bodyReachable = false,
+        )
+
+        assertTrue(input.activePatterns.any { it.contains("tapis roulant") && it.contains("19:00") })
+        assertTrue(input.activePatterns.none { it.contains("HABIT_SLOT:v1:") })
+    }
+
     private fun createBuilder(observations: List<MemoryDocumentEntity>): WellnessContextBuilder {
         val unified = UnifiedMemoryRepository.createForTest(FakeMemoryDocumentDao(observations))
         val activityLog = ActivityLogRepository.createForTest(FakeActivityLogDao())

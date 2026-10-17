@@ -226,7 +226,7 @@ class UnifiedMemoryRepositoryTest {
     }
 
     @Test
-    fun recallForQuestion_preferEpisodicDetail_includes_tapis_not_habit_summary() = runTest {
+    fun recallForQuestion_preferEpisodicDetail_includes_tapis_episode_habits_may_match() = runTest {
         val dao = FakeMemoryDocumentDao()
         val repository = UnifiedMemoryRepository.createForTest(dao)
         repository.saveHabitSummaryProjection(
@@ -245,17 +245,100 @@ class UnifiedMemoryRepositoryTest {
             rawPhrase = "40 minuti",
             source = MemoryDocumentSource.TOOL,
         )
+        val habitSlot = com.example.mydeskrobot.domain.predictivity.HabitSlot(
+            slotKey = "tapis_roulant|1140",
+            canonicalLabel = "tapis_roulant",
+            displayLabel = "tapis roulant",
+            typicalTimeMinutes = 1140,
+            hitCount = 5,
+            confidence = 0.8f,
+            lastHitDayKey = dayKey,
+        )
+        repository.upsertHabitSlot(
+            externalRef = com.example.mydeskrobot.data.predictivity.HabitSlotCodec.externalRef(habitSlot.slotKey),
+            value = com.example.mydeskrobot.data.predictivity.HabitSlotCodec.encode(habitSlot),
+            confidence = habitSlot.confidence,
+            ttlDays = 30,
+        )
 
         val recalled = repository.recallForQuestion(
             MemoryRecallRequest(
                 query = "tapis roulant recentemente",
                 temporalScope = TemporalScope.WEEK,
                 preferEpisodicDetail = true,
+                searchQueries = listOf("tapis roulant"),
             ),
         )
 
-        assertTrue(recalled.any { it.value.contains("tapis roulant", ignoreCase = true) })
+        assertTrue(
+            recalled.any {
+                it.kind == MemoryDocumentKind.EPISODE.name &&
+                    it.value.contains("tapis roulant", ignoreCase = true)
+            },
+        )
+        // Habit summary is not pinned without includeHabitSummary; slots may still match.
         assertTrue(recalled.none { it.kind == MemoryDocumentKind.HABIT_SUMMARY.name })
+        val formatted = com.example.mydeskrobot.integration.context.RecallContextFormatter.formatRecallBlock(
+            documents = recalled,
+            temporalScope = TemporalScope.WEEK,
+        )
+        assertFalse(formatted.substringAfter("FATTI:", missingDelimiterValue = "").contains("tapis"))
+        if (recalled.any { it.kind == MemoryDocumentKind.AUTONOMY.name }) {
+            assertTrue(formatted.contains("ABITUDINI ATTESE:"))
+            assertFalse(formatted.contains("HABIT_SLOT:v1:"))
+        }
+    }
+
+    @Test
+    fun recallForQuestion_general_week_without_habit_flag_may_include_habit_slots() = runTest {
+        val dao = FakeMemoryDocumentDao()
+        val repository = UnifiedMemoryRepository.createForTest(dao)
+        val threeDaysAgo = System.currentTimeMillis() - 3L * 24 * 60 * 60 * 1000
+        val dayKey = com.example.mydeskrobot.data.activitylog.ActivityLogRepository.dayKeyFor(threeDaysAgo)
+        repository.saveEpisodeProjection(
+            eventId = 17L,
+            label = "passeggiata con Brina",
+            eventKind = com.example.mydeskrobot.domain.activitylog.EpisodeKind.PHYSICAL_NOW,
+            dayKey = dayKey,
+            timestampMs = threeDaysAgo,
+            source = MemoryDocumentSource.TOOL,
+        )
+        val habitSlot = com.example.mydeskrobot.domain.predictivity.HabitSlot(
+            slotKey = "tapis_roulant|1140",
+            canonicalLabel = "tapis_roulant",
+            displayLabel = "tapis roulant",
+            typicalTimeMinutes = 1140,
+            hitCount = 5,
+            confidence = 0.8f,
+            lastHitDayKey = dayKey,
+        )
+        repository.upsertHabitSlot(
+            externalRef = com.example.mydeskrobot.data.predictivity.HabitSlotCodec.externalRef(habitSlot.slotKey),
+            value = com.example.mydeskrobot.data.predictivity.HabitSlotCodec.encode(habitSlot),
+            confidence = habitSlot.confidence,
+            ttlDays = 30,
+        )
+
+        val recalled = repository.recallForQuestion(
+            MemoryRecallRequest(
+                query = "attività fisica questa settimana sufficiente",
+                temporalScope = TemporalScope.WEEK,
+                preferEpisodicDetail = false,
+                includeHabitSummary = false,
+                searchQueries = listOf("attività fisica", "tapis roulant", "allenamento"),
+            ),
+        )
+
+        assertTrue(recalled.any { it.value.contains("passeggiata", ignoreCase = true) })
+        assertTrue(recalled.any { it.kind == MemoryDocumentKind.AUTONOMY.name })
+        val formatted = com.example.mydeskrobot.integration.context.RecallContextFormatter.formatRecallBlock(
+            documents = recalled,
+            temporalScope = TemporalScope.WEEK,
+        )
+        assertTrue(formatted.contains("ABITUDINI ATTESE:"))
+        assertTrue(formatted.contains("tapis roulant"))
+        assertFalse(formatted.contains("HABIT_SLOT:v1:"))
+        assertFalse(formatted.substringAfter("FATTI:", missingDelimiterValue = "").contains("tapis"))
     }
 
     @Test
@@ -283,6 +366,7 @@ class UnifiedMemoryRepositoryTest {
             MemoryRecallPlan(
                 recallFocus = RecallFocus.GENERAL,
                 searchQueries = listOf("fatti episodi promemoria"),
+                includeHabitSummary = true,
             ).toRequest("ripeti tutto quello che sai di me"),
         )
 

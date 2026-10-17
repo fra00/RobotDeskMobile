@@ -17,11 +17,22 @@ import androidx.core.content.ContextCompat
 import com.example.mydeskrobot.MainActivity
 import com.example.mydeskrobot.R
 import com.example.mydeskrobot.data.check.FireAndCheckRepository
+import com.example.mydeskrobot.data.context.RobotContextRepository
+import com.example.mydeskrobot.data.heartbeat.HeartbeatSettingsRepository
+import com.example.mydeskrobot.data.proxy.DeviceModeRepository
+import com.example.mydeskrobot.data.scheduled.ScheduledTaskAlarmScheduler
 import com.example.mydeskrobot.data.scheduled.ScheduledTaskRepository
 import com.example.mydeskrobot.data.scheduled.ScheduledTaskStatus
+import com.example.mydeskrobot.data.workingmemory.WorkingMemoryRepository
+import com.example.mydeskrobot.domain.check.CommitmentFollowUpPolicy
+import com.example.mydeskrobot.domain.check.FireAndCheckKind
 import com.example.mydeskrobot.domain.input.SystemInputDispatcher
 import com.example.mydeskrobot.domain.input.SystemInputEvent
+import com.example.mydeskrobot.domain.proactive.GateDecision
+import com.example.mydeskrobot.domain.proactive.ProactiveSpeakContext
+import com.example.mydeskrobot.domain.proactive.ProactiveSpeakGate
 import com.example.mydeskrobot.integration.input.scheduled.ScheduledTaskInputSource
+import com.example.mydeskrobot.integration.proxy.capability.PhoneCapabilityClient
 import com.example.mydeskrobot.memory.unified.UnifiedMemoryFactory
 import com.example.mydeskrobot.reasoning.model.RobotInput
 import kotlinx.coroutines.runBlocking
@@ -47,8 +58,17 @@ class ReminderAlarmReceiver : BroadcastReceiver() {
             return
         }
 
+        val facRepo = FireAndCheckRepository.create(context)
+        val deferred = runBlocking {
+            maybeDeferCommitmentVerification(context, repository, facRepo, taskId, task.message)
+        }
+        if (deferred) {
+            Log.i(TAG, "Deferred commitment verification task $taskId (speak gate)")
+            return
+        }
+
         runBlocking { repository.markFired(taskId) }
-        runBlocking { FireAndCheckRepository.create(context).onReminderFired(taskId) }
+        runBlocking { facRepo.onReminderFired(taskId) }
 
         val message = task.message.ifBlank { "Promemoria" }
         runBlocking {
@@ -60,6 +80,7 @@ class ReminderAlarmReceiver : BroadcastReceiver() {
         }
 
         showNotification(context, taskId, message)
+        maybeFanOutToProxy(context, taskId, message)
 
         val fired = RobotInput.ScheduledTaskFired(
             taskId = taskId,
@@ -72,6 +93,62 @@ class ReminderAlarmReceiver : BroadcastReceiver() {
         val envelope = inputSource.toEnvelope(fired)
         Log.i(TAG, "Dispatching scheduled task $taskId to system input bus")
         SystemInputDispatcher.emit(SystemInputEvent.InputReceived(envelope))
+    }
+
+    /**
+     * Commitment “Verifica impegno” voice follows proactive speak gates.
+     * If blocked, keep PENDING and push trigger later (no notification / no LLM).
+     */
+    private suspend fun maybeDeferCommitmentVerification(
+        context: Context,
+        repository: ScheduledTaskRepository,
+        facRepo: FireAndCheckRepository,
+        taskId: Long,
+        message: String,
+    ): Boolean {
+        if (!CommitmentFollowUpPolicy.isCommitmentVerificationMessage(message)) return false
+        val fac = facRepo.findByVerificationReminderId(taskId)
+        if (fac == null || fac.kind != FireAndCheckKind.COMMITMENT) return false
+
+        val gate = ProactiveSpeakGate.canSpeak(
+            ProactiveSpeakContext(
+                heartbeatSettings = HeartbeatSettingsRepository(context).load(),
+                workingMemory = WorkingMemoryRepository(context).load(),
+                robotContext = RobotContextRepository(context).getStoredState(),
+            ),
+        )
+        if (gate is GateDecision.Proceed) return false
+
+        val newDue = CommitmentFollowUpPolicy.deferDueAt()
+        if (!repository.deferPending(taskId, newDue)) return false
+        ScheduledTaskAlarmScheduler.schedule(context, taskId, newDue)
+        facRepo.updateVerificationSchedule(
+            verificationReminderId = taskId,
+            newVerificationReminderId = taskId,
+            newDueAtMillis = newDue,
+        )
+        Log.d(TAG, "Speak gate skip (${(gate as GateDecision.Skip).reason}) — defer to $newDue")
+        return true
+    }
+
+    private fun maybeFanOutToProxy(context: Context, taskId: Long, message: String) {
+        runBlocking {
+            val modeRepo = DeviceModeRepository(context.applicationContext)
+            if (!modeRepo.isDualReminderEnabled()) return@runBlocking
+            if (!modeRepo.hasPairedProxies()) return@runBlocking
+            val isCommitmentVerify =
+                CommitmentFollowUpPolicy.isCommitmentVerificationMessage(message)
+            val title = if (isCommitmentVerify) "Verifica impegno" else "Promemoria"
+            val notifId = ScheduledTaskNotificationId.forTask(taskId)
+            runCatching {
+                PhoneCapabilityClient(context.applicationContext, modeRepo)
+                    .postLocalNotificationToAll(title, message, notifId)
+            }.onFailure { e ->
+                Log.w(TAG, "Dual reminder fan-out failed", e)
+            }.onSuccess { count ->
+                Log.i(TAG, "Dual reminder fan-out ok count=$count")
+            }
+        }
     }
 
     private fun showNotification(context: Context, notificationId: Long, message: String) {
@@ -96,12 +173,26 @@ class ReminderAlarmReceiver : BroadcastReceiver() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
+        val isCommitmentVerify =
+            CommitmentFollowUpPolicy.isCommitmentVerificationMessage(message)
+        val title = if (isCommitmentVerify) {
+            "Verifica impegno"
+        } else {
+            "Promemoria"
+        }
+
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
-            .setContentTitle("Promemoria")
+            .setContentTitle(title)
             .setContentText(message)
             .setStyle(NotificationCompat.BigTextStyle().bigText(message))
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setPriority(
+                if (isCommitmentVerify) {
+                    NotificationCompat.PRIORITY_DEFAULT
+                } else {
+                    NotificationCompat.PRIORITY_HIGH
+                },
+            )
             .setCategory(NotificationCompat.CATEGORY_REMINDER)
             .setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION))
             .setAutoCancel(true)

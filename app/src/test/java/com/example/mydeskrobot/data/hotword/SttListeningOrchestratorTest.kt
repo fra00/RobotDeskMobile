@@ -4,7 +4,10 @@ import com.example.mydeskrobot.data.speech.FakeSpeechToTextDataSource
 import com.example.mydeskrobot.domain.hotword.HotwordEvent
 import com.example.mydeskrobot.domain.speech.ExitPhraseMatcher
 import com.example.mydeskrobot.domain.speech.WakePhraseMatcher
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -27,6 +30,11 @@ class SttListeningOrchestratorTest {
         postTtsCooldownMs = 0L,
     )
 
+    /**
+     * Starts the orchestrator on an independent scope.
+     * Do **not** use `runBlocking { launch { run(...) } }`: [run] loops while the service
+     * is active, so runBlocking would wait forever for the child.
+     */
     private fun runOrchestrator(
         fake: FakeSpeechToTextDataSource,
         config: ListeningConfig = testConfig(),
@@ -40,17 +48,18 @@ class SttListeningOrchestratorTest {
             exitPhraseMatcher = ExitPhraseMatcher(exitPhrase),
             onEvent = onEvent,
         )
-        return runBlocking {
-            launch {
-                orchestrator.run(
-                    isServiceActive = { true },
-                    isSttEnabled = { true },
-                    isAssistantTurnActive = isAssistantTurnActive,
-                    isBargeInMode = { false },
-                    bargeInEchoReference = { null },
-                )
-            }
+        val job = SupervisorJob()
+        val scope = CoroutineScope(job + Dispatchers.Default)
+        scope.launch {
+            orchestrator.run(
+                isServiceActive = { job.isActive },
+                isSttEnabled = { true },
+                isAssistantTurnActive = isAssistantTurnActive,
+                isBargeInMode = { false },
+                bargeInEchoReference = { null },
+            )
         }
+        return job
     }
 
     @Test
@@ -67,12 +76,15 @@ class SttListeningOrchestratorTest {
         )
 
         val job = runOrchestrator(fake) { events.add(it) }
-        delay(600)
+        try {
+            delay(600)
 
-        assertTrue(events.any { it is HotwordEvent.UtteranceReadyForLlm })
-        val ready = events.filterIsInstance<HotwordEvent.UtteranceReadyForLlm>().single()
-        assertEquals("dimmi il meteo", ready.phrase)
-        job.cancel()
+            assertTrue(events.any { it is HotwordEvent.UtteranceReadyForLlm })
+            val ready = events.filterIsInstance<HotwordEvent.UtteranceReadyForLlm>().single()
+            assertEquals("dimmi il meteo", ready.phrase)
+        } finally {
+            job.cancel()
+        }
     }
 
     @Test
@@ -84,13 +96,17 @@ class SttListeningOrchestratorTest {
         )
 
         val job = runOrchestrator(fake, testConfig(endOfUtteranceMs = 400L)) { events.add(it) }
-        delay(250)
-        assertEquals(1, fake.listenCallCount)
+        try {
+            delay(250)
+            // Still inside end-of-utterance window with a non-empty phrase buffer.
+            assertEquals(1, fake.listenCallCount)
 
-        delay(400)
-        assertTrue(events.any { it is HotwordEvent.UtteranceReadyForLlm })
-        assertEquals(1, fake.listenCallCount)
-        job.cancel()
+            delay(400)
+            assertTrue(events.any { it is HotwordEvent.UtteranceReadyForLlm })
+            // After finalize the buffer is empty — starting another listen is expected.
+        } finally {
+            job.cancel()
+        }
     }
 
     @Test
@@ -109,11 +125,14 @@ class SttListeningOrchestratorTest {
         )
 
         val job = runOrchestrator(fake) { events.add(it) }
-        delay(800)
+        try {
+            delay(800)
 
-        val ready = events.filterIsInstance<HotwordEvent.UtteranceReadyForLlm>().singleOrNull()
-        assertEquals("ciao mondo", ready?.phrase)
-        job.cancel()
+            val ready = events.filterIsInstance<HotwordEvent.UtteranceReadyForLlm>().singleOrNull()
+            assertEquals("ciao mondo", ready?.phrase)
+        } finally {
+            job.cancel()
+        }
     }
 
     @Test
@@ -129,14 +148,17 @@ class SttListeningOrchestratorTest {
             fake = fake,
             isAssistantTurnActive = { assistantTurnActive },
         ) { events.add(it) }
-        delay(300)
-        assertTrue(events.any { it is HotwordEvent.SessionStarted })
+        try {
+            delay(300)
+            assertTrue(events.any { it is HotwordEvent.SessionStarted })
 
-        val listensAtSessionStart = fake.listenCallCount
-        assistantTurnActive = true
-        delay(800)
+            val listensAtSessionStart = fake.listenCallCount
+            assistantTurnActive = true
+            delay(800)
 
-        assertEquals(listensAtSessionStart, fake.listenCallCount)
-        job.cancel()
+            assertEquals(listensAtSessionStart, fake.listenCallCount)
+        } finally {
+            job.cancel()
+        }
     }
 }

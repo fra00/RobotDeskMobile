@@ -4,6 +4,7 @@ import android.util.Log
 import com.example.mydeskrobot.domain.activitylog.ActivitySource
 import com.example.mydeskrobot.domain.activitylog.EpisodeConfidence
 import com.example.mydeskrobot.domain.activitylog.EpisodeKind
+import com.example.mydeskrobot.domain.activitylog.RobotSelfActivityFilter
 import com.example.mydeskrobot.memory.unified.MemoryDocumentSource
 import com.example.mydeskrobot.integration.llm.LlmHttpErrors
 import com.example.mydeskrobot.memory.extract.ChatLogEntry
@@ -72,6 +73,21 @@ class ActivityExtractionService(
         payload.events.forEach { item ->
             val label = item.label?.trim().orEmpty()
             if (label.isBlank()) return@forEach
+            if (
+                !RobotSelfActivityFilter.isUserFacingEpisode(
+                    label = label,
+                    sourceChannel = item.source_channel,
+                    actor = item.actor,
+                )
+            ) {
+                Log.d(TAG, "Skipping robot self-activity episode: $label")
+                return@forEach
+            }
+            val rawPhrase = item.raw_phrase?.trim()?.takeIf { it.isNotBlank() }
+            if (rawPhrase != null && RobotSelfActivityFilter.isRobotSelfActivity(rawPhrase)) {
+                Log.d(TAG, "Skipping robot self-activity raw phrase: $rawPhrase")
+                return@forEach
+            }
             val eventKind = parseKind(item.kind)
             val confidence = parseConfidence(item.confidence)
             val scheduledDayKey = item.scheduled_day?.trim()?.takeIf { it.isNotBlank() }
@@ -81,7 +97,7 @@ class ActivityExtractionService(
             )
             val result = memoryWriter.saveEpisode(
                 label = label,
-                rawPhrase = item.raw_phrase?.trim()?.takeIf { it.isNotBlank() },
+                rawPhrase = rawPhrase,
                 source = ActivitySource.EXTRACTOR,
                 eventKind = eventKind,
                 confidence = confidence,

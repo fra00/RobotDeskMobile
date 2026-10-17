@@ -9,9 +9,12 @@ data class IdleBoredomConfig(
     val lookAroundReliefMinutes: Int = DEFAULT_LOOK_AROUND_RELIEF_MINUTES,
     /** Duration of the symbolic distraction overlay. */
     val distractionMinutes: Int = DEFAULT_DISTRACTION_MINUTES,
+    /** How long a finished distraction stays visible to the LLM as recent activity. */
+    val recentMemoryMinutes: Int = DEFAULT_RECENT_MEMORY_MINUTES,
 ) {
     companion object {
         const val DEFAULT_LOOK_AROUND_RELIEF_MINUTES = 5
         const val DEFAULT_DISTRACTION_MINUTES = 8
+        const val DEFAULT_RECENT_MEMORY_MINUTES = 30
     }
 }

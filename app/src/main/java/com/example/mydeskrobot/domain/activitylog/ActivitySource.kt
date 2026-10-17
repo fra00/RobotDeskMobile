@@ -5,4 +5,5 @@ enum class ActivitySource {
     TOOL,
     VOICE,
     NOTIFICATION,
+    HEALTH_CONNECT,
 }

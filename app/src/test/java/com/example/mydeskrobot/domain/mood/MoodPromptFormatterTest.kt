@@ -81,4 +81,35 @@ class MoodPromptFormatterTest {
         assertFalse(text.contains("effimera): bored"))
         assertTrue(text.contains("nessuna effimera attiva"))
     }
+
+    @Test
+    fun `active idle distraction is framed as real activity`() {
+        val mood = RobotMood.fromValence(valence = 0.1f, since = 0L, reason = null)
+        val text = MoodPromptFormatter.format(
+            mood = mood,
+            idleDistraction = IdleDistractionKind.HEADPHONES,
+        )
+
+        assertTrue(text.contains("Attività in corso:"))
+        assertTrue(text.contains("ascoltando musica"))
+        assertTrue(text.contains("pezzo reale della tua giornata"))
+        assertTrue(text.contains("raggiungibile"))
+        assertFalse(text.contains("Se ti interrompono"))
+        assertFalse(text.contains("non reale"))
+    }
+
+    @Test
+    fun `recent idle distraction is mentioned after scene ends`() {
+        val mood = RobotMood.fromValence(valence = 0.1f, since = 0L, reason = null)
+        val text = MoodPromptFormatter.format(
+            mood = mood,
+            recentIdleDistraction = IdleDistractionKind.READING,
+        )
+
+        assertTrue(text.contains("Attività recente:"))
+        assertTrue(text.contains("stavi leggendo"))
+        assertTrue(text.contains("vita da compagno"))
+        assertFalse(text.contains("Se te lo chiedono"))
+        assertFalse(text.contains("Attività in corso:"))
+    }
 }

@@ -66,10 +66,13 @@ Le linee guida dettagliate sono in **`.cursor/rules/*.mdc`**:
 
 **Regola:** per implementare una feature, leggere `docs/` (e questa pagina). Per capire il comportamento dal punto di vista umano, leggere `docs/guides/`. Se cambia il runtime, aggiornare entrambe le linee.
 
+**Controllo allineamento:** chiedere all’agente *«controlla la doc»* (o equivalente). Workflow: skill `.cursor/skills/doc-align/` + script `scripts/check_docs_alignment.py` (link morti, tool AGENTS↔codice, prompt, draft ritirati). Roadmap aperta: sempre `docs/TODO.md`.
+
 | Argomento | Guide (umano) | Spec (agente) |
 |-----------|---------------|---------------|
 | Memoria | `docs/guides/MEMORIA.md`, `docs/guides/MEMORIA_TECNICA.md` | `docs/MEMORY.md`, `docs/MEMORY_ACCESS.md` |
 | Proattività | `docs/guides/PROATTIVITA.md` | `docs/PROACTIVE_ARCHITECTURE.md` |
+| Proxy notifiche | `docs/guides/PROXY_NOTIFICHE.md` | `docs/NOTIFICATION_PROXY.md`, `docs/PHONE_CAPABILITY_BRIDGE.md` |
 | Umore | `docs/guides/UMORE.md` | `docs/MOOD.md`, `docs/ROBOT_EXPRESSIONS.md` |
 
 Indice guide: `docs/guides/README.md`.
@@ -84,8 +87,12 @@ Indice guide: `docs/guides/README.md`.
 
 | File | Argomento | Note |
 |------|-----------|------|
+| `docs/FEATURES.md` | Catalogo funzionalità esposte oggi | Inventario prodotto; tool wire → tabella sotto |
+| `docs/ARCHITECTURE_HEALTH.md` | Snapshot qualità / god class / layer | Debito strutturale (ott 2026) |
 | `docs/TOOL_ARCHITECTURE.md` | Design tool, JSON, catene, 3 layer | SSOT architettura tool |
 | `docs/INPUT_ARCHITECTURE.md` | Bus input, notifiche, policy DEFERRED/BLOCKING | Gate: microfono attivo |
+| `docs/NOTIFICATION_PROXY.md` | Ruoli ROBOT/PROXY, QR LAN, forward HTTP | **v1 implementato** |
+| `docs/PHONE_CAPABILITY_BRIDGE.md` | Pull capability cell (HC, contatti) + dual reminder | **v1** |
 | `docs/STT_ARCHITECTURE.md` | Pipeline STT unificata (Android/Vosk) | Pausa durante TTS |
 | `docs/SCHEDULED_TASKS.md` | Promemoria vocali | AlarmManager + voce |
 | `docs/MEMORY.md` | Memoria utente, categorie, recall | |
@@ -96,9 +103,10 @@ Indice guide: `docs/guides/README.md`.
 | `docs/ACTIVITY_LOG.md` | Log Day episodico (7 giorni) | PHYSICAL_NOW, PLAN, SOCIAL_THREAD |
 | `docs/SPATIAL_MEMORY.md` | Stanze, landmark visivi, auto-localizzazione | |
 | `docs/ROBOT_CONTEXT.md` | Profili lavoro/call, silenzio notifiche | |
+| `docs/TRANSLATION_MODE.md` | One-shot + modalità traduzione continua | **v1** |
 | `docs/PROACTIVE_ARCHITECTURE.md` | Predictivity + Wellness, ordine come input visivo | **SSOT proattività** |
 | `docs/HEARTBEAT_ARCHITECTURE.md` | Idle look-around (ex micro-tick); alarm/orchestrator retired | Care + custom → Wellness (H7) |
-| `docs/DESK_PRESENCE.md` | ML Kit presenza + centering; `UserPresencePolicy` | |
+| `docs/DESK_PRESENCE.md` | ML Kit presenza on-demand + centering; `UserPresencePolicy` | |
 | `docs/BODY_INTEGRATION.md` | ESP32 myDeskBody HTTP REST | Tool HARDWARE |
 | `docs/PROMPT_PHILOSOPHY.md` | Capability + vincoli, non playbook rigido | SSOT labels prompt |
 | `docs/AGENT_REASONING.md` | Tool diretto vs catena, persistent search | `ChainSpeechPolicy` |
@@ -108,16 +116,15 @@ Indice guide: `docs/guides/README.md`.
 | `docs/LLM_SETTINGS.md` | LM Studio / Gemini | |
 | `docs/WEB_SEARCH.md` | SearXNG + `fetch_url` | |
 | `docs/VISION.md` | Flusso visione (legacy `imageRequired`) | Preferire tool chain |
-| `docs/TODO.md` | Backlog H3–H6 e utility | **SSOT roadmap aperta** |
+| `docs/TODO.md` | Backlog H3–H5 e utility | **SSOT roadmap aperta** |
 | `docs/guides/MEMORIA.md` | Panoramica memoria (IT, umano) | |
 | `docs/guides/MEMORIA_TECNICA.md` | Flussi recall/write (IT, dev) | |
 | `docs/guides/PROATTIVITA.md` | Proattività panoramica (IT, umano) | |
 | `docs/guides/UMORE.md` | Umore robot panoramica (IT, umano) | |
 | `docs/guides/UMORE_SMOKE.md` | Smoke test occhi + corpo | |
-| `docs/Drafts/AUTONOMOUS_AGENT_VISION.md` | Visione OODA, 6 pilastri autonomia | Draft — vedi avvertenze sotto |
-| `docs/Drafts/SPEAKER_IDENTIFICATION.md` | Speaker ID embedding, privacy, `enroll_speaker` | Draft — §9 dubbi aperti, non implementato |
-| `docs/Drafts/AgentEvolution-GapAnalysis.md` | Gap vs draft Claude | **Obsoleto** (maggio 2026) |
-| `docs/Drafts/STT-Analysis.md` | Bug STT latenza storico | **Obsoleto** — fix in STT_ARCHITECTURE |
+| `docs/Drafts/AUTONOMOUS_AGENT_VISION.md` | Visione OODA (storico) | **Non roadmap** — vedi banner; SSOT = `TODO.md` |
+| `docs/Drafts/SPEAKER_IDENTIFICATION.md` | Speaker ID embedding, privacy, `enroll_speaker` | Draft — non implementato |
+| `docs/Drafts/SKILL_EDITOR_BLOCKLY.md` | Editor web Blockly → skill pack → pairing robot | Draft — idea, non implementato |
 
 ### Memoria (due livelli)
 
@@ -146,7 +153,7 @@ Indice guide: `docs/guides/README.md`.
 | H3 | State machine emozioni (`MoodManager` + corpo ESP32) | 🟡 Parziale — core ok, smoke `docs/guides/UMORE_SMOKE.md` |
 | H4 | Working memory giornaliera | 🟡 Parziale — prompt anti-ripetizione + ignoro utente |
 | H5 | Self-reflection settimanale | 🟡 Parziale — gate mic E2E + consolidamento PATTERN |
-| H6 | Theory of mind (awareness utente) | ❌ Rimosso keyword-based (`UserAwareness`); tono utente via LLM `user_tone` (solo mood robot) — redesign proattivo aperto |
+| H6 | Theory of mind / umore utente in proattività | ❌ Non obiettivo — `UserAwareness` rimosso; `user_tone` solo mood robot (lodi/scuse), non gate proattivi |
 
 **Scala invasività:** 0 silenzio (80–95%) → 1 solo occhi → 2 voce breve → 3 tool info → 4 tool che modifica → 5 azione senza chiedere (whitelist).
 
@@ -154,15 +161,15 @@ Indice guide: `docs/guides/README.md`.
 
 ### Stato implementazione
 
-**Fatto:** architettura 3 layer, tool JSON + catene, STT unificato, input notifiche, memoria unificata RAG, recall planner LLM, activity log, spatial memory, robot context, web/meteo/Spotify, body ESP32 + espressione corpo (mood/ephemeral/speaking), desk presence ML Kit + attention centering, idle look-around (ex heartbeat micro-tick), proattività H7 v1, domini attenzione (Wellness), liste strutturate.
+**Fatto:** architettura 3 layer, tool JSON + catene, STT unificato, input notifiche (+ proxy v1), phone capability bridge (exercises/contacts pull + dual reminder), memoria unificata RAG, recall planner LLM, activity log (+ Health Connect exercise sync), spatial memory, robot context, web/meteo/Spotify, body ESP32 + espressione corpo, desk presence ML Kit + attention centering, idle look-around, proattività H7 v1, domini attenzione (Wellness), liste strutturate, policy nome utente IDENTITY (no guess da notifiche), lettura notifiche via LLM (no keyword shortcut), modalità traduzione continua (`set_translation_mode`), follow-up impegni urgenti (`commitment_follow_up`).
 
-**Backlog:** chiusura H3–H5 (smoke, WM wellness, reflection memory), H6 redesign LLM-driven se serve umore utente in proattività, news/traduttore/domotica, memory pin Level 2, tool note dedicato, speaker ID (draft).
+**Backlog:** chiusura H3–H5 (smoke, WM ignoro, reflection memory); studio Predictivity / `ProactiveSpeakGate` / fire-and-check+commitment (solo analisi — `TODO.md`); body kinematics prompt; news/domotica; memory fragmentation analyzer; tool note; speaker ID / Blockly (draft).
 
 ### Avvertenze documentazione
 
 - **`docs/PROACTIVE_ARCHITECTURE.md`** è SSOT per Predittività + Wellness (H7 v1 implementato); idle look-around → `docs/HEARTBEAT_ARCHITECTURE.md`.
-- **`docs/TODO.md`** è SSOT per roadmap aperta; `docs/Drafts/AUTONOMOUS_AGENT_VISION.md` segna H1–H6 come fatti — **disallineamento noto**, fidarsi di `TODO.md` per ciò che resta da fare.
-- **Draft obsoleti:** non usare `AgentEvolution-GapAnalysis.md`, `STT-Analysis.md` come SSOT — citano componenti rimossi o fix già applicati. Memoria RAG unificata: SSOT `docs/MEMORY.md`, `docs/MEMORY_EMBEDDING.md`, `docs/MEMORY_ACCESS.md` (draft `UNIFIED_MEMORY_RAG_PLAN` rimosso giugno 2026).
+- **`docs/TODO.md`** è SSOT per roadmap aperta; `docs/Drafts/AUTONOMOUS_AGENT_VISION.md` è visione storica (banner in testa) — **non** usarlo come checklist di cosa resta da fare.
+- **Draft rimossi (non più in repo):** `AgentEvolution-GapAnalysis.md`, `STT-Analysis.md`, `AnalysysClaude.md`, `UNIFIED_MEMORY_RAG_PLAN`. Memoria RAG: SSOT `docs/MEMORY.md`, `docs/MEMORY_EMBEDDING.md`, `docs/MEMORY_ACCESS.md`.
 - **WhatsApp/telefono:** tool in tabella sotto, nessuna spec dedicata in `docs/` — comportamento da `AGENTS.md` + codice.
 
 ## Prima di implementare
@@ -171,6 +178,7 @@ Indice guide: `docs/guides/README.md`.
 2. Per feature vocali/LLM → `40`; per occhi → `50`.
 3. Per tool → `docs/TOOL_ARCHITECTURE.md`.
 4. Per input esterni → `docs/INPUT_ARCHITECTURE.md`.
+4b. Per proxy notifiche (cell → device robot, stessa app) → `docs/NOTIFICATION_PROXY.md`; guida → `docs/guides/PROXY_NOTIFICHE.md`. Capability pull / dual reminder → `docs/PHONE_CAPABILITY_BRIDGE.md`.
 5. Per pipeline STT (orchestrator + provider) → `docs/STT_ARCHITECTURE.md`.
 6. Per task schedulati / promemoria vocali → `docs/SCHEDULED_TASKS.md`.
 7. Per memoria utente (unified recall + tool + consolidation) → `docs/MEMORY.md` (spec); panoramica umana → `docs/guides/MEMORIA.md`.
@@ -178,13 +186,14 @@ Indice guide: `docs/guides/README.md`.
 7c. Per accesso unificato memoria (write path, recall, notifiche unread) → `docs/MEMORY_ACCESS.md`.
 7d. Per LLM recall planner (piano JSON per turno vocale, no fallback) → `docs/MEMORY_RECALL_PLANNER.md`.
 8. Per contesto robot / silenzio notifiche → `docs/ROBOT_CONTEXT.md`.
+8a. Per traduzione one-shot / modalità continua → `docs/TRANSLATION_MODE.md`.
 8b. **Per proattività target (Predittività + Wellness, ordine come input)** → `docs/PROACTIVE_ARCHITECTURE.md`; guida umana → `docs/guides/PROATTIVITA.md`. Idle look-around → `docs/HEARTBEAT_ARCHITECTURE.md`.
 9. Per corpo fisico ESP32 (myDeskBody) → `docs/BODY_INTEGRATION.md` + prompt dinamico `body_capabilities_prompt.txt` via `BodyPromptProviderImpl`.
 9b. **Assembly prompt runtime** (`ReasoningEngineImpl.buildPromptWithContext`): base `llm_system_prompt.txt` + AVAILABLE TOOLS + condizionali: `body_capabilities` (ESP32), `heartbeat_playbook` (solo tick heartbeat/weekly_reflection), memory/day/activity/robot/spatial/mood. SSOT labels: `docs/PROMPT_PHILOSOPHY.md`.
 10. **Per filosofia prompt (capability + vincoli, esempi illustrativi)** → `docs/PROMPT_PHILOSOPHY.md`.
 11. Per policy risoluzione autonoma (tool diretto vs catena) → `docs/AGENT_REASONING.md`.
 12. Per espressioni occhi (campo `emotion` LLM) → `docs/ROBOT_EXPRESSIONS.md`; architettura umore → `docs/MOOD.md`; guida umana → `docs/guides/UMORE.md`.
-13. **Per visione agente autonomo (heartbeat, OODA, emozioni)** → `docs/Drafts/AUTONOMOUS_AGENT_VISION.md`.
+13. **Per visione agente autonomo (OODA, companion — solo contesto)** → `docs/Drafts/AUTONOMOUS_AGENT_VISION.md` (**non** roadmap; usare `docs/TODO.md`).
 14. **Per persona cognitiva e policy autonome (spec concettuale + mapping JSON)** → `docs/nextPromptv1.md` (runtime: `llm_system_prompt.txt` + `body_capabilities_prompt.txt`).
 15. **Umore a due livelli (SSOT)** → `docs/MOOD.md`: **valenza persistente** (`MoodManager`, `STATO ROBOT`); **emotion** LLM = espressione effimera (occhi/TTS, TTL ~25–40 s) + delta valenza opzionale via `LlmEmotionValenceMapper`.
 16. **Per memoria spaziale / auto-localizzazione stanza** → `docs/SPATIAL_MEMORY.md`.
@@ -205,6 +214,7 @@ Ogni modifica a runtime, prompt o recall deve **preservare i comportamenti docum
 |-------------------|--------|
 | **Scope** | Toccare solo file e flussi del task; niente refactor o pulizie collaterali. |
 | **Contratto** | Se cambia comportamento visibile (voce, memoria, tool, UI), aggiornare **spec** (`docs/`) e, se serve, **guide** (`docs/guides/`). |
+| **Doc align (opzionale ma consigliato)** | Dopo cambi ampi a tool/prompt/runtime: `python scripts/check_docs_alignment.py` o chiedere *controlla la doc* (skill `doc-align`). |
 | **Test automatici** | Eseguire unit test del modulo toccato (es. memoria → `UnifiedMemoryRepositoryTest`, `LlmMemoryRecallPlannerTest`, `MemoryRecallPlanMappingTest`). Aggiungere/aggiornare test o golden fixture quando si cambia logica non banale. |
 | **Prompt** | Modifiche a `*_prompt.txt`: verificare che esempi JSON e tool notes non contraddicano il codice (es. shortcut rimosso ≠ esempio che lo richiama ancora). |
 | **Smoke umano** | Dove non c'è coverage (ViewModel, catena vocale E2E), indicare all'utente **1–3 frasi** da riprovare su device dopo rebuild APK. |
@@ -214,6 +224,8 @@ Ogni modifica a runtime, prompt o recall deve **preservare i comportamenti docum
 Checklist estesa: `.cursor/rules/70-testing-and-quality.mdc`.
 
 ## Tool disponibili
+
+Inventario prodotto (aree, proxy, corpo, non-goal): [`docs/FEATURES.md`](docs/FEATURES.md).
 
 | Tool | Località | Descrizione |
 |------|----------|-------------|
@@ -234,6 +246,7 @@ Checklist estesa: `.cursor/rules/70-testing-and-quality.mdc`.
 | `send_whatsapp` | LOCAL | Apre WhatsApp con messaggio precompilato (utente tap Invia) |
 | `play_spotify` | LOCAL | Apre Spotify con ricerca (artista, genere, musica) |
 | `set_robot_context` | LOCAL | Contesto robot (lavoro/call/riunione) e silenzio notifiche robot-only |
+| `set_translation_mode` | LOCAL | Modalità traduzione continua (fino a stop); one-shot senza tool — [`TRANSLATION_MODE.md`](docs/TRANSLATION_MODE.md) |
 | `set_reminder` | LOCAL | Schedula task (annuncio vocale + notifica a scadenza) |
 | `get_reminders` | LOCAL | Elenca promemoria attivi |
 | `delete_reminder` | LOCAL | Cancella promemoria per id |

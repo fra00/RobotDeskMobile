@@ -166,7 +166,20 @@ class MemoryRecallPlanMappingTest {
 
         assertEquals(TemporalScope.WEEK, request.temporalScope)
         assertFalse(request.preferUserFacts)
-        assertTrue(request.includeHabitSummary)
+        assertFalse(request.includeHabitSummary)
+    }
+
+    @Test
+    fun general_week_does_not_force_habit_summary() {
+        val request = MemoryRecallPlan(
+            temporalScope = TemporalScope.WEEK,
+            recallFocus = RecallFocus.GENERAL,
+            searchQueries = listOf("attività fisica settimana"),
+            includeHabitSummary = false,
+        ).toRequest("mi dici se l'attività fisica in questa settimana è stata sufficiente?")
+
+        assertEquals(TemporalScope.WEEK, request.temporalScope)
+        assertFalse(request.includeHabitSummary)
     }
 
     @Test

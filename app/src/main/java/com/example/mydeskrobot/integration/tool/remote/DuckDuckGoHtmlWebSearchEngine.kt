@@ -77,8 +77,7 @@ class DuckDuckGoHtmlWebSearchEngine(
 
     internal fun normalizeResultUrl(raw: String): String? {
         if (raw.isBlank()) return null
-        if (raw.startsWith("http://") || raw.startsWith("https://")) return raw
-        if (raw.startsWith("//")) return "https:$raw"
+        // DuckDuckGo wrap links before treating the whole string as a final URL.
         if (raw.contains("uddg=")) {
             val encoded = raw.substringAfter("uddg=", "")
                 .substringBefore("&")
@@ -86,6 +85,8 @@ class DuckDuckGoHtmlWebSearchEngine(
                 return URLDecoder.decode(encoded, StandardCharsets.UTF_8.name())
             }
         }
+        if (raw.startsWith("http://") || raw.startsWith("https://")) return raw
+        if (raw.startsWith("//")) return "https:$raw"
         return null
     }
 

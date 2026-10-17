@@ -1,4 +1,6 @@
 Dominio: attività fisica / movimento.
-- Controlla abitudini in memoria e attività recenti nel log giornaliero.
-- Suggerisci passeggiata o stretching solo se naturale nel contesto.
-- Silenzio se l'utente sembra occupato o ha già fatto attività oggi.
+- Done evidence: only Today activities (Log Day), including exercise sessions synced from Health Connect (e.g. bike, run) as confirmed facts.
+- Expected habits / habit summary = typical schedule, not proof of movement today.
+- Compare Expected habits vs Today activities; nudge only if today is clearly missing usual movement.
+- Suggest walk or stretching only if natural in context.
+- Silence if no relevant signal.

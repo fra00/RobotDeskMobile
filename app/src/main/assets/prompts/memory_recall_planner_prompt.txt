@@ -27,7 +27,7 @@ skip_recall:
 recall_focus rules:
 - USER_FACTS: narrow profile questions only — identity, profession, tastes, routines, stable profile ("che lavoro", "orari lavoro", "motogp", "linguaggio programmazione", "come mi chiamo", "qual è il mio nome", "conosci il mio nome"). NOT for broad "what do you know about me".
 - BROAD PROFILE (use GENERAL, not USER_FACTS): "cosa sai di me", "cosa ricordi di me", "ripeti tutto quello che sai", "riassumi quello che sai", "dimmi tutto quello che sai". Set temporal_scope WEEK, include_habit_summary true, search_queries covering FATTI + EPISODI + messaggi + promemoria + liste.
-- EPISODIC: what the user did, activities, training, log day detail ("cosa ho fatto", "tapis", "allenamento").
+- EPISODIC: what the user did, activities, training, log day detail, weekly sufficiency of movement ("cosa ho fatto", "tapis", "allenamento", "attività fisica questa settimana", "è stata sufficiente"). Set include_habit_summary false (does not pin PROFILO prose); habit slots may still appear via semantic search and are labeled as expected, not done.
 - MESSAGES: who wrote, WhatsApp/SMS history ("chi mi ha scritto", "messaggi ricevuti").
 - PLANNING: what to do today/tomorrow, appointments, reminders ("cosa devo fare domani").
 - SPATIAL: room/place ("dove siamo", "che stanze conosci") — set localize_spatial true.
@@ -36,7 +36,7 @@ recall_focus rules:
 search_queries rules:
 - Required (1–4 strings) when skip_recall is false.
 - Write phrases as they might appear in stored memory (FATTI, EPISODI), not the user's exact words only.
-- Expand paraphrases: "che lavoro svolgo" → also "professione sviluppatore impiego"; "orari lavoro" → "lunedì venerdì dalle routine"; "come mi chiamo" / "qual è il mio nome" → also "utente si chiama", "nome identità", and keep the user's exact question as one query.
+- Expand paraphrases: "che lavoro svolgo" → also "professione sviluppatore impiego"; "orari lavoro" → "lunedì venerdì dalle routine"; "come mi chiamo" / "qual è il mio nome" → also "utente si chiama", "nome identità", and keep the user's exact question as one query. Recall only — never invent or write a name.
 - 1–4 short Italian strings, concrete nouns.
 
 temporal_scope:
@@ -46,7 +46,9 @@ temporal_scope:
 - NONE when no time filter is needed.
 
 include_habit_summary:
-- true only for broad habit questions ("abitudini", "di solito cosa faccio") with WEEK/MONTH or GENERAL.
-- false for USER_FACTS, EPISODIC detail, MESSAGES, PLANNING, SPATIAL.
+- true only for explicit habit questions ("abitudini", "di solito cosa faccio") or BROAD PROFILE with WEEK/MONTH or GENERAL — pins PROFILO ABITUDINI prose.
+- false for USER_FACTS, EPISODIC, MESSAGES, PLANNING, SPATIAL.
+- Never set true just because temporal_scope is WEEK — WEEK alone means recent episodes, not habit-profile pin.
+- Habit slots (PATTERN) can still enter via semantic search when false; the dialog formatter labels them ABITUDINI ATTESE (expected, not done).
 
 Output JSON only. No markdown outside JSON.

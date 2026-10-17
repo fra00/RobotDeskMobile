@@ -20,6 +20,7 @@ object MoodPromptFormatter {
         promptHints: List<String> = emptyList(),
         ephemeral: EphemeralExpression? = null,
         idleDistraction: IdleDistractionKind? = null,
+        recentIdleDistraction: IdleDistractionKind? = null,
         now: Long = System.currentTimeMillis(),
     ): String {
         val emotion = mood.baseEmotion.name.lowercase()
@@ -43,10 +44,17 @@ object MoodPromptFormatter {
                 appendLine("- Motivo di fondo: $reasonLine")
             }
             if (idleDistraction != null) {
-                appendLine("- Distrazione simbolica: ${idleDistraction.promptToken()}")
+                appendLine("- Attività in corso: ${idleDistraction.promptActivityOngoing()}")
                 appendLine(
-                    "- Stai facendo una pausa mimica (non reale). " +
-                        "Se ti interrompono, rispondi normalmente; non inventare musica/libri veri.",
+                    "- È un pezzo reale della tua giornata da compagno (non mimica da smentire). " +
+                        "Niente titoli di brani, autori o partite inventati. " +
+                        "Resti presente e raggiungibile.",
+                )
+            } else if (recentIdleDistraction != null) {
+                appendLine("- Attività recente: ${recentIdleDistraction.promptActivityRecent()}")
+                appendLine(
+                    "- L'hai fatta poco fa, nella tua vita da compagno. " +
+                        "Niente dettagli specifici inventati (titoli, brani).",
                 )
             }
             if (activeEphemeral != null) {
@@ -124,5 +132,6 @@ object MoodPromptFormatter {
         MoodReason.NIGHT_TIME -> "notte"
         MoodReason.TASK_COMPLETED -> "task_completato"
         MoodReason.LLM_EXPRESSION -> "espressione_llm"
+        MoodReason.SELF_CARE -> "svago_auto"
     }
 }

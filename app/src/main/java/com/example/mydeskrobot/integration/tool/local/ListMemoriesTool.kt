@@ -31,7 +31,7 @@ class ListMemoriesTool private constructor(
     override fun getDefinition(): ToolDefinition {
         return ToolDefinition(
             name = name,
-            description = "List stored memories (optionally filter by category or search text). Default lists user-facing memories only; use category OBSERVATION/INTENT/PATTERN for autonomy. Use query for topic search (e.g. cane, INTENT pranzo).",
+            description = "List stored memories (optionally filter by category or search text). Default lists user-facing memories only; use category OBSERVATION/INTENT/PATTERN or a query for autonomy. PATTERN / habit slots are expected habits (memory_role=expected_habit), not proof of done activities. Use query for topic search (e.g. cane, INTENT pranzo).",
             parameters = listOf(
                 ToolParameter(
                     name = "category",
@@ -52,7 +52,7 @@ class ListMemoriesTool private constructor(
                     required = false,
                 ),
             ),
-            returns = "count, memories (array of id, category, value, confidence)",
+            returns = "count, memories (array of id, category, value, confidence, memory_role)",
             example = """{"name": "list_memories", "params": {}, "await_result": true}""",
         )
     }

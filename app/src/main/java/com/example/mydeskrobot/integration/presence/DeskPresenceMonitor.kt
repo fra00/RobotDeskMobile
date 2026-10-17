@@ -31,17 +31,23 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * On-device desk presence monitor using ML Kit face + pose detection.
- * Runs only while the voice session is active; separate from heartbeat scheduling.
+ *
+ * Camera is **off by default**. Callers use [withCamera] for short on-demand
+ * sessions (look-around gate, idle re-acquire, look_at_user, body locate).
+ * Vision tools ([com.example.mydeskrobot.data.vision.CameraXVisionImageCapture])
+ * bind the shared camera separately for photos.
  */
 class DeskPresenceMonitor(
     private val context: Context,
     private val settingsRepository: DeskPresenceSettingsRepository,
     private val scope: CoroutineScope,
-) {
+) : DeskPresenceCameraSession {
     private val detector = FacePosePresenceDetector()
     private var fusionPolicy = PresenceFusionPolicy()
     private var faceConfidenceThreshold = 0.6f
@@ -49,6 +55,8 @@ class DeskPresenceMonitor(
     private var watchdogJob: Job? = null
     private val running = AtomicBoolean(false)
     private val binding = AtomicBoolean(false)
+    private val sessionDepth = AtomicInteger(0)
+    private val sessionMutex = Mutex()
     private val frameMutex = Mutex()
     private var lastFrameProcessedAt = 0L
     private var lastBindAt = 0L
@@ -58,63 +66,67 @@ class DeskPresenceMonitor(
     private val _occupancy = MutableStateFlow(DeskOccupancy.UNKNOWN)
     val occupancy: StateFlow<DeskOccupancy> = _occupancy.asStateFlow()
 
-    fun start() {
-        if (!running.compareAndSet(false, true)) return
-
-        analysisJob = scope.launch(Dispatchers.Main) {
-            val settings = settingsRepository.load()
-            if (!settings.enabled) {
-                Log.d(TAG, "Desk presence monitor disabled in settings")
-                running.set(false)
-                return@launch
-            }
-
-            minFrameIntervalMs = (1000L / settings.analysisFps.coerceIn(2, 10))
-            fusionPolicy = PresenceFusionPolicy(
-                faceConfidenceThreshold = settings.faceConfidenceThreshold,
-            )
-            faceConfidenceThreshold = settings.faceConfidenceThreshold
-
-            val activity = VisionCaptureActivityProvider.getCaptureActivity()
-            if (activity == null) {
-                Log.w(TAG, "No foreground activity for camera analysis")
-                markUnknownAndStop()
-                return@launch
-            }
-
-            if (ContextCompat.checkSelfPermission(context, android.Manifest.permission.CAMERA)
-                != PackageManager.PERMISSION_GRANTED
-            ) {
-                Log.w(TAG, "Camera permission missing for desk presence")
-                markUnknownAndStop()
-                return@launch
-            }
-
-            bindAnalysis(activity)
-            startWatchdog()
+    override suspend fun <T> withCamera(block: suspend () -> T): T {
+        val settings = settingsRepository.load()
+        if (!settings.enabled) {
+            return block()
+        }
+        acquireSession()
+        try {
+            return block()
+        } finally {
+            releaseSession()
         }
     }
 
-    fun stop() {
-        if (!running.compareAndSet(true, false)) return
-        watchdogJob?.cancel()
-        watchdogJob = null
-        analysisJob?.cancel()
-        analysisJob = null
-        fusionPolicy.reset()
-        detector.resetFilters()
-        lastFrameProcessedAt = 0L
-        lastBindAt = 0L
-        lastResumeAttemptAt = 0L
-        val unknown = DeskOccupancy.UNKNOWN
-        _occupancy.value = unknown
-        DeskPresenceStateStore.update(unknown)
-        FaceGazeStateStore.reset()
-        PresenceDebugStateStore.reset()
-        runCatching {
-            ProcessCameraProvider.getInstance(context).get().unbindAll()
+    override suspend fun awaitOccupancySample(
+        timeoutMs: Long,
+    ): DeskOccupancy {
+        val deadline = System.currentTimeMillis() + timeoutMs.coerceAtLeast(200L)
+        while (System.currentTimeMillis() < deadline) {
+            val current = DeskPresenceStateStore.current()
+            when (current.state) {
+                DeskOccupancyState.PRESENT,
+                DeskOccupancyState.ABSENT,
+                -> return current
+                DeskOccupancyState.UNCERTAIN,
+                DeskOccupancyState.UNKNOWN,
+                -> delay(FRAME_POLL_MS)
+            }
         }
-        Log.d(TAG, "Desk presence monitor stopped")
+        return DeskPresenceStateStore.current()
+    }
+
+    private suspend fun acquireSession() {
+        sessionMutex.withLock {
+            val depth = sessionDepth.incrementAndGet()
+            if (depth == 1) {
+                startInternal()
+                awaitFirstFrame(FIRST_FRAME_TIMEOUT_MS)
+            }
+        }
+    }
+
+    private suspend fun releaseSession() {
+        sessionMutex.withLock {
+            if (sessionDepth.decrementAndGet() <= 0) {
+                sessionDepth.set(0)
+                stopInternal(preserveLastFaceSeen = true)
+            }
+        }
+    }
+
+    /**
+     * Force camera off and clear session depth (hotword off / settings disable).
+     * Clears [FaceGazeStateStore] including lastFaceSeen.
+     */
+    fun forceStop() {
+        scope.launch(Dispatchers.Main) {
+            sessionMutex.withLock {
+                sessionDepth.set(0)
+                stopInternal(preserveLastFaceSeen = false)
+            }
+        }
     }
 
     /** Rebind ImageAnalysis after a one-shot vision capture unbinds the shared camera. */
@@ -134,6 +146,90 @@ class DeskPresenceMonitor(
             }
             bindAnalysis(activity)
         }
+    }
+
+    private suspend fun startInternal() {
+        withContext(Dispatchers.Main) {
+            if (!running.compareAndSet(false, true)) return@withContext
+
+            val settings = settingsRepository.load()
+            if (!settings.enabled) {
+                Log.d(TAG, "Desk presence monitor disabled in settings")
+                running.set(false)
+                sessionDepth.set(0)
+                DeskPresenceCameraCoordinator.publishCameraActive(false)
+                return@withContext
+            }
+
+            minFrameIntervalMs = (1000L / settings.analysisFps.coerceIn(2, 10))
+            fusionPolicy = PresenceFusionPolicy(
+                faceConfidenceThreshold = settings.faceConfidenceThreshold,
+            )
+            faceConfidenceThreshold = settings.faceConfidenceThreshold
+
+            val activity = VisionCaptureActivityProvider.getCaptureActivity()
+            if (activity == null) {
+                Log.w(TAG, "No foreground activity for camera analysis")
+                markUnknownAndStop()
+                return@withContext
+            }
+
+            if (ContextCompat.checkSelfPermission(context, android.Manifest.permission.CAMERA)
+                != PackageManager.PERMISSION_GRANTED
+            ) {
+                Log.w(TAG, "Camera permission missing for desk presence")
+                markUnknownAndStop()
+                return@withContext
+            }
+
+            bindAnalysis(activity)
+            startWatchdog()
+            DeskPresenceCameraCoordinator.publishCameraActive(true)
+            Log.i(TAG, "Desk presence on-demand session started")
+        }
+    }
+
+    private suspend fun stopInternal(preserveLastFaceSeen: Boolean) {
+        withContext(Dispatchers.Main) {
+            if (!running.compareAndSet(true, false)) {
+                DeskPresenceCameraCoordinator.publishCameraActive(false)
+                return@withContext
+            }
+            watchdogJob?.cancel()
+            watchdogJob = null
+            analysisJob?.cancel()
+            analysisJob = null
+            fusionPolicy.reset()
+            detector.resetFilters()
+            lastFrameProcessedAt = 0L
+            lastBindAt = 0L
+            lastResumeAttemptAt = 0L
+            val unknown = DeskOccupancy.UNKNOWN
+            _occupancy.value = unknown
+            DeskPresenceStateStore.update(unknown)
+            if (preserveLastFaceSeen) {
+                // Keep lastFaceSeenAtMs for idle re-acquire scheduling; clear live gaze/debug.
+                FaceGazeStateStore.update(null)
+            } else {
+                FaceGazeStateStore.reset()
+            }
+            PresenceDebugStateStore.reset()
+            runCatching {
+                ProcessCameraProvider.getInstance(context).get().unbindAll()
+            }
+            DeskPresenceCameraCoordinator.publishCameraActive(false)
+            Log.d(TAG, "Desk presence monitor stopped (preserveLastFace=$preserveLastFaceSeen)")
+        }
+    }
+
+    private suspend fun awaitFirstFrame(timeoutMs: Long) {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            if (!running.get()) return
+            if (lastFrameProcessedAt > 0L) return
+            delay(FRAME_POLL_MS)
+        }
+        Log.w(TAG, "Timed out waiting for first presence frame")
     }
 
     private fun startWatchdog() {
@@ -164,7 +260,8 @@ class DeskPresenceMonitor(
         )
         _occupancy.value = uncertain
         DeskPresenceStateStore.update(uncertain)
-        FaceGazeStateStore.reset()
+        // Preserve lastFaceSeen across transient frame stalls.
+        FaceGazeStateStore.update(null)
         PresenceDebugStateStore.reset()
         fusionPolicy.reset()
         detector.resetFilters()
@@ -175,6 +272,8 @@ class DeskPresenceMonitor(
         _occupancy.value = unknown
         DeskPresenceStateStore.update(unknown)
         running.set(false)
+        sessionDepth.set(0)
+        DeskPresenceCameraCoordinator.publishCameraActive(false)
     }
 
     private fun bindAnalysis(activity: ComponentActivity) {
@@ -210,7 +309,7 @@ class DeskPresenceMonitor(
                     cameraProvider.unbindAll()
                     cameraProvider.bindToLifecycle(activity, cameraSelector, analysis)
                     lastBindAt = System.currentTimeMillis()
-                    Log.i(TAG, "Desk presence camera analysis started")
+                    Log.i(TAG, "Desk presence camera analysis bound")
                 }.onFailure { error ->
                     Log.e(TAG, "Failed to bind presence analysis", error)
                     markUnknownAndStop()
@@ -297,5 +396,7 @@ class DeskPresenceMonitor(
         private const val FRAME_STALE_MS = 4_000L
         private const val WATCHDOG_INTERVAL_MS = 1_500L
         private const val RESUME_COOLDOWN_MS = 2_000L
+        private const val FRAME_POLL_MS = 80L
+        private const val FIRST_FRAME_TIMEOUT_MS = 2_500L
     }
 }

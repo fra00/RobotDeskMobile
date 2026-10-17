@@ -2,71 +2,84 @@
 
 Kotlin-only on-device presence detection and face offset for attention centering.
 
-> **Wellness / unified proactive speak:** target architecture uses [`UserPresencePolicy`](PROACTIVE_ARCHITECTURE.md#userpresencepolicy) (recent user interaction **OR** recent face via `FaceGazeStateStore`) — **not** mandatory ML Kit `DeskPresenceGate`. See [PROACTIVE_ARCHITECTURE.md](PROACTIVE_ARCHITECTURE.md).
+> **Power:** camera is **off at idle**. ML Kit ImageAnalysis runs only during short on-demand sessions (look-around gate, idle re-acquire / sample, `look_at_user`, body locate) or when vision tools bind the camera for a photo. Do **not** assume “always on charger ⇒ continuous analysis”.
+
+> **Wellness / unified proactive speak:** uses [`UserPresencePolicy`](PROACTIVE_ARCHITECTURE.md#userpresencepolicy) (recent user interaction **OR** body locate with a brief camera wake) — **not** continuous ML Kit `DeskPresenceGate`. See [PROACTIVE_ARCHITECTURE.md](PROACTIVE_ARCHITECTURE.md).
 
 ## Components
 
 | Component | Role |
 |-----------|------|
-| `DeskPresenceMonitor` | CameraX ImageAnalysis + ML Kit face/pose while voice session active |
-| `DeskPresenceStateStore` | Process-wide latest `DeskOccupancy` |
-| `FaceGazeStateStore` | Latest face offset + `lastFaceSeenAtMs` (survives brief null gaze until reset) |
-| `UserAttentionCentering` | Closed-loop body centering (tool `look_at_user` + idle re-acquire) |
-| `IdleVisualReacquirePolicy` | After 5 min without face (mic on, WaitingForHotword) → one silent scan; 10 min cooldown |
-| `DeskPresenceGate` | Pure rules: allows proactive only when `PRESENT` (or `UNCERTAIN` + recent interaction) |
-| `DetectPresenceTool` (LLM) | Fallback for nuanced checks when ML Kit is `UNCERTAIN` |
-| `look_at_user` (LLM) | On-request centering (“guardami”); not for turn left/right |
+| `DeskPresenceMonitor` | CameraX ImageAnalysis + ML Kit face/pose **on demand** via `withCamera` |
+| `DeskPresenceCameraCoordinator` | Process-wide bind so centering/tools can wake analysis without owning the monitor |
+| `DeskPresenceStateStore` | Latest `DeskOccupancy` (UNKNOWN when camera off) |
+| `FaceGazeStateStore` | Live gaze + `lastFaceSeenAtMs` (survives session stop; cleared on hotword off / `reset`) |
+| `UserAttentionCentering` | Closed-loop body centering; wraps `withCamera` for `look_at_user` + idle re-acquire + locate |
+| `IdleVisualReacquirePolicy` | After 5 min without face (or since session start) → one silent center/scan; 10 min cooldown |
+| `DeskPresenceGate` | Pure rules for look-around after an occupancy **sample** |
+| `DetectPresenceTool` / vision tools | One-shot capture (`take_photo`, `analyze_room_scene`, …) — separate bind |
+| `look_at_user` (LLM) | On-request centering (“guardami”) |
+
+## When the camera turns on
+
+| Trigger | Path |
+|---------|------|
+| Idle look-around (soft gates OK) | Soft eligibility → `withCamera` → occupancy sample → `DeskPresenceGate` → mimica |
+| Idle visual re-acquire | Policy timer → `tryCenterOnUser()` → `withCamera` |
+| Tool `look_at_user` | Same centering path |
+| Body locate (Wellness / Predictivity) | `locateUserNow()` → `withCamera` |
+| Vision tools | `CameraXVisionImageCapture` one-shot (not ML Kit stream) |
+| User / LLM needs to observe | Tool chain (`take_photo`, `analyze_room_scene`, …) — explicit or implicit in the plan |
+
+**Idle with no gate/action → camera off.**
 
 ## Scope
 
-- **Presence**: predictivity / idle look-around use `DeskPresenceGate` where applicable; Wellness uses `UserPresencePolicy`
-- **Target Wellness speak**: `UserPresencePolicy` — interaction within W min OR face seen within W min; body connected alone does **not** count as presence
-- **Room order capture (Wellness phase 2)**: does **not** require ML Kit presence; requires ESP32 body configured and reachable
-- **Does not block**: user speech, STT, DEFERRED notifications/reminders
+- **Look-around:** samples presence only when soft gates pass; does not keep the stream open afterward
+- **Re-acquire + `lastFaceSeen`:** one periodic sample/centering job (not a continuous face clock). Stopping a session clears live gaze but **keeps** `lastFaceSeenAtMs` until the next face or session `reset`
+- **Wellness speak:** `UserPresencePolicy` — interaction window and/or body locate (brief camera)
+- **Room order (Wellness `VISUAL_ORDER`):** photos via vision tools / body pans — not continuous presence
+- **Does not block:** user speech, STT, DEFERRED notifications/reminders
 
 ## Settings
 
-Impostazioni → **Presenza scrivania**: enable, fps (2–10), face threshold.
+Impostazioni → **Presenza scrivania**: enable, fps (2–10) during on-demand sessions, face threshold.
 
-**Debug overlay:** con microfono attivo e presenza abilitata, icona occhio in alto a destra → schema ROI, volti, pose e stato fusione dell'ultimo frame ML Kit (non include la voce). Volti **rossi** = scartati (troppo piccoli o statici ≥5s); `PRESENT` richiede 3 frame consecutivi stabili.
+**Debug overlay:** icona occhio (mic on + feature enabled). All’apertura dialog la camera ML Kit si accende per lo stream di debug; alla chiusura si spegne di nuovo. Occupancy indicator in UI only while an analysis session is active. Volti **rossi** = scartati; `PRESENT` richiede 3 frame consecutivi stabili.
 
-Filtri volto (on-device): dimensione minima 5% frame, esclusione box statici (poster/foto), smoothing fusione 3 frame.
-
-Device is expected **always on charger** — default 5 fps, accurate ML Kit models.
+Filtri volto (on-device): dimensione minima 5% frame, esclusione box statici, smoothing 3 frame.
 
 ## Camera sharing with vision tools
 
-`take_photo`, `detect_presence`, and `analyze_room_scene` use the same `ProcessCameraProvider` as the monitor. After each capture, `VisionCameraLifecycleCoordinator` rebinds `ImageAnalysis`. If frames stall >4s, the watchdog marks `UNCERTAIN`, clears the debug overlay, and retries bind.
+`take_photo`, `detect_presence`, and `analyze_room_scene` use the same `ProcessCameraProvider`. After each capture, `VisionCameraLifecycleCoordinator` rebinds `ImageAnalysis` **only if** a presence session is still active. Multi-photo chains should keep the session open for the chain when presence is also needed; otherwise each capture is independent.
 
 ## Attention centering (conversational)
 
 **Not** on every voice turn (that conflicted with “girati a destra”).
 
 ### On request
-LLM tool **`look_at_user`** → `UserAttentionCentering.tryCenterOnUser()` when the user asks to look at them / center. Directional moves stay `move_body_joint` from the current pose. First face in frame only (no speaker ID).
+LLM tool **`look_at_user`** → `UserAttentionCentering.tryCenterOnUser()` (wakes camera for the pass).
 
 ### Idle re-acquire (silent)
-While voice session is active and phase is `WaitingForHotword` (mic on, no dialog turn):
+While voice session is active and phase is `WaitingForHotword`:
 
-1. If no face seen for **5 minutes** (or since session start if never seen) → one silent `tryCenterOnUser()`
-2. Face in frame → closed-loop center; no face at start → scan ±14/28/42°, then stay or return to `base_pan` 0
+1. If no face seen for **5 minutes** (or since session start if never seen) → one silent `tryCenterOnUser()` (wakes camera)
+2. Face in frame → closed-loop center; no face → scan ±14/28/42°, then stay or return to `base_pan` 0
 3. **10 minute** cooldown between idle attempts
-4. Suppressed when robot context is SILENT (work/call/meeting/focus) or body hardware busy
+4. **Not** suppressed by robot WORK/SILENT (body only, no TTS); still skipped when body hardware busy
 
 Requires **corpo ESP32** + **presenza scrivania** enabled.
 
-If the first `getStatus()` fails (ESP32 offline / timeout), centering **aborts immediately** (`SkippedBodyUnreachable`) — no pan scan and no stacked move timeouts.
+If the first `getStatus()` fails (ESP32 offline / timeout), centering **aborts immediately** (`SkippedBodyUnreachable`).
 
-Neutral `base_pan` is always **0** (user may rotate the physical base by hand between sessions).
-
-Does **not** require ML Kit `PRESENT` — centering/scan runs when the user is not in front of the camera.
+Neutral `base_pan` is always **0**.
 
 ## FaceGazeStateStore and UserPresencePolicy
 
-`FaceGazeStateStore` holds the latest face-in-frame offset from `DeskPresenceMonitor` (updated on analysis frames, reset when monitor stops).
+`lastFaceSeenAtMs` is updated only while an on-demand analysis session sees a face. It is the scheduling input for idle re-acquire, not a continuous surveillance clock.
 
-**Target use:** `lastFaceSeenWithin(W minutes)` leg of `UserPresencePolicy` for Wellness TTS — alongside `lastUserInteractionWithin(W minutes)`. Not continuous tracking; snapshot at last frame with a valid face.
+**Target Wellness speak:** still prefers interaction window / body locate; face timestamp is optional enrichment when a recent sample exists.
 
-## vs Heartbeat (legacy)
+## vs continuous analysis (removed)
 
-Consumed by idle look-around / predictivity presence paths via `DeskPresenceGate`. After Wellness migration, ML Kit remains for **centering** and optional face timestamp for presence OR; not the sole proactive gate.
+Previously the monitor started for the whole hotword session (~5 fps). That drained battery even on charger. Runtime now defaults to **camera off**; use settings toggle to disable the feature entirely if centering/look-around gates are not needed.

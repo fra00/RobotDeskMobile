@@ -41,6 +41,14 @@ class UserAttentionCentering(
             return AttentionCenteringResult.SkippedPresenceDisabled
         }
 
+        // Wake ML Kit analysis for this centering pass only (camera off at idle).
+        return DeskPresenceCameraCoordinator.withCamera {
+            tryCenterOnUserWhileCameraActive()
+        }
+    }
+
+    private suspend fun tryCenterOnUserWhileCameraActive(): AttentionCenteringResult {
+        val bodySettings = bodySettingsProvider()
         val now = nowMillis()
         val client = bodyClientProvider(bodySettings)
             ?: return AttentionCenteringResult.SkippedBodyDisabled
@@ -110,11 +118,22 @@ class UserAttentionCentering(
 
     /**
      * Silent pan scan for predictivity / wellness presence (no vertical centering, no TTS).
+     * Wakes desk-presence camera for the scan duration only.
      */
     suspend fun locateUserNow(timeoutMs: Long = DEFAULT_LOCATE_TIMEOUT_MS): Boolean {
         val bodySettings = bodySettingsProvider()
         if (!bodySettings.isConfigured()) return false
 
+        val presenceSettings = deskPresenceSettingsProvider()
+        if (!presenceSettings.enabled) return false
+
+        return DeskPresenceCameraCoordinator.withCamera {
+            locateUserNowWhileCameraActive(timeoutMs)
+        }
+    }
+
+    private suspend fun locateUserNowWhileCameraActive(timeoutMs: Long): Boolean {
+        val bodySettings = bodySettingsProvider()
         val client = bodyClientProvider(bodySettings) ?: return false
         if (fetchStatus(client) == null) return false
 

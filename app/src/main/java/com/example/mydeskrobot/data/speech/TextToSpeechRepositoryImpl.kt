@@ -7,8 +7,11 @@ class TextToSpeechRepositoryImpl(
     private val dataSource: AndroidTextToSpeechDataSource,
 ) : TextToSpeechRepository {
 
-    override suspend fun speak(text: String, prosody: TtsProsody): Result<Unit> =
-        dataSource.speak(text, prosody)
+    override suspend fun speak(
+        text: String,
+        prosody: TtsProsody,
+        languageTag: String?,
+    ): Result<Unit> = dataSource.speak(text, prosody, languageTag)
 
     override fun stop() {
         dataSource.stop()

@@ -1,6 +1,7 @@
 package com.example.mydeskrobot.memory.extract
 
 import android.util.Log
+import com.example.mydeskrobot.domain.memory.UserNameIdentityPolicy
 import com.example.mydeskrobot.domain.time.RelativeDateNormalizer
 import com.example.mydeskrobot.integration.llm.LlmHttpErrors
 import com.example.mydeskrobot.memory.db.MemoryCategory
@@ -86,6 +87,32 @@ class MemoryExtractionService(
             val value = RelativeDateNormalizer.normalize(rawValue)
             val category = parseCategory(fact.category) ?: MemoryCategory.FACT
             val confidence = (fact.confidence ?: 0.5f).coerceIn(0f, 1f)
+            if (
+                UserNameIdentityPolicy.shouldSkipExtractorUserSelfName(
+                    categoryName = category.name,
+                    value = value,
+                    entryRoles = newEntries.map { it.role },
+                )
+            ) {
+                Log.d(TAG, "Skipping user-self name IDENTITY without USER line: ${value.take(80)}")
+                return@forEach
+            }
+            if (
+                category == MemoryCategory.IDENTITY &&
+                UserNameIdentityPolicy.isUserSelfNameClaim(value)
+            ) {
+                val newName = UserNameIdentityPolicy.extractDisplayedName(value)
+                val existingConflict = unifiedMemoryRepository
+                    .getByCategories(listOf(MemoryCategory.IDENTITY), limitPerCategory = 32)
+                    .any { doc ->
+                        val oldName = UserNameIdentityPolicy.extractDisplayedName(doc.value) ?: return@any false
+                        newName != null && !UserNameIdentityPolicy.sameUserName(oldName, newName)
+                    }
+                if (existingConflict) {
+                    Log.d(TAG, "Skipping conflicting user-self name from extractor: ${value.take(80)}")
+                    return@forEach
+                }
+            }
             val id = unifiedMemoryRepository.upsertUserFacingFact(
                 category = category,
                 value = value,

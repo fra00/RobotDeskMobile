@@ -11,17 +11,25 @@ import com.example.mydeskrobot.domain.telephony.ContactNameMatcher
 import com.example.mydeskrobot.domain.telephony.PhoneNumberNormalizer
 
 /**
+ * Looks up phone numbers from a contacts source (device rubrica or test fake).
+ */
+interface ContactPhoneLookup {
+    fun hasPermission(): Boolean
+    fun search(query: String): List<ContactPhoneMatch>
+}
+
+/**
  * Looks up phone numbers from the device contacts rubrica.
  */
 class AndroidContactsPhoneResolver(
     private val context: Context,
-) {
+) : ContactPhoneLookup {
 
-    fun hasPermission(): Boolean =
+    override fun hasPermission(): Boolean =
         ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CONTACTS) ==
             PackageManager.PERMISSION_GRANTED
 
-    fun search(query: String): List<ContactPhoneMatch> {
+    override fun search(query: String): List<ContactPhoneMatch> {
         if (!hasPermission()) return emptyList()
 
         val terms = ContactNameAliases.expandTerms(query).toList()

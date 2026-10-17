@@ -73,8 +73,13 @@ Weekly full reconcile remains for reminders, lists, spatial legacy data.
 | `PROMEMORIA` | REMINDER |
 | `LISTE` | LIST_ITEM |
 | `SPAZIO` | SPATIAL |
-| `PROFILO ABITUDINI` | HABIT_SUMMARY |
-| `FATTI` | USER_FACT + AUTONOMY |
+| `PROFILO ABITUDINI` | HABIT_SUMMARY (typical patterns — not done evidence) |
+| `ABITUDINI ATTESE` | AUTONOMY habit slots / PATTERN (expected schedule — not done evidence) |
+| `NOTE ROBOT` | AUTONOMY OBSERVATION / INTENT (robot-internal) |
+| `ROUTINE DICHIARATE` | USER_FACT with category ROUTINE (declared schedule — not Log Day evidence) |
+| `FATTI` | USER_FACT only (IDENTITY / PREFERENCE / FACT — not ROUTINE) |
+
+**Expected vs done:** habit slots and habit summary must never be treated as proof that an activity happened on a day or this week. Semantic recall **may** return `HABIT_SUMMARY` / `AUTONOMY` whenever they match the query; `RecallContextFormatter` always places them under `ABITUDINI ATTESE` / `PROFILO ABITUDINI`, never under `FATTI`. `include_habit_summary` only **pins** the prose profile for explicit habit / broad-profile questions.
 
 Unread episodes from the last 7 days are included in recall even without a temporal cue (light score boost).
 

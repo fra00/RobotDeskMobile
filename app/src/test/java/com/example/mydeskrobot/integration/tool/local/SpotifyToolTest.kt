@@ -22,15 +22,15 @@ class SpotifyToolTest {
         val uri = SpotifyTool.buildSearchUri("Nirvana")
         assertEquals(
             "https://open.spotify.com/search/Nirvana",
-            uri.toString(),
+            uri,
         )
     }
 
     @Test
     fun `buildSearchUri encodes spaces and accents`() {
         val uri = SpotifyTool.buildSearchUri("musica italiana")
-        assertTrue(uri.toString().startsWith("https://open.spotify.com/search/"))
-        assertTrue(uri.toString().contains("musica"))
+        assertTrue(uri.startsWith("https://open.spotify.com/search/"))
+        assertTrue(uri.contains("musica"))
     }
 
     @Test
@@ -38,13 +38,13 @@ class SpotifyToolTest {
         val uri = SpotifyTool.buildSearchUri("")
         assertEquals(
             "https://open.spotify.com/search/musica",
-            uri.toString(),
+            uri,
         )
     }
 
     @Test
     fun `buildSpotifySchemeUri uses spotify scheme`() {
         val uri = SpotifyTool.buildSpotifySchemeUri("country music")
-        assertTrue(uri.toString().startsWith("spotify:search:"))
+        assertTrue(uri.startsWith("spotify:search:"))
     }
 }

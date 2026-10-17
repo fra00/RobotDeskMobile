@@ -30,6 +30,7 @@ import com.example.mydeskrobot.R
 @Composable
 fun SettingsDialog(
     onDismiss: () -> Unit,
+    onOpenModeBotSettings: () -> Unit,
     onOpenLlmSettings: () -> Unit,
     onOpenMemorySettings: () -> Unit,
     onOpenSpatialSettings: () -> Unit,
@@ -63,6 +64,14 @@ fun SettingsDialog(
                     .fillMaxWidth()
                     .verticalScroll(rememberScrollState()),
             ) {
+                Text(
+                    text = stringResource(R.string.settings_mode_bot),
+                    style = MaterialTheme.typography.bodyLarge,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(onClick = onOpenModeBotSettings)
+                        .padding(vertical = 12.dp),
+                )
                 Text(
                     text = stringResource(R.string.settings_llm),
                     style = MaterialTheme.typography.bodyLarge,

@@ -7,11 +7,16 @@ import com.example.mydeskrobot.domain.llm.LlmSettings
 import com.example.mydeskrobot.domain.vision.VisionImageCapture
 import com.example.mydeskrobot.integration.llm.LlmClientFactory
 import com.example.mydeskrobot.data.context.RobotContextRepository
+import com.example.mydeskrobot.data.proxy.DeviceModeRepository
+import com.example.mydeskrobot.data.translation.TranslationModeRepository
+import com.example.mydeskrobot.integration.proxy.capability.PhoneCapabilityClient
 import com.example.mydeskrobot.integration.context.RobotContextPromptProviderImpl
+import com.example.mydeskrobot.integration.context.TranslationModePromptProviderImpl
 import com.example.mydeskrobot.data.activitylog.ActivityLogRepository
 import com.example.mydeskrobot.integration.memory.LlmMemoryRecallPlanner
 import com.example.mydeskrobot.integration.memory.UnifiedRecallMemoryContextProvider
 import com.example.mydeskrobot.integration.tool.local.SetRobotContextTool
+import com.example.mydeskrobot.integration.tool.local.SetTranslationModeTool
 import com.example.mydeskrobot.integration.tool.Tool
 import com.example.mydeskrobot.integration.tool.ToolRouter
 import com.example.mydeskrobot.integration.tool.local.AddListItemTool
@@ -112,6 +117,10 @@ object ReasoningModule {
             val phoneContactResolver = PhoneContactResolver(
                 contactsResolver = AndroidContactsPhoneResolver(context),
                 unifiedMemoryRepository = unifiedMemoryRepository,
+                capabilityClient = PhoneCapabilityClient(
+                    context.applicationContext,
+                    DeviceModeRepository(context.applicationContext),
+                ),
             )
             add(ResolvePhoneContactTool(phoneContactResolver))
             add(DialPhoneTool(context))
@@ -124,6 +133,7 @@ object ReasoningModule {
             add(SendWhatsAppTool(context))
             add(SpotifyTool(context))
             add(SetRobotContextTool(RobotContextRepository(context)))
+            add(SetTranslationModeTool(TranslationModeRepository(context)))
             add(ReminderTool(context, memoryWriter = memoryWriter))
             add(GetRemindersTool(context))
             add(DeleteReminderTool(context, memoryWriter = memoryWriter))
@@ -209,6 +219,8 @@ object ReasoningModule {
         )
         val robotContextRepository = RobotContextRepository(context)
         val robotContextProvider = RobotContextPromptProviderImpl(robotContextRepository)
+        val translationModeRepository = TranslationModeRepository(context)
+        val translationModeProvider = TranslationModePromptProviderImpl(translationModeRepository)
         val bodyCapabilitiesProvider = BodyPromptProviderImpl(
             context = context,
             settingsRepository = BodySettingsRepository(context),
@@ -227,6 +239,7 @@ object ReasoningModule {
             bodyCapabilitiesProvider = bodyCapabilitiesProvider,
             heartbeatPlaybookProvider = heartbeatPlaybookProvider,
             robotContextProvider = robotContextProvider,
+            translationModeProvider = translationModeProvider,
             moodContextProvider = moodContextProvider,
             maxChainSteps = 10,
             reasoningLogObserver = reasoningLogObserver,

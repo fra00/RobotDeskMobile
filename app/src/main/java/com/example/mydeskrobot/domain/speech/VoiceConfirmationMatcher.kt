@@ -20,10 +20,13 @@ object VoiceConfirmationMatcher {
         val normalized = normalize(transcript)
         if (normalized.isBlank()) return VoiceConfirmationDecision.UNCLEAR
 
+        // Long utterances are real requests, not yes/no confirmation replies
+        // (e.g. "no voglio sapere che tempo fa…" must not match prefix "no").
+        if (normalized.length > 40) return VoiceConfirmationDecision.NOT_CONFIRMATION
+
         if (matchesAny(normalized, YES_PHRASES)) return VoiceConfirmationDecision.YES
         if (matchesAny(normalized, NO_PHRASES)) return VoiceConfirmationDecision.NO
 
-        if (normalized.length > 40) return VoiceConfirmationDecision.NOT_CONFIRMATION
         return VoiceConfirmationDecision.UNCLEAR
     }
 

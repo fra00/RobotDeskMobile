@@ -243,7 +243,11 @@ Parole chiave sensibili vengono nascoste:
 
 Il testo viene sostituito con `[contenuto sensibile nascosto]`.
 
-### 6.5 Formato per LLM
+### 6.5 Sorgente remota (notification proxy)
+
+Oltre al `NotificationListenerService` locale, il robot in modalità **ROBOT** può ricevere notifiche via `POST /v1/notify` (LAN, token pairing) da un secondo dispositivo in modalità **PROXY**. Whitelist e filtri di accettazione avvengono sul proxy; sul robot si riusa `normalize`/`toEnvelope` e lo stesso `SystemInputDispatcher`. Se ≥1 proxy è paired, il listener **locale** sul robot non emette. Dettagli: [`NOTIFICATION_PROXY.md`](NOTIFICATION_PROXY.md).
+
+### 6.6 Formato per LLM
 
 ```
 [SYSTEM_INPUT: notification]
@@ -365,3 +369,9 @@ Aggregare più notifiche WhatsApp in un unico messaggio:
 ### 9.4 Tool get_recent_notifications
 
 Permettere al LLM di interrogare lo storico notifiche su richiesta vocale.
+
+### 9.5 Notification proxy (telefono personale → device robot)
+
+Stesso APK in due ruoli (**ROBOT** / **PROXY**): il cell personale inoltra le notifiche in LAN (POST best-effort, **niente coda sul proxy**). Mic off / notte / busy / dedup restano sul robot come oggi — cambia solo il punto di ingresso. Spec: [`NOTIFICATION_PROXY.md`](NOTIFICATION_PROXY.md) (guida: [`guides/PROXY_NOTIFICHE.md`](guides/PROXY_NOTIFICHE.md)).
+
+**Runtime (v1):** `DeviceModeRepository` + Impostazioni → **Mode Bot**; robot ascolta `POST /v1/notify` su porta `8765` (`NotificationProxyHttpServer`); proxy usa `NotificationProxyForegroundService` + `NotificationProxyClient`. Listener locale disabilitato se ≥1 proxy paired.

@@ -5,6 +5,7 @@ package com.example.mydeskrobot.domain.check
  */
 data class FireAndCheckEntry(
     val id: Long,
+    val kind: FireAndCheckKind = FireAndCheckKind.PHYSICAL,
     val triggerReason: String,
     val checkGoal: String?,
     val primaryMessage: String,
@@ -12,6 +13,7 @@ data class FireAndCheckEntry(
     val primaryDueAtMillis: Long?,
     val verificationDueAtMillis: Long?,
     val phase: FireAndCheckPhase,
+    val reRemindCount: Int = 0,
 ) {
     /** Text shown when the user taps the indicator. */
     fun detailText(): String {
@@ -20,4 +22,7 @@ data class FireAndCheckEntry(
         triggerReason.trim().takeIf { it.isNotBlank() }?.let { return it }
         return primaryMessage
     }
+
+    val isCommitment: Boolean
+        get() = kind == FireAndCheckKind.COMMITMENT
 }

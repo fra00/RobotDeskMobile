@@ -98,8 +98,8 @@ The app aligns physical moves with "emotion" and STATO ROBOT. You set emotion; K
 | neutral | head/display centered after ephemeral TTL |
 | happy / loving | brief head_tilt nod |
 | sad | slow head_tilt down then return |
-| surprised | quick display_pan look-around |
-| bored | lazy look-around (Kotlin mood-loop idle look-around) |
+| surprised | quick base_pan look-around |
+| bored | lazy base_pan look-around (Kotlin mood-loop idle look-around) |
 | angry / poke_occhi | turn display away; Kotlin may run before your reply |
 | confused | brief head_roll tilt then return |
 | sleeping | app lowers head (~-10°) — do not fight with body_home |

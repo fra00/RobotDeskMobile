@@ -192,17 +192,59 @@ class UnifiedRecallMemoryContextProviderTest {
 
         val context = buildWithPlan(
             provider = provider,
-            userText = "cosa ho fatto questa settimana",
+            userText = "quali sono le mie abitudini",
             plan = MemoryRecallPlan(
                 temporalScope = TemporalScope.WEEK,
                 recallFocus = RecallFocus.GENERAL,
-                searchQueries = listOf("attività settimana", "episodi recenti"),
+                searchQueries = listOf("abitudini", "di solito"),
                 includeHabitSummary = true,
             ),
         )
 
         assertTrue(context.contains("PROFILO ABITUDINI"))
-        assertTrue(context.contains("questa settimana"))
+    }
+
+    @Test
+    fun week_activity_query_labels_habit_slots_not_under_fatti() = runTest {
+        val dao = FakeMemoryDocumentDao()
+        val repository = UnifiedMemoryRepository.createForTest(dao)
+        repository.saveHabitSummaryProjection(
+            summaryText = "Di solito fa tapis roulant la sera",
+            sourceEventCount = 8,
+        )
+        val habitSlot = com.example.mydeskrobot.domain.predictivity.HabitSlot(
+            slotKey = "tapis_roulant|1140",
+            canonicalLabel = "tapis_roulant",
+            displayLabel = "tapis roulant",
+            typicalTimeMinutes = 1140,
+            hitCount = 5,
+            confidence = 0.8f,
+        )
+        repository.upsertHabitSlot(
+            externalRef = com.example.mydeskrobot.data.predictivity.HabitSlotCodec.externalRef(habitSlot.slotKey),
+            value = com.example.mydeskrobot.data.predictivity.HabitSlotCodec.encode(habitSlot),
+            confidence = habitSlot.confidence,
+            ttlDays = 30,
+        )
+        val provider = UnifiedRecallMemoryContextProvider(repository)
+
+        val context = buildWithPlan(
+            provider = provider,
+            userText = "mi dici se l'attività fisica in questa settimana è stata sufficiente?",
+            plan = MemoryRecallPlan(
+                temporalScope = TemporalScope.WEEK,
+                recallFocus = RecallFocus.GENERAL,
+                searchQueries = listOf("attività fisica", "tapis", "allenamento"),
+                includeHabitSummary = false,
+            ),
+        )
+
+        // Without pin, PROFILO may be absent; slots matching query appear under ABITUDINI ATTESE.
+        assertTrue(context.contains("ABITUDINI ATTESE:"))
+        assertTrue(context.contains("tapis roulant"))
+        assertTrue(!context.contains("HABIT_SLOT:v1:"))
+        val afterFatti = context.substringAfter("FATTI:", missingDelimiterValue = "")
+        assertTrue(!afterFatti.contains("tapis"))
     }
 
     private suspend fun buildWithPlan(

@@ -33,7 +33,16 @@ class EmotionGestureMapperTest {
         assertNotNull(choreography)
         assertEquals(3, choreography!!.steps.size)
         val last = choreography.steps.last() as BodyMove.Joint
+        assertEquals(BodyJoint.BASE_PAN, last.joint)
         assertEquals(0, last.position)
+    }
+
+    @Test
+    fun bored_lookAroundUsesBasePan() {
+        val choreography = EmotionGestureMapper.resolve(RobotEmotion.BORED, 0.5f)
+        assertNotNull(choreography)
+        assertEquals(3, choreography!!.steps.size)
+        assertEquals(BodyJoint.BASE_PAN, (choreography.steps[0] as BodyMove.Joint).joint)
     }
 
     @Test

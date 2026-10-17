@@ -9,10 +9,11 @@ Rules:
 - Italian only; never invent facts.
 - Merge true duplicates or fragments of the same topic; keep unrelated topics on separate lines.
 - NEVER merge user IDENTITY (user's own name) with contact names — homonyms stay separate.
+- If multiple distinct user-self name IDENTITY lines exist ("L'utente si chiama X" vs "… Y"), do **not** pick a winner from context — keep them separate (or keep the pinned one unchanged); never invent a single name.
 - Pinned facts (if listed separately) must not be merged, rewritten, or dropped.
 - NEVER drop a distinct fact — when unsure, keep extra lines.
 - ROUTINE: different weekdays or ranges stay separate unless one line states the full week schedule.
-- On contradictions, keep the more specific / recent line (input dates help).
+- On contradictions (except user-self name — see above), keep the more specific / recent line (input dates help).
 
 No numbering, bullets, headers, or commentary.
 

@@ -1,7 +1,7 @@
 # TODO — My Desk Robot
 
-> **SSOT roadmap aperta.** Visione autonoma (draft, può essere disallineata): `docs/Drafts/AUTONOMOUS_AGENT_VISION.md`  
-> **Ultimo allineamento codice:** giugno 2026.
+> **SSOT roadmap aperta.** Visione autonoma (draft storico, non checklist): `docs/Drafts/AUTONOMOUS_AGENT_VISION.md` — **fidarsi di questo file** per ciò che resta da fare.  
+> **Ultimo allineamento codice/doc:** settembre 2026.
 
 ---
 
@@ -11,6 +11,10 @@
 
 - [x] Umore dinamico H3: `TurnMoodEvaluator`, hotword idle, burst/ripetizione, tier happy LLM, ephemeral neutral
 - [ ] Smoke manuale: [`guides/UMORE_SMOKE.md`](guides/UMORE_SMOKE.md) (standby vs sessione attiva vs notte, occhi + corpo ESP32)
+- [x] **Svago → valence base:** look-around `+0.04`, distraction completa `+0.08` (`SelfCare*`); skip sleep/night; interrupt senza bump distraction — [`MOOD.md`](MOOD.md)
+- [ ] **(Idea) Attaccamento / simpatia verso l’utente** — asse separato dalla wellbeing; gioco *con* l’utente vs svago in solitaria (da progettare, non implementare ora)
+- [ ] **(Idea) Open thread / richiamo affettivo:** slot leggero “ci eravamo detti…” (riunione, birra con amici, …) — scritto se LLM/marca evento importante; consumato **una volta** in fascia speak (stessi gate di proattività / non inventare); max rarità. Non nuovo store fatti IDENTITY — continuità di presenza. Priorità dopo smoke Predictivity.
+- [ ] Opzionale dopo smoke: cap orario self-care se gonfia troppo il mood
 
 ### H4 — Working memory
 
@@ -21,16 +25,30 @@
 
 - [ ] Consolidamento memoria post-reflection (PATTERN/OBSERVATION misurabili, non solo save LLM generico)
 
-### H6 — Theory of mind
+### H6 — Theory of mind / umore utente in proattività
 
-- [ ] Umore utente nelle decisioni proattive: da riprogettare LLM-driven (luglio 2026: rimosso `UserAwarenessState` keyword-based; il tono utente ora arriva dal LLM via `user_tone`, solo per il mood robot)
-- [ ] Feedback loop strutturato dopo proactive speak (accettato / ignorato / rifiutato)
+- ~~Umore utente nelle decisioni proattive~~ — **non obiettivo** (ott 2026). `UserAwarenessState` già rimosso; nessuna reintroduzione. `user_tone` resta solo per umore **robot** (lodi/scuse), non per gate proattivi.
 
 ### Follow-up proattività (post-H7 v1)
 
 - [x] `wellnessPresentEnough` cablato (body first → fallback interazione; idle buffer separato)
 - [x] Wellness done solo dopo esito; micro-tick switch separato da wellness/predittività
 - [ ] Smoke manuale: [`guides/PROATTIVITA_SMOKE.md`](guides/PROATTIVITA_SMOKE.md)
+- [ ] Feedback loop strutturato dopo proactive speak (accettato / ignorato / rifiutato)
+- [ ] **Predictivity — verifica uso reale (ott 2026):** in uso quotidiano (senza smoke formale) non ha quasi mai proposto/suggerito nulla; a volte tratta come avvenute cose non fatte. Da indagare end-to-end:
+  - miner → slot abitudini eleggibili / confidence / UI «Abitudini dedotte»
+  - `DeviationWatcher` trigger (finestra oraria, presenza, gate mic/cooldown/cap)
+  - prompt / recall: non presentare `ABITUDINI ATTESE` / PATTERN come prova di attività fatte (solo aspettative)
+  - distinzione habit atteso vs episodio Log Day / HC effettivamente registrato
+  - eventuale redesign soglie o silenzio eccessivo dei gate
+- [ ] **`ProactiveSpeakGate` — studio utilizzo (non toccare codice per ora):** chiarire se ha ancora senso così (solo cap/cooldown/fascia/SILENT/translation) vs aspettativa “momento in cui disturba meno”; chi lo chiama (Predictivity, commitment verify, …); overlap con presence/idle/mic; eventuale semplificazione o split. **Solo analisi** finché non si decide.
+
+### Fire-and-check / impegni
+
+- [ ] **Fire-and-check + commitment follow-up — verifica comportamento reale (ott 2026):** mai smoke formale; dubbi sul fisico in uso quotidiano. Studiare **entrambi** i kind vs [`FIRE_AND_CHECK.md`](FIRE_AND_CHECK.md) (solo analisi, niente redesign finché non chiarito):
+  - **PHYSICAL** (`fire_and_check`): creazione loop, secondo reminder «Verifica…», presenza/foto, UI icone, chiusura/skip
+  - **COMMITMENT** (`commitment_follow_up` → auto «Verifica impegno:» +60 min): primario vs follow-up, voce gated da `ProactiveSpeakGate`, rememorize max 1, UI
+  - Overlap reminder / gate speak / notifica-only se mic off
 
 ---
 
@@ -41,12 +59,40 @@
 | Memory pin + Riorganizza | ✅ `isPinned`, exact dedup, LLM consolidation auto/manuale (gate configurabile); ⬜ fragmentation analyzer |
 | Tool **Note** dedicato | Oggi: `add_list_item` type `NOTE` |
 | **News** summarization | Chunking in `fetch_url` ok; summarization ONNX opzionale |
-| **Traduttore** | Tool o catena web |
+| **Traduttore** | ✅ v1 continuous mode — [`TRANSLATION_MODE.md`](TRANSLATION_MODE.md); one-shot via dialogo |
 | Sensori ambiente | Input `sensor_reading` |
-| **Domotica** | Termostato/luci con conferma utente |
+| **Domotica** | Termostato/luci con conferma utente — **via Google Home APIs (Android)**, non Home Graph sync. Spike: tool LLM discovery+comando (vedi sotto) |
+
+### Domotica — Google Home APIs (idea, non implementare ora)
+
+Auth OAuth/consent → LLM risolve con tool tipizzati (come body/web), **conferma utente** su comandi che cambiano stato:
+
+- [ ] `list_home_devices` — elenco device (struttura/stanza, tipo, id)
+- [ ] `list_home_device_traits` (o `get_home_device`) — trait/comandi/attributi supportati su un device (`supports`)
+- [ ] `home_device_command` — esegue un comando su trait (on/off, level, thermostat, …) solo dopo conferma / invasività alta
+- Home Graph sync/report **non** usare; SDM solo se serve Nest-only in parallelo
+- Vincoli: tipizzati (no JSON libero inventato), registry tipi/trait in app, cloud Google obbligatorio |
 | Pulsante hardware ESP32 | `hardware_button` BLOCKING |
 | **Speaker ID** | Draft `docs/Drafts/SPEAKER_IDENTIFICATION.md` |
 | Sessione vocale auto post-notifica | `activateVoiceSession()` non collegato al TTS notifica — `INPUT_ARCHITECTURE.md` §1.1 |
+| **Commitment follow-up** | ✅ v1 — urgenza → `commitment_follow_up` + `Verifica impegno` — [`FIRE_AND_CHECK.md`](FIRE_AND_CHECK.md) |
+| **Notification proxy** | ✅ v1 — [`NOTIFICATION_PROXY.md`](NOTIFICATION_PROXY.md); guida [`guides/PROXY_NOTIFICHE.md`](guides/PROXY_NOTIFICHE.md) |
+| **Phone capability bridge** | ✅ v1 — pull exercises/contacts + dual reminder — [`PHONE_CAPABILITY_BRIDGE.md`](PHONE_CAPABILITY_BRIDGE.md) |
+| **Skill editor Blockly** | Draft `docs/Drafts/SKILL_EDITOR_BLOCKLY.md` — non implementato |
+| **Body kinematics prompt** | ⬜ Clarificare movimento ESP32 nel prompt/doc (vedi sotto) |
+
+### Body — cinematica / prompt (aperto, ott 2026)
+
+Oggi `body_capabilities_prompt.txt` e tool notes sono troppo generici: segni L/R/su-giù poco espliciti, POV robot vs utente ambiguo («mirror perspective» vs tabella «my right»), poca mappa servo → effetto fisico.
+
+Da fare (prompt normativo + allineo `BODY_INTEGRATION.md` / descrizioni tool):
+
+- [ ] **POV unico**: destra/sinistra = sempre dal punto di vista del robot (o sempre utente — ma una sola regola), documentata come hard constraint
+- [ ] **Tabella segni per joint**: `base_pan` / `display_pan` (+/− → dove guarda); `head_tilt` (+ = alto, − = basso); `head_roll` (+/− = quale spalla)
+- [ ] **Quando quale joint**: `base_pan` vs `display_pan` vs `look_at_user` (già abbozzato — irrigidire)
+- [ ] **Ampiezze tipiche**: sguardo leggero ~10–15°, giro netto ~20–30°, scan stanza ±25° (entro clamp ±45°)
+- [ ] Smoke: «guarda a destra/sinistra», «solo la testa», «guarda in alto/basso», cenno sì/no
+- [x] Look-around noia / micro-tick / gesti yaw → `base_pan` (non `display_pan`) — ott 2026
 
 ---
 
@@ -54,22 +100,24 @@
 
 | Item | Dettaglio |
 |------|-----------|
-| `ConversationViewModel` monolitico (~3.9k righe) | Estrarre coordinatori senza cambiare architettura |
+| `ConversationViewModel` monolitico (~4k+ righe) | Estrarre coordinatori senza cambiare architettura — report: [`ARCHITECTURE_HEALTH.md`](ARCHITECTURE_HEALTH.md) |
 | Dual path input bus | Doc: `SystemInputDispatcher` vs `InputRouter` — `INPUT_ARCHITECTURE.md` §3.1 |
-| Guide umane | Mancano guide narrative LLM / body (memoria, proattività, umore ok) |
+| Guide umane | Mancano guide narrative LLM / body (memoria, proattività, umore, proxy ok) |
 | `TOOL_ARCHITECTURE.md` | ~1600 righe — snellire sezioni storiche |
-| Draft obsoleti | Eliminare `AgentEvolution-GapAnalysis.md`, `STT-Analysis.md` (fix in `STT_ARCHITECTURE.md`) |
+| Prompt corpo cinematica | Vedi sezione *Body — cinematica / prompt* sopra |
 
 ---
 
 ## Test coverage (unit)
 
-**~115 file di test.** Buona copertura su domain, parser, policy, memoria unificata, proattività H7.
+**~115+ file di test.** Buona copertura su domain, parser, policy, memoria unificata, proattività H7, Health Connect mapper/sync.
 
 | Area | Esempi |
 |------|--------|
 | Memoria RAG | `UnifiedMemoryRepositoryTest`, `LlmMemoryRecallPlannerTest`, `MemorySearchScorerTest`, `MemoryReorganizePolicyTest`, `UpsertExactMatchTest` |
+| Nome utente IDENTITY | `UserNameIdentityPolicyTest`, `SaveMemoryToolTest` (conflict / system-turn block) |
 | Proattività H7 | `DeviationWatcherTest`, `WellnessWatcherTest`, `WellnessContextBuilderTest`, `RecurringHabitSlotMinerTest` |
+| Health Connect | `HealthConnectExerciseLabelMapperTest`, `HealthConnectExerciseSyncTest`, `WellnessContextBuilderHealthConnectTest` |
 | Mood / body mapper | `MoodEngineTest`, `EmotionGestureMapperTest`, `BodyExpressionMapperTest` |
 | Heartbeat legacy | `HeartbeatMicroTickPolicyTest`, `DomainSchedulerTest` |
 
@@ -89,7 +137,7 @@ Priorità test: `IdleLookAroundEligibility`, Wellness/Predictivity watchers (fak
 - **H3 (core + dinamico)** — `MoodManager`, `TurnMoodEvaluator`, hotword idle, burst/ripetizione, tier happy LLM, UI occhi, coreografie corpo ESP32
 - **H4 (core)** — `WorkingMemoryRepository`, dedup deviation/wellness, injection heartbeat legacy
 - **H5 (core)** — `WeeklyStatsRepository`, tick `weekly_reflection` nel mood loop (senza gate mic dedicato)
-- **H6 (core)** — rimosso `UserAwarenessRepository` (keyword-based, luglio 2026); tono utente LLM-driven via `user_tone`
+- **H6** — chiuso come non-obiettivo (ott 2026): niente umore utente in proattività; `UserAwareness` rimosso; `user_tone` solo mood robot
 
 ### Presenza, corpo, attenzione
 
@@ -103,6 +151,16 @@ Priorità test: `IdleLookAroundEligibility`, Wellness/Predictivity watchers (fak
 - Memory review follow-up, notifiche DEFERRED, inbox unificata
 - STT unificato, promemoria vocali, web, Spotify, corpo ESP32, spatial, Log Day, WhatsApp/telefono, fire-and-check
 - UX: notifiche lette post-TTS, catalogo tool body, draft `UNIFIED_MEMORY_RAG_PLAN` rimosso
+- **Health Connect → Log Day** — sync exercise sessions (`PHYSICAL_NOW` / `HEALTH_CONNECT`) su Wellness + session start; toggle Proattività — `ACTIVITY_LOG.md`, `PROACTIVE_ARCHITECTURE.md`
+- **User display name IDENTITY** — solo auto-assegnazione formale; guardrail canale notifica/system + conflitto (`replace_user_name`); no keyword router sulla frase — `MEMORY.md`
+- **No voice shortcut notifiche** — rimosso `handleNotificationVoiceCommand`; lettura unread via LLM + `NOTIFICHE_NON_LETTE` — `ROBOT_CONTEXT.md`
+- **Translation mode v1** — one-shot in dialogo; continuo via `set_translation_mode` + TTS locale target — `TRANSLATION_MODE.md`
+
+### Doc hygiene (settembre 2026)
+
+- Rimossi riferimenti a draft già cancellati (`AgentEvolution-GapAnalysis`, `STT-Analysis`)
+- Eliminato `Drafts/AnalysysClaude.md` (prompt vibe-coding storico)
+- Banner su `AUTONOMOUS_AGENT_VISION.md`: non roadmap
 
 ---
 
@@ -110,8 +168,13 @@ Priorità test: `IdleLookAroundEligibility`, Wellness/Predictivity watchers (fak
 
 | Argomento | Spec |
 |-----------|------|
+| Catalogo funzionalità | [`FEATURES.md`](FEATURES.md) |
+| Architecture health | [`ARCHITECTURE_HEALTH.md`](ARCHITECTURE_HEALTH.md) |
 | Proattività | [`PROACTIVE_ARCHITECTURE.md`](PROACTIVE_ARCHITECTURE.md) · guida [`guides/PROATTIVITA.md`](guides/PROATTIVITA.md) |
+| Proxy notifiche | [`NOTIFICATION_PROXY.md`](NOTIFICATION_PROXY.md) · guida [`guides/PROXY_NOTIFICHE.md`](guides/PROXY_NOTIFICHE.md) |
 | Umore | [`MOOD.md`](MOOD.md) · guida [`guides/UMORE.md`](guides/UMORE.md) · smoke [`guides/UMORE_SMOKE.md`](guides/UMORE_SMOKE.md) |
 | Heartbeat | [`HEARTBEAT_ARCHITECTURE.md`](HEARTBEAT_ARCHITECTURE.md) (micro-tick) |
 | Memoria | [`MEMORY.md`](MEMORY.md), [`MEMORY_RECALL_PLANNER.md`](MEMORY_RECALL_PLANNER.md) |
+| Log Day / HC | [`ACTIVITY_LOG.md`](ACTIVITY_LOG.md) |
+| Traduzione | [`TRANSLATION_MODE.md`](TRANSLATION_MODE.md) |
 | Indice agenti | [`AGENTS.md`](../AGENTS.md) |

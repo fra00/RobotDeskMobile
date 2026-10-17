@@ -56,6 +56,20 @@ object HabitSlotCodec {
     fun externalRef(slotKey: String): String =
         ProactivityConstants.HABIT_SLOT_EXTERNAL_REF_PREFIX + slotKey
 
+    /** Human-readable line for LLM prompts (expected habit, not a done episode). */
+    fun formatForPrompt(slot: HabitSlot): String {
+        val label = slot.displayLabel.ifBlank { slot.canonicalLabel }.ifBlank { slot.slotKey }
+        val minutes = slot.typicalTimeMinutes.mod(24 * 60)
+        val time = "%02d:%02d".format(minutes / 60, minutes % 60)
+        return "$label (di solito intorno alle $time)"
+    }
+
+    /** Decode habit slots to prompt text; leave other PATTERN/AUTONOMY values unchanged. */
+    fun formatAutonomyValueForPrompt(value: String): String {
+        val slot = decode(value) ?: return value.trim()
+        return formatForPrompt(slot)
+    }
+
     private fun escapeJson(value: String): String =
         value.replace("\\", "\\\\").replace("\"", "\\\"")
 

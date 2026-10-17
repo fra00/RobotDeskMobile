@@ -25,11 +25,13 @@ Each voice turn: [`LlmMemoryRecallPlanner`](../app/src/main/java/com/example/myd
 | Plan field | Examples | Recall behaviour |
 |------------|----------|------------------|
 | **Temporal (day)** | `SINGLE_DAY` + `focus_day_key` | All `EPISODE` + `REMINDER` for that `dayKey` (scope-linked); budget reserves min 20 non-episode rows |
-| **Temporal (range)** | `WEEK`, `MONTH` | Recent episodes; `include_habit_summary` only when planner sets it |
-| **recall_focus** | USER_FACTS, EPISODIC, MESSAGES, … | Adjusts ranking pool and prefer flags (see planner doc) |
+| **Temporal (range)** | `WEEK`, `MONTH` | Recent episodes; `include_habit_summary` only when planner sets it (not forced for every WEEK query) |
+| **recall_focus** | USER_FACTS, EPISODIC, MESSAGES, … | Adjusts ranking pool and prefer flags (see planner doc). Habit slots may still match semantically; formatter labels them as expected, not done |
 | **search_queries** | 1–4 Italian phrases | Multi-query semantic merge (max score per document) |
 | **Localize** | `localize_spatial` | Spatial docs excluded from RAG; identity via **`DOVE SONO`** block |
 | **Vision refresh** | after `take_photo` in chain | Deterministic `visionCatalog()` — no planner LLM |
+
+**Habits ≠ done evidence:** mined habit slots (`AUTONOMY`/`PATTERN`) and `PROFILO ABITUDINI` are expected patterns. In the MEMORIA block they appear under `ABITUDINI ATTESE` / `PROFILO ABITUDINI`, never under `FATTI`. Declared `ROUTINE` facts appear under `ROUTINE DICHIARATE`. Weekly activity / “when did I…?” judgments use dated `EPISODI`; habits may be mentioned only as optional context (“di solito…”).
 
 **Recall budget** (`MemoryRecallBudget`): max **60** rows in `MEMORIA`. Single-day queries cap episodes at **40** and guarantee **20** slots for reminders, user facts, habit summary, etc. Default (no day focus) reserves **15** `USER_FACT` rows when above score threshold.
 **Semantic search (Phase 2):** ONNX embedder with automatic first-run download (~118 MB). Hybrid score = 0.7 cosine + 0.3 token; `minScore` 0.25 token-only / 0.40 hybrid. Details: [`MEMORY_EMBEDDING.md`](MEMORY_EMBEDDING.md). Without model → token fallback until download completes.
@@ -132,6 +134,22 @@ Choose the tool by what the information **is**, not by the verb alone. See [PROM
 | Alert at a specific time | `set_reminder` | Robot must speak/notify then |
 
 Constraints (not a flowchart): one-off *"domani devo fare X"* → **not** `save_memory`; use TODO unless the user wants an alarm (`set_reminder`). Recurring *"ogni martedì …"* → `save_memory` category `ROUTINE`.
+
+### User display name (IDENTITY)
+
+The user's own name is **identity**, not a contextual guess.
+
+| Allowed | Forbidden |
+|---------|-----------|
+| Formal self-assignment in dialogue (user states their own name / asks to remember it) | Inferred from notifications, WhatsApp titles, contacts, greetings to third parties, homonyms |
+| One active self-name fact (or admit uncertainty if conflicting rows exist) | Silent overwrite from context |
+| When unsure → **do not** `save_memory` | Inventing a name in the reply without a reliable IDENTITY row |
+
+**Hardening (no voice keyword router):**
+
+- Prompt policy for dialogue + extractor + consolidation.
+- Tool/extractor reject self-name IDENTITY writes during notification/system-only turns and when a different self-name IDENTITY already exists (unless explicit `replace_user_name: true` on `save_memory`).
+- Classification is on the **stored value** (e.g. `L'utente si chiama …`), not on matching spoken templates like the notification shortcut.
 
 ### Relative dates at save time
 

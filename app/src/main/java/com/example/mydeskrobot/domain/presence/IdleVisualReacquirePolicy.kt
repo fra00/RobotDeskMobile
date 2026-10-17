@@ -2,6 +2,10 @@ package com.example.mydeskrobot.domain.presence
 
 /**
  * Pure rules for silent idle visual re-acquire (mic on, no active dialog turn).
+ * With on-demand camera: [lastFaceSeenAtMs] only advances during brief analysis
+ * sessions; if null, the threshold is measured from [sessionStartedAtMs].
+ *
+ * Not gated on robot WORK/SILENT — body scan does not speak.
  */
 object IdleVisualReacquirePolicy {
 
@@ -14,10 +18,8 @@ object IdleVisualReacquirePolicy {
         lastFaceSeenAtMs: Long?,
         lastIdleAttemptAtMs: Long?,
         isWaitingForHotword: Boolean,
-        suppressForRobotContext: Boolean,
     ): Boolean {
         if (!isWaitingForHotword) return false
-        if (suppressForRobotContext) return false
 
         lastIdleAttemptAtMs?.let { last ->
             if (nowMs - last < ATTEMPT_COOLDOWN_MS) return false

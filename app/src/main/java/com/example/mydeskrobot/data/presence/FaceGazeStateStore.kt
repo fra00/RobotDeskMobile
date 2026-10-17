@@ -6,8 +6,10 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 /**
- * Latest face-in-frame offset from [com.example.mydeskrobot.integration.presence.DeskPresenceMonitor].
+ * Latest face-in-frame offset from on-demand [com.example.mydeskrobot.integration.presence.DeskPresenceMonitor] sessions.
  * Tracks [lastFaceSeenAtMs] across brief absences (null gaze) until [reset].
+ * Stopping a camera session clears live gaze via [update](null) but **preserves** [lastFaceSeenAtMs]
+ * so idle re-acquire can schedule the next sample.
  */
 object FaceGazeStateStore {
     private val _gaze = MutableStateFlow<FaceGazeSnapshot?>(null)

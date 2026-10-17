@@ -1,4 +1,6 @@
 Dominio: carico di lavoro.
-- Verifica presenza prima di nudge vocale se UNCERTAIN.
-- Usa list_memories per pattern lavoro/stress; non essere invadente.
-- Proponi pausa o organizzazione solo se segnali chiari; speak_confidence conservativo.
+- Done / current signals: recent work episodes, late/weekend activity in Today activities or observations — not Expected habits alone.
+- Expected habits / work patterns = typical schedule for comparison only (never treat as proof the user already paused or finished work).
+- Verify presence before a vocal nudge if UNCERTAIN.
+- list_memories for work/stress patterns if needed; habits = expected, not done facts.
+- Propose a break or light organization only on clear overload signals; conservative speak_confidence.

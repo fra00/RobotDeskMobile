@@ -28,8 +28,7 @@ Single tool for context and notification policy. Reset with `profile: "normal"`.
 Silent mode does not bypass processing: notifications still enter `conversationLog` and the episodic extractor.  
 `UnannouncedNotificationRepository` tracks items not yet read aloud for optional replay.
 
-User voice: *"leggi le notifiche"* (TTS replay) or *"segna come lette"* (dismiss without TTS).  
-Heartbeat ticks remain suppressed in SILENT profiles.
+User voice: *"leggi le notifiche"* / *"cosa mi è arrivato"* is handled by the **dialogue LLM** from MEMORIA → `NOTIFICHE_NON_LETTE` (and EPISODI for history). There is **no** Kotlin voice keyword short-circuit: mentioning "notifiche" in another question must not force "non ci sono notifiche da leggere".
 
 **User speech is always normal** — STT → LLM unchanged when the user talks.
 

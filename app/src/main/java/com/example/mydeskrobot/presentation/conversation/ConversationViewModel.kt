@@ -13,12 +13,14 @@ import com.example.mydeskrobot.domain.hotword.SessionEndReason
 import com.example.mydeskrobot.domain.input.SystemInputDispatcher
 import com.example.mydeskrobot.domain.input.SystemInputEvent
 import com.example.mydeskrobot.domain.memory.ConversationTopicExtractor
+import com.example.mydeskrobot.domain.memory.MemoryWriteTurnContext
 import com.example.mydeskrobot.domain.model.BoredIdleConfig
 import com.example.mydeskrobot.domain.model.LlmAssistantReply
 import com.example.mydeskrobot.domain.model.RobotEmotion
 import com.example.mydeskrobot.domain.time.NightModeConfig
 import com.example.mydeskrobot.domain.time.NightModeHelper
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.withTimeout
 import com.example.mydeskrobot.data.llm.LlmRepositoryImpl
 import com.example.mydeskrobot.data.vision.VisionCameraLifecycleCoordinator
 import com.example.mydeskrobot.domain.repository.LlmRepository
@@ -47,6 +49,7 @@ import com.example.mydeskrobot.activity.summary.ActivityHabitSummarizer
 import com.example.mydeskrobot.data.activitylog.ActivityLogRepository
 import com.example.mydeskrobot.data.activitylog.ActivityLogSettingsRepository
 import com.example.mydeskrobot.domain.activitylog.ActivitySource
+import com.example.mydeskrobot.domain.activitylog.RobotSelfActivityFilter
 import com.example.mydeskrobot.domain.activitylog.EpisodeConfidence
 import com.example.mydeskrobot.domain.activitylog.EpisodeKind
 import com.example.mydeskrobot.memory.unified.UnifiedMemoryRepository
@@ -56,6 +59,7 @@ import com.example.mydeskrobot.memory.unified.embedding.MemoryEmbeddingBootstrap
 import com.example.mydeskrobot.memory.unified.MemoryProjectionBootstrap
 import com.example.mydeskrobot.presentation.settings.BodySettingsFormState
 import com.example.mydeskrobot.presentation.settings.DeskPresenceSettingsFormState
+import com.example.mydeskrobot.presentation.settings.HabitSlotUiMapper
 import com.example.mydeskrobot.presentation.settings.HeartbeatSettingsFormState
 import com.example.mydeskrobot.presentation.settings.LlmSettingsFormState
 import com.example.mydeskrobot.presentation.settings.ListItemUi
@@ -93,6 +97,9 @@ import com.example.mydeskrobot.data.scheduled.ScheduledTaskAlarmScheduler
 import com.example.mydeskrobot.data.scheduled.ScheduledTaskRepository
 import com.example.mydeskrobot.domain.pending.PendingInboxKind
 import com.example.mydeskrobot.data.context.RobotContextRepository
+import com.example.mydeskrobot.data.translation.TranslationModeRepository
+import com.example.mydeskrobot.domain.translation.TranslationModePolicy
+import com.example.mydeskrobot.reasoning.model.TranslationModeState
 import com.example.mydeskrobot.data.pending.UnannouncedNotificationRepository
 import com.example.mydeskrobot.memory.unified.UnifiedMemoryWriter
 import com.example.mydeskrobot.data.body.BodySettings
@@ -131,6 +138,8 @@ import com.example.mydeskrobot.integration.predictivity.DeviationWatchContext
 import com.example.mydeskrobot.integration.predictivity.DeviationWatcher
 import com.example.mydeskrobot.integration.predictivity.PredictivityDeviationOrchestrator
 import com.example.mydeskrobot.integration.predictivity.PredictivityModule
+import com.example.mydeskrobot.domain.predictivity.HabitSlot
+import com.example.mydeskrobot.domain.predictivity.HabitSlotEligibility
 import com.example.mydeskrobot.data.proactive.ProactivitySettingsRepository
 import com.example.mydeskrobot.data.heartbeat.SensingKind
 import com.example.mydeskrobot.data.heartbeat.SensingLogRepository
@@ -141,6 +150,7 @@ import com.example.mydeskrobot.integration.wellness.WellnessCheckOrchestrator
 import com.example.mydeskrobot.integration.wellness.WellnessModule
 import com.example.mydeskrobot.integration.wellness.WellnessWatchContext
 import com.example.mydeskrobot.integration.presence.BodyReachability
+import com.example.mydeskrobot.integration.presence.DeskPresenceCameraCoordinator
 import com.example.mydeskrobot.integration.presence.DeskPresenceMonitor
 import com.example.mydeskrobot.integration.presence.BodyLocateService
 import com.example.mydeskrobot.integration.presence.UserAttentionCentering
@@ -152,6 +162,7 @@ import com.example.mydeskrobot.data.heartbeat.AttentionDomainRepository
 import com.example.mydeskrobot.data.heartbeat.ProactiveInterventionRepository
 import com.example.mydeskrobot.domain.presence.IdleVisualReacquirePolicy
 import com.example.mydeskrobot.domain.presence.DeskPresenceGate
+import com.example.mydeskrobot.domain.presence.DeskOccupancyState
 import com.example.mydeskrobot.integration.input.heartbeat.ProactiveTracker
 import com.example.mydeskrobot.R
 import com.example.mydeskrobot.data.speech.SttSettingsRepository
@@ -159,6 +170,7 @@ import com.example.mydeskrobot.data.speech.VoskModelManager
 import com.example.mydeskrobot.domain.speech.SttProvider
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -220,6 +232,8 @@ class ConversationViewModel(
     private var queuedUtteranceForLlm: String? = null
     /** Ripristino cronologia se il turno LLM viene annullato prima della risposta robot. */
     private var conversationLogBeforeCurrentTurn: String? = null
+    /** Snapshot of translation mode at the start of the current LLM turn (TTS locale policy). */
+    private var translationModeAtTurnStart: TranslationModeState = TranslationModeState.OFF
     /** True while hotword orchestrator is in active voice session (not standby-only). */
     private var voiceSessionActive = false
     private val unifiedMemoryRepository by lazy {
@@ -282,6 +296,7 @@ class ConversationViewModel(
     private val deferredInputQueue = DeferredInputQueue()
     private val inputSettingsRepository = InputSettingsRepository(appContext)
     private val robotContextRepository = RobotContextRepository(appContext)
+    private val translationModeRepository = TranslationModeRepository(appContext)
     private val unannouncedNotificationRepository = UnannouncedNotificationRepository(appContext)
     private val fireAndCheckRepository = FireAndCheckRepository.create(appContext)
     private val scheduledTaskRepository = ScheduledTaskRepository.create(appContext)
@@ -293,6 +308,7 @@ class ConversationViewModel(
     private val proactiveInterventionRepository = ProactiveInterventionRepository(appContext)
     private val deskPresenceMonitor by lazy {
         DeskPresenceMonitor(appContext, deskPresenceSettingsRepository, viewModelScope).also { monitor ->
+            DeskPresenceCameraCoordinator.bind(monitor)
             VisionCameraLifecycleCoordinator.setPresenceResumeHandler {
                 monitor.resumeAnalysisIfNeeded()
             }
@@ -310,9 +326,12 @@ class ConversationViewModel(
             attentionCentering = userAttentionCentering,
         )
     }
+    private val habitSlotRepository by lazy {
+        PredictivityModule.createHabitSlotRepository(appContext)
+    }
     private val deviationWatcher by lazy {
         DeviationWatcher(
-            habitSlotRepository = PredictivityModule.createHabitSlotRepository(appContext),
+            habitSlotRepository = habitSlotRepository,
             activityLogRepository = activityLogRepository,
             bodyLocateService = bodyLocateService,
         )
@@ -321,6 +340,9 @@ class ConversationViewModel(
     private val wellnessWatcher by lazy { WellnessModule.createWatcher() }
     private val wellnessContextBuilder by lazy { WellnessModule.createContextBuilder(appContext) }
     private val wellnessCheckOrchestrator = WellnessCheckOrchestrator()
+    private val healthConnectExerciseSync by lazy {
+        com.example.mydeskrobot.data.health.HealthConnectModule.createSync(appContext)
+    }
     private val proactiveTracker by lazy {
         ProactiveTracker(
             workingMemoryRepository = workingMemoryRepository,
@@ -429,6 +451,8 @@ class ConversationViewModel(
 
     private var voiceSessionStartedAtMs: Long = 0L
     private var lastIdleVisualAttemptAtMs: Long? = null
+    /** Holds [DeskPresenceCameraCoordinator.withCamera] while the presence debug dialog is open. */
+    private var presenceDebugCameraJob: Job? = null
 
     init {
         moodContextProvider.snapshotProvider = { moodManager.currentMood.value }
@@ -436,6 +460,9 @@ class ConversationViewModel(
         moodContextProvider.promptHintsProvider = { moodManager.currentPromptHints() }
         moodContextProvider.idleDistractionProvider = {
             moodManager.idleBoredomController.currentDistractionKind()
+        }
+        moodContextProvider.recentIdleDistractionProvider = {
+            moodManager.idleBoredomController.recentDistractionKind(System.currentTimeMillis())
         }
         viewModelScope.launch {
             spatialContextManager.initialize()
@@ -464,6 +491,11 @@ class ConversationViewModel(
                 _uiState.update { it.copy(deskOccupancyState = occupancy.state) }
             }
         }
+        viewModelScope.launch {
+            DeskPresenceCameraCoordinator.cameraActive.collect { active ->
+                _uiState.update { it.copy(deskPresenceCameraActive = active) }
+            }
+        }
         memoryExtractionScheduler.start()
         activityLogExtractionScheduler.start()
         viewModelScope.launch {
@@ -483,6 +515,7 @@ class ConversationViewModel(
         }
         viewModelScope.launch {
             PredictivityModule.createLifecycleCoordinator(appContext).mineThenPrune()
+            syncHealthConnectExercisesBestEffort()
             engineBodySettingsKey = bodySettingsKey(bodySettingsRepository.load())
         }
         viewModelScope.launch {
@@ -492,6 +525,11 @@ class ConversationViewModel(
             robotContextRepository.observeEffectiveState().collect { state ->
                 val profile = if (state.isNormal) RobotProfile.NORMAL else state.profile
                 _uiState.update { it.copy(robotContextProfile = profile) }
+            }
+        }
+        viewModelScope.launch {
+            translationModeRepository.observeState().collect { state ->
+                _uiState.update { it.copy(translationModeActive = state.enabled) }
             }
         }
         viewModelScope.launch {
@@ -582,6 +620,8 @@ class ConversationViewModel(
             ConversationUiEvent.OnSaveSttSettings -> saveSttSettings()
             ConversationUiEvent.OnOpenNotificationSettings -> openNotificationSettings()
             ConversationUiEvent.OnDismissNotificationSettings -> dismissNotificationSettings()
+            ConversationUiEvent.OnOpenModeBotSettings -> openModeBotSettings()
+            ConversationUiEvent.OnDismissModeBotSettings -> dismissModeBotSettings()
             is ConversationUiEvent.OnNotificationEnabledChange -> updateNotificationEnabled(event.enabled)
             is ConversationUiEvent.OnNotificationPackageToggle -> toggleNotificationPackage(event.packageName)
             ConversationUiEvent.OnSaveNotificationSettings -> saveNotificationSettings()
@@ -589,10 +629,17 @@ class ConversationViewModel(
             ConversationUiEvent.OnDismissHeartbeatSettings -> dismissHeartbeatSettings()
             is ConversationUiEvent.OnHeartbeatFormChange -> updateHeartbeatForm(event.form)
             ConversationUiEvent.OnSaveHeartbeatSettings -> saveHeartbeatSettings()
+            ConversationUiEvent.OnOpenHabitSlotsSettings -> openHabitSlotsSettings()
+            ConversationUiEvent.OnDismissHabitSlotsSettings -> dismissHabitSlotsSettings()
+            is ConversationUiEvent.OnDeleteHabitSlot -> requestDeleteHabitSlot(event.slotKey)
+            ConversationUiEvent.OnConfirmDeleteHabitSlot -> confirmDeleteHabitSlot()
+            ConversationUiEvent.OnDismissDeleteHabitSlot -> dismissDeleteHabitSlot()
             ConversationUiEvent.OnOpenDeskPresenceSettings -> openDeskPresenceSettings()
             ConversationUiEvent.OnDismissDeskPresenceSettings -> dismissDeskPresenceSettings()
             is ConversationUiEvent.OnDeskPresenceFormChange -> updateDeskPresenceForm(event.form)
             ConversationUiEvent.OnSaveDeskPresenceSettings -> saveDeskPresenceSettings()
+            ConversationUiEvent.OnOpenPresenceDebug -> openPresenceDebug()
+            ConversationUiEvent.OnDismissPresenceDebug -> dismissPresenceDebug()
             is ConversationUiEvent.OnOpenAttentionDomainsSettings ->
                 openAttentionDomainsSettings(event.returnToMain)
             ConversationUiEvent.OnDismissAttentionDomainsSettings -> dismissAttentionDomainsSettings()
@@ -1219,6 +1266,7 @@ class ConversationViewModel(
         ActivitySource.TOOL -> appContext.getString(R.string.log_day_source_tool)
         ActivitySource.VOICE -> appContext.getString(R.string.log_day_source_voice)
         ActivitySource.NOTIFICATION -> appContext.getString(R.string.log_day_source_notification)
+        ActivitySource.HEALTH_CONNECT -> appContext.getString(R.string.log_day_source_health_connect)
     }
 
     private fun updateMemoryItemDraft(id: Long, value: String) {
@@ -1443,6 +1491,20 @@ class ConversationViewModel(
         _settingsUiState.update { it.copy(showNotificationDialog = false) }
     }
 
+    private fun openModeBotSettings() {
+        _settingsUiState.update {
+            it.copy(
+                showMainDialog = false,
+                showModeBotDialog = true,
+                feedbackMessage = null,
+            )
+        }
+    }
+
+    private fun dismissModeBotSettings() {
+        _settingsUiState.update { it.copy(showModeBotDialog = false) }
+    }
+
     private fun updateNotificationEnabled(enabled: Boolean) {
         _settingsUiState.update { it.copy(notificationsEnabled = enabled, feedbackMessage = null) }
     }
@@ -1493,6 +1555,65 @@ class ConversationViewModel(
     private fun dismissHeartbeatSettings() {
         _settingsUiState.update {
             it.copy(showHeartbeatDialog = false, showMainDialog = true)
+        }
+    }
+
+    private fun openHabitSlotsSettings() {
+        viewModelScope.launch {
+            refreshHabitSlotsList()
+            _settingsUiState.update {
+                it.copy(
+                    showHeartbeatDialog = false,
+                    showHabitSlotsDialog = true,
+                    habitSlotDeleteConfirmKey = null,
+                    feedbackMessage = null,
+                )
+            }
+        }
+    }
+
+    private suspend fun refreshHabitSlotsList() {
+        habitSlotRepository.deleteRobotSelfSlots()
+        val slots = habitSlotRepository.listAll()
+            .sortedWith(
+                compareByDescending<HabitSlot> { HabitSlotEligibility.isEligibleForDeviation(it) }
+                    .thenBy { it.typicalTimeMinutes }
+                    .thenBy { it.displayLabel.lowercase() },
+            )
+            .map { HabitSlotUiMapper.fromDomain(it) }
+        _settingsUiState.update { it.copy(habitSlots = slots) }
+    }
+
+    private fun dismissHabitSlotsSettings() {
+        _settingsUiState.update {
+            it.copy(
+                showHabitSlotsDialog = false,
+                showHeartbeatDialog = true,
+                habitSlotDeleteConfirmKey = null,
+            )
+        }
+    }
+
+    private fun requestDeleteHabitSlot(slotKey: String) {
+        _settingsUiState.update { it.copy(habitSlotDeleteConfirmKey = slotKey) }
+    }
+
+    private fun dismissDeleteHabitSlot() {
+        _settingsUiState.update { it.copy(habitSlotDeleteConfirmKey = null) }
+    }
+
+    private fun confirmDeleteHabitSlot() {
+        val slotKey = _settingsUiState.value.habitSlotDeleteConfirmKey ?: return
+        viewModelScope.launch {
+            habitSlotRepository.deleteBySlotKey(slotKey)
+            refreshHabitSlotsList()
+            _settingsUiState.update {
+                it.copy(
+                    habitSlotDeleteConfirmKey = null,
+                    feedbackMessage = appContext.getString(R.string.habit_slots_deleted),
+                    feedbackIsError = false,
+                )
+            }
         }
     }
 
@@ -1679,13 +1800,19 @@ class ConversationViewModel(
                 wellnessAnchorMinutes = form.wellnessAnchorMinutes,
                 wellnessIdleMinutes = form.wellnessIdleMinutes,
                 wellnessPresenceMinutes = form.wellnessPresenceMinutes,
+                healthConnectEnabled = form.healthConnectEnabled,
             )
+            if (form.healthConnectEnabled) {
+                // Mic may already be on — don't wait for next session start / Wellness.
+                syncHealthConnectExercisesBestEffort()
+            }
 
             _settingsUiState.update {
                 it.copy(
                     showHeartbeatDialog = false,
                     showMainDialog = true,
                     heartbeatForm = form,
+                    logDayGroups = loadLogDayGroups(),
                     feedbackMessage = appContext.getString(R.string.heartbeat_settings_saved),
                     feedbackIsError = false,
                 )
@@ -1725,13 +1852,15 @@ class ConversationViewModel(
                 analysisFps = form.analysisFps,
                 faceConfidenceThreshold = form.faceConfidenceThreshold,
             )
-            if (form.enabled && _uiState.value.isHotwordListeningActive) {
-                deskPresenceMonitor.stop()
-                deskPresenceMonitor.start()
-            } else {
-                deskPresenceMonitor.stop()
+            // Camera stays off at idle; on-demand sessions wake ML Kit via withCamera.
+            dismissPresenceDebug()
+            deskPresenceMonitor.forceStop()
+            _uiState.update {
+                it.copy(
+                    deskPresenceMonitorEnabled = form.enabled,
+                    deskPresenceCameraActive = false,
+                )
             }
-            _uiState.update { it.copy(deskPresenceMonitorEnabled = form.enabled) }
             _settingsUiState.update {
                 it.copy(
                     showDeskPresenceDialog = false,
@@ -1741,6 +1870,31 @@ class ConversationViewModel(
                     feedbackIsError = false,
                 )
             }
+        }
+    }
+
+    /**
+     * Presence debug overlay requires live ML Kit frames — hold an on-demand camera
+     * session for the lifetime of the dialog.
+     */
+    private fun openPresenceDebug() {
+        if (_uiState.value.showPresenceDebugDialog) return
+        // Ensure monitor is constructed and bound to the coordinator.
+        deskPresenceMonitor
+        presenceDebugCameraJob?.cancel()
+        presenceDebugCameraJob = viewModelScope.launch {
+            DeskPresenceCameraCoordinator.withCamera {
+                awaitCancellation()
+            }
+        }
+        _uiState.update { it.copy(showPresenceDebugDialog = true) }
+    }
+
+    private fun dismissPresenceDebug() {
+        presenceDebugCameraJob?.cancel()
+        presenceDebugCameraJob = null
+        if (_uiState.value.showPresenceDebugDialog) {
+            _uiState.update { it.copy(showPresenceDebugDialog = false) }
         }
     }
 
@@ -2161,14 +2315,20 @@ class ConversationViewModel(
         activityLogExtractionScheduler.start()
         VoiceSessionState.setActive(true)
         viewModelScope.launch { workingMemoryRepository.recordFirstHotwordOn() }
+        viewModelScope.launch { syncHealthConnectExercisesBestEffort() }
         viewModelScope.launch {
             val deskSettings = deskPresenceSettingsRepository.load()
-            if (deskSettings.enabled) {
-                deskPresenceMonitor.start()
-            } else {
-                deskPresenceMonitor.stop()
+            // Do not start continuous analysis — camera wakes only for look-around /
+            // re-acquire / look_at_user / body locate / vision tools.
+            FaceGazeStateStore.reset()
+            deskPresenceMonitor.forceStop()
+            _uiState.update {
+                it.copy(
+                    deskPresenceMonitorEnabled = deskSettings.enabled,
+                    deskPresenceCameraActive = false,
+                    deskOccupancyState = DeskOccupancyState.UNKNOWN,
+                )
             }
-            _uiState.update { it.copy(deskPresenceMonitorEnabled = deskSettings.enabled) }
         }
     }
 
@@ -2177,6 +2337,7 @@ class ConversationViewModel(
         llmJob?.cancel()
         emotionTransitionJob?.cancel()
         eyePokeSquishJob?.cancel()
+        dismissPresenceDebug()
         queuedUtteranceForLlm = null
         voiceSessionActive = false
         clearVisionPipeline()
@@ -2187,7 +2348,7 @@ class ConversationViewModel(
         ttsRepository.stop()
         HotwordServiceStarter.stop(appContext)
         VoiceSessionState.setActive(false)
-        deskPresenceMonitor.stop()
+        deskPresenceMonitor.forceStop()
         _uiState.update {
             it.copy(
                 phase = ConversationPhase.Idle,
@@ -2199,6 +2360,7 @@ class ConversationViewModel(
                 eyeSquishRight = false,
                 idleDistraction = null,
                 deskPresenceMonitorEnabled = false,
+                deskPresenceCameraActive = false,
                 deskOccupancyState = com.example.mydeskrobot.domain.presence.DeskOccupancyState.UNKNOWN,
             )
         }
@@ -2315,11 +2477,6 @@ class ConversationViewModel(
             }
         }
 
-        if (handleNotificationVoiceCommand(trimmed)) {
-            clearCurrentUtteranceDisplay()
-            return
-        }
-
         if (isAssistantTurnInProgress() || visionPipelineActive) {
             Log.d(TAG, "onUtteranceReadyForLlm: queued (assistant turn in progress)")
             queueUtteranceForLlm(trimmed)
@@ -2335,123 +2492,6 @@ class ConversationViewModel(
             if (state.currentUtterance.isEmpty()) state
             else state.copy(currentUtterance = "")
         }
-    }
-
-    private fun handleNotificationVoiceCommand(phrase: String): Boolean {
-        val normalized = phrase.trim().lowercase()
-        val wantsRead = when {
-            normalized.contains("leggi") && normalized.contains("notif") -> true
-            normalized.contains("cosa mi è arrivato") -> true
-            normalized.contains("cosa mi e arrivato") -> true
-            normalized.contains("notifiche in attesa") -> true
-            normalized.contains("che notifiche hai") -> true
-            normalized.contains("hai notifiche") -> true
-            else -> false
-        }
-        val wantsMarkRead = when {
-            normalized.contains("segna") && normalized.contains("lett") -> true
-            normalized.contains("ignora") && normalized.contains("notif") -> true
-            normalized.contains("non mi interess") && normalized.contains("notif") -> true
-            else -> false
-        }
-        if (!wantsRead && !wantsMarkRead) return false
-
-        viewModelScope.launch {
-            if (wantsMarkRead) {
-                markUnannouncedNotificationsRead(userPhrase = phrase, speakAck = true)
-            } else {
-                speakUnannouncedNotificationsReply(phrase)
-            }
-        }
-        return true
-    }
-
-    private suspend fun speakEphemeralReply(robotReply: String) {
-        if (!_uiState.value.isHotwordListeningActive) return
-        HotwordController.beginAssistantTurn()
-        _uiState.update {
-            it.copy(
-                phase = ConversationPhase.Thinking,
-                emotion = RobotEmotion.THINKING,
-                statusMessage = messages.thinkingStatus(),
-                currentUtterance = "",
-            )
-        }
-        lastAssistantResponse = robotReply
-        speakResponse(robotReply, RobotEmotion.NEUTRAL)
-    }
-
-    private suspend fun speakUnannouncedNotificationsReply(userPhrase: String) {
-        val unreadEpisodes = unifiedMemoryRepository.listUnreadNotificationEpisodes()
-        val deferredNotifications = deferredInputQueue.snapshot().mapNotNull { item ->
-            (item.envelope.input as? RobotInput.Notification)?.let { notification ->
-                notification to item.envelope.dedupKey
-            }
-        }
-
-        if (unreadEpisodes.isEmpty() && deferredNotifications.isEmpty()) {
-            speakMemoryCommandReply(userPhrase, "Non hai notifiche da leggere.")
-            return
-        }
-
-        val lines = buildList {
-            unreadEpisodes.forEach { episode ->
-                val channel = episode.sourceChannel.orEmpty()
-                val body = episode.value
-                add(if (channel.isBlank()) body else "$channel: $body")
-            }
-            deferredNotifications.forEach { (notification, _) ->
-                val body = listOfNotNull(
-                    notification.title?.trim()?.takeIf { it.isNotBlank() },
-                    notification.text?.trim()?.takeIf { it.isNotBlank() },
-                ).joinToString(" — ")
-                add("${notification.appLabel}: $body")
-            }
-        }
-
-        val reply = when (lines.size) {
-            1 -> "Hai una notifica: ${lines.single()}"
-            else -> "Hai ${lines.size} notifiche: ${lines.joinToString(". ")}"
-        }
-
-        unreadEpisodes.mapNotNull { it.externalRef }.forEach { memoryWriter.markEpisodeRead(it) }
-        bumpUnreadEpisodesTick()
-        deferredNotifications.forEach { (_, dedupKey) ->
-            deferredInputQueue.removeByDedupKey(dedupKey)
-        }
-
-        speakMemoryCommandReply(userPhrase, reply)
-    }
-
-    private suspend fun markUnannouncedNotificationsRead(userPhrase: String, speakAck: Boolean) {
-        val count = memoryWriter.markAllNotificationEpisodesRead()
-        bumpUnreadEpisodesTick()
-        if (!speakAck) return
-        val reply = if (count == 0) {
-            "Non hai notifiche da segnare come lette."
-        } else if (count == 1) {
-            "Fatto, ho segnato una notifica come letta."
-        } else {
-            "Fatto, ho segnato $count notifiche come lette."
-        }
-        speakMemoryCommandReply(userPhrase, reply)
-    }
-
-    private suspend fun speakMemoryCommandReply(userPhrase: String, robotReply: String) {
-        if (!_uiState.value.isHotwordListeningActive) return
-        HotwordController.beginAssistantTurn()
-        val currentLog = _uiState.value.conversationLog
-        _uiState.update {
-            it.copy(
-                phase = ConversationPhase.Thinking,
-                emotion = RobotEmotion.THINKING,
-                statusMessage = messages.thinkingStatus(),
-                currentUtterance = "",
-                conversationLog = appendRobotLine(appendUserLine(currentLog, userPhrase), robotReply),
-            )
-        }
-        lastAssistantResponse = robotReply
-        speakResponse(robotReply, RobotEmotion.NEUTRAL)
     }
 
     private fun queueUtteranceForLlm(phrase: String) {
@@ -2532,6 +2572,7 @@ class ConversationViewModel(
             try {
                 if (turnId != llmTurnGeneration) return@launch
                 refreshReasoningEngineIfBodySettingsChanged()
+                translationModeAtTurnStart = translationModeRepository.getState()
 
                 val result = reasoningEngine.processUserInput(
                     userText = phrase,
@@ -2608,7 +2649,11 @@ class ConversationViewModel(
         val textForTts = MarkdownStripper.strip(text)
         try {
             startSpeakingBodyLanguage()
-            ttsRepository.speak(textForTts, currentSpeechProsody()).onFailure { error ->
+            ttsRepository.speak(
+                text = textForTts,
+                prosody = currentSpeechProsody(),
+                languageTag = resolveTtsLanguageTag(),
+            ).onFailure { error ->
                 if (error !is TtsInterruptedException) {
                     // Don't switch to recoverable anger here: the chain will continue.
                 }
@@ -3102,7 +3147,11 @@ class ConversationViewModel(
 
         try {
             startSpeakingBodyLanguage()
-            val speakResult = ttsRepository.speak(textForTts, currentSpeechProsody())
+            val speakResult = ttsRepository.speak(
+                text = textForTts,
+                prosody = currentSpeechProsody(),
+                languageTag = resolveTtsLanguageTag(),
+            )
             if (speakResult.isSuccess && !ttsInterruptHandled) {
                 markPendingAnnouncedNotificationRead()
                 resumeListeningAfterAssistantTurn()
@@ -3119,6 +3168,18 @@ class ConversationViewModel(
         } finally {
             stopSpeakingBodyLanguage()
         }
+    }
+
+    /**
+     * Target-language TTS only while mode stayed active across the turn
+     * (not enter-ack / exit-confirm, which stay Italian).
+     */
+    private suspend fun resolveTtsLanguageTag(): String? {
+        val after = translationModeRepository.getState()
+        return TranslationModePolicy.ttsLanguageTagForTurn(
+            modeAtTurnStart = translationModeAtTurnStart,
+            modeAfterTools = after,
+        )
     }
 
     private fun currentSpeechProsody(): TtsProsody =
@@ -3351,6 +3412,7 @@ class ConversationViewModel(
             isNightMode = state.isNightMode,
         )
         val intensity = deriveDisplayIntensity(phase)
+        val now = System.currentTimeMillis()
         val moodUi = MoodUiStateMapper.from(
             mood = mood,
             ephemeral = moodManager.ephemeralExpression.value,
@@ -3358,6 +3420,8 @@ class ConversationViewModel(
             displayIntensity = intensity,
             idleMinutes = moodManager.getIdleMinutes(),
             idleDistraction = moodManager.idleBoredomController.currentDistractionKind(),
+            recentIdleDistraction = moodManager.idleBoredomController.recentDistractionKind(now),
+            now = now,
         )
         if (
             state.emotion != emotion ||
@@ -3465,7 +3529,7 @@ class ConversationViewModel(
 
     /**
      * Advances look-around relief → symbolic distraction → end (reset idle clocks).
-     * Never touches wellbeing valence.
+     * Completed solo distraction bumps persistent valence ([MoodTrigger.SelfCareDistraction]).
      */
     private suspend fun pollIdleBoredomCycle() {
         val now = System.currentTimeMillis()
@@ -3484,10 +3548,11 @@ class ConversationViewModel(
             }
             IdleBoredomTickResult.DistractionEnded -> {
                 val kind = _uiState.value.idleDistraction
+                moodManager.onTrigger(MoodTrigger.SelfCareDistraction)
                 moodManager.resetIdleClocks(now)
                 heartbeatSettingsRepository.recordInteraction()
                 endIdleDistraction(kind)
-                Log.d(TAG, "Idle distraction ended; idle clocks reset")
+                Log.d(TAG, "Idle distraction ended; idle clocks reset + self-care valence")
             }
             IdleBoredomTickResult.Cleared -> {
                 endIdleDistraction(_uiState.value.idleDistraction)
@@ -3540,8 +3605,8 @@ class ConversationViewModel(
     }
 
     private fun appendIdleDistractionLog(started: Boolean, kind: IdleDistractionKind) {
-        val text = idleDistractionLogText(started, kind)
-        val source = appContext.getString(R.string.idle_distraction_log_source)
+        val text = RobotSelfActivityFilter.tagLabel(idleDistractionLogText(started, kind))
+        val source = RobotSelfActivityFilter.CHANNEL_SVAGO
         _uiState.update { state ->
             state.copy(
                 conversationLog = appendSystemLine(state.conversationLog, source, text),
@@ -3603,6 +3668,9 @@ class ConversationViewModel(
      * Runs in the mood loop; does not use proactive speak budget.
      * Independent of WORK/SILENT (mimica non disturbante).
      * On success: clears idle boredom reason (no valence change) and starts mild relief.
+     *
+     * Soft gates first (no camera); if presence settings are on, wakes ML Kit briefly
+     * to sample occupancy, then applies [DeskPresenceGate] before mimica.
      */
     private suspend fun pollIdleLookAround() {
         if (!_uiState.value.isHotwordListeningActive) return
@@ -3617,15 +3685,11 @@ class ConversationViewModel(
             0L
         }
         val deskSettings = deskPresenceSettingsRepository.load()
-        val occupancy = DeskPresenceStateStore.current()
-        val presenceAllows = DeskPresenceGate.allowsProactiveInteraction(
-            occupancy = occupancy,
-            lastInteractionMillis = settings.lastInteractionMillis,
-            monitorEnabled = deskSettings.enabled,
-        )
         val now = System.currentTimeMillis()
         val currentHour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
-        val eligible = IdleLookAroundEligibility.shouldRun(
+
+        // Soft eligibility ignores live occupancy (camera still off).
+        val softEligible = IdleLookAroundEligibility.shouldRun(
             microTickEnabled = settings.enabled,
             voiceSessionActive = VoiceSessionState.isActive,
             withinActiveWindow = IdleLookAroundEligibility.isWithinActiveWindow(
@@ -3634,16 +3698,30 @@ class ConversationViewModel(
                 currentHour,
             ),
             isNightMode = _uiState.value.isNightMode,
-            // Boredom fidget must not be blocked by WORK/SILENT notification mode.
             robotContextSilent = false,
-            presenceAllows = presenceAllows,
+            presenceAllows = true,
             moodEmotion = mood.baseEmotion,
             idleMinutes = idleMinutes,
             lastLookAroundAtMs = sensingLogRepository.lastAt(SensingKind.LOOK_AROUND),
             intervalMinutes = settings.intervalMinutes,
             nowMs = now,
         )
-        if (!eligible) return
+        if (!softEligible) return
+
+        if (deskSettings.enabled) {
+            val presenceAllows = DeskPresenceCameraCoordinator.withCamera {
+                DeskPresenceCameraCoordinator.awaitOccupancySample()
+                DeskPresenceGate.allowsProactiveInteraction(
+                    occupancy = DeskPresenceStateStore.current(),
+                    lastInteractionMillis = settings.lastInteractionMillis,
+                    monitorEnabled = true,
+                )
+            }
+            if (!presenceAllows) {
+                Log.d(TAG, "Idle look-around skipped — presence sample not PRESENT")
+                return
+            }
+        }
 
         Log.d(TAG, "Idle look-around: idle=${idleMinutes}m mood=${mood.baseEmotion}")
 
@@ -3656,7 +3734,10 @@ class ConversationViewModel(
         sensingLogRepository.record(SensingKind.LOOK_AROUND)
 
         moodManager.clearIdleBoredomReason(now)
-        moodManager.idleBoredomController.onLookAroundCompleted(now)
+        val startedRelief = moodManager.idleBoredomController.onLookAroundCompleted(now)
+        if (startedRelief) {
+            moodManager.onTrigger(MoodTrigger.SelfCareLookAround)
+        }
         moodManager.setEphemeralExpression(RobotEmotion.NEUTRAL)
         refreshUiEmotionFromMood()
     }
@@ -3668,15 +3749,12 @@ class ConversationViewModel(
         if (bodyHardwareBusyGate.isBusy) return
 
         val now = System.currentTimeMillis()
-        val stored = robotContextRepository.getStoredState()
-        val suppress = RobotContextPolicy.shouldSuppressNotificationTts(stored, now)
         if (!IdleVisualReacquirePolicy.shouldScan(
                 nowMs = now,
                 sessionStartedAtMs = voiceSessionStartedAtMs,
                 lastFaceSeenAtMs = FaceGazeStateStore.lastFaceSeenAtMs(),
                 lastIdleAttemptAtMs = lastIdleVisualAttemptAtMs,
                 isWaitingForHotword = true,
-                suppressForRobotContext = suppress,
             )
         ) {
             return
@@ -3724,10 +3802,14 @@ class ConversationViewModel(
             bodyReachable = BodyReachability.isReachable(bodySettings),
             llmBusy = llmJob?.isActive == true,
             isNightMode = uiState.isNightMode,
+            translationModeActive = translationModeRepository.getState().enabled,
             enabledDomainIds = enabledDomainIds,
             locateUser = { bodyLocateService.locateUserNow() },
         )
         val phase = wellnessWatcher.nextPhase(context) ?: return
+        if (phase == WellnessPhase.DOMAIN_SCORE) {
+            syncHealthConnectExercisesBestEffort()
+        }
         val input = wellnessContextBuilder.build(
             phase = phase,
             bodyConfigured = bodySettings.isConfigured(),
@@ -3737,6 +3819,31 @@ class ConversationViewModel(
         )
         wellnessCheckInFlight = true
         wellnessCheckOrchestrator.dispatch(input)
+    }
+
+    /**
+     * Best-effort Health Connect → Log Day sync. No-op when toggle off, HC missing, or no permission.
+     */
+    private suspend fun syncHealthConnectExercisesBestEffort() {
+        val settings = proactivitySettingsRepository.load()
+        if (!settings.healthConnectEnabled) {
+            Log.d(TAG, "Health Connect sync skipped: toggle off")
+            return
+        }
+        runCatching {
+            withTimeout(8_000L) {
+                val result = healthConnectExerciseSync.syncLastRetentionWindow()
+                Log.i(
+                    TAG,
+                    "Health Connect sync: inserted=${result.inserted} " +
+                        "dup=${result.skippedDuplicate} read=${result.readCount} " +
+                        "unavailable=${result.skippedUnavailable} " +
+                        "noPermission=${result.skippedNoPermission}",
+                )
+            }
+        }.onFailure { e ->
+            Log.w(TAG, "Health Connect sync skipped/failed", e)
+        }
     }
 
     private suspend fun markWellnessPhaseCompleted(phase: WellnessPhase?) {
@@ -3767,6 +3874,7 @@ class ConversationViewModel(
             bodyConfigured = bodySettings.isConfigured(),
             bodyReachable = BodyReachability.isReachable(bodySettings),
             micSessionActive = VoiceSessionState.isActive,
+            translationModeActive = translationModeRepository.getState().enabled,
         )
         val slot = deviationWatcher.findCandidate(context) ?: return
         workingMemoryRepository.recordDeviationAsked(slot.slotKey)
@@ -4017,6 +4125,13 @@ class ConversationViewModel(
         }
 
         llmJob = viewModelScope.launch {
+            val blockUserName =
+                envelope.input is RobotInput.Notification ||
+                    envelope.input is RobotInput.HardwareButton ||
+                    envelope.input is RobotInput.SensorReading
+            if (blockUserName) {
+                MemoryWriteTurnContext.blockUserSelfNameIdentity = true
+            }
             try {
                 if (turnId != llmTurnGeneration) return@launch
                 refreshReasoningEngineIfBodySettingsChanged()
@@ -4054,6 +4169,10 @@ class ConversationViewModel(
                     currentWellnessPhase = null
                     handleLlmFailure(LlmHttpErrors.formatForLog(e))
                 }
+            } finally {
+                if (blockUserName) {
+                    MemoryWriteTurnContext.blockUserSelfNameIdentity = false
+                }
             }
         }
     }
@@ -4081,8 +4200,10 @@ class ConversationViewModel(
         }
         memoryExtractionScheduler.stop()
         activityLogExtractionScheduler.stop()
+        dismissPresenceDebug()
         VisionCameraLifecycleCoordinator.setPresenceResumeHandler(null)
-        deskPresenceMonitor.stop()
+        DeskPresenceCameraCoordinator.unbind(deskPresenceMonitor)
+        deskPresenceMonitor.forceStop()
         VoiceSessionState.setActive(false)
         super.onCleared()
     }

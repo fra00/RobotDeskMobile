@@ -64,7 +64,7 @@ object BodyExpressionMapper {
             val away = if (current.intensity >= 0.8f) -15 else -12
             BodyChoreography(
                 steps = listOf(
-                    BodyMove.Joint(BodyJoint.DISPLAY_PAN, position = away, speed = 35),
+                    BodyMove.Joint(BodyJoint.BASE_PAN, position = away, speed = 35),
                 ),
                 returnHeadAfter = false,
             )
@@ -80,8 +80,8 @@ object BodyExpressionMapper {
         )
         RobotEmotion.CONFUSED -> BodyChoreography(
             steps = listOf(
-                BodyMove.Joint(BodyJoint.DISPLAY_PAN, position = 10, speed = 30, delayAfterMs = 400L),
-                BodyMove.Joint(BodyJoint.DISPLAY_PAN, position = 0, speed = 30),
+                BodyMove.Joint(BodyJoint.BASE_PAN, position = 10, speed = 30, delayAfterMs = 400L),
+                BodyMove.Joint(BodyJoint.BASE_PAN, position = 0, speed = 30),
             ),
         )
         else -> null
@@ -89,8 +89,8 @@ object BodyExpressionMapper {
 
     private fun idleBoredFidget(): BodyChoreography = BodyChoreography(
         steps = listOf(
-            BodyMove.Joint(BodyJoint.DISPLAY_PAN, position = 6, speed = 25, delayAfterMs = 400L),
-            BodyMove.Joint(BodyJoint.DISPLAY_PAN, position = 0, speed = 25),
+            BodyMove.Joint(BodyJoint.BASE_PAN, position = 6, speed = 25, delayAfterMs = 400L),
+            BodyMove.Joint(BodyJoint.BASE_PAN, position = 0, speed = 25),
         ),
     )
 
