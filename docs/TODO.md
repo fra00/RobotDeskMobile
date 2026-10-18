@@ -42,20 +42,21 @@ Spec SSOT: [`PROACTIVE_ARCHITECTURE.md`](PROACTIVE_ARCHITECTURE.md) Channel 2 ·
 - [x] **Docs** — calcolo con gate leggeri; snapshot LLM SSOT; notifica se attenzione; voce solo on-demand; UI riepilogo
 - [x] **Plan** — store DTO, wire notify, retirement TTS path, ask/inject
 - [x] **Code** — `WellnessWatcher` senza idle/presence; persist snapshot; notify cap; drop proactive TTS; summary UI; dialogue ask (`STATO WELLNESS`)
-- [ ] Smoke v2 in [`guides/PROATTIVITA_SMOKE.md`](guides/PROATTIVITA_SMOKE.md)
+- [x] **Wellness v2 harden (ott 2026):** compute mic-independent; mark done solo se snapshot salvato; clear inFlight / retry se JSON senza `wellness` — smoke device: check **partito** e snapshot in Riepilogo
+- [x] **Scoring pasti — assenza ≠ ok (ott 2026):** prompt + `(none logged today)` nel contesto; `ok` solo con evidenza positiva; dopo finestra pranzo/cena senza log → `attention`
+- [ ] Smoke v2 completo in [`guides/PROATTIVITA_SMOKE.md`](guides/PROATTIVITA_SMOKE.md) (Predittività / abitudini / notifica — ancora aperto; Wellness compute+persist ok in smoke parziale)
 - [ ] Feedback loop strutturato dopo proactive speak (accettato / ignorato / rifiutato)
-- [ ] **Predictivity — verifica uso reale (ott 2026):** in uso quotidiano (senza smoke formale) non ha quasi mai proposto/suggerito nulla; a volte tratta come avvenute cose non fatte. Da indagare end-to-end:
-  - miner → slot abitudini eleggibili / confidence / UI «Abitudini dedotte»
-  - `DeviationWatcher` trigger (finestra oraria, presenza, gate mic/cooldown/cap)
-  - prompt / recall: non presentare `ABITUDINI ATTESE` / PATTERN come prova di attività fatte (solo aspettative)
-  - distinzione habit atteso vs episodio Log Day / HC effettivamente registrato
-  - eventuale redesign soglie o silenzio eccessivo dei gate
+- [ ] **Proattività + Abitudini dedotte — verifica end-to-end (ott 2026):** in uso reale **non sembrano presenti / non funzionano correttamente** (lista vuota o slot che non compaiono; Predittività quasi mai propone nulla; a volte tratta come fatte cose non fatte). Da verificare prima di redesign:
+  - **Mining:** Log Day → `RecurringHabitSlotMiner` → persistenza slot / confidence / UI Impostazioni → Proattività → «Abitudini dedotte» (perché spesso vuota?)
+  - **Eleggibilità:** gate confidence, hitCount, finestra oraria, presenza, mic, cooldown, cap giornaliero
+  - **`DeviationWatcher`:** trigger reale vs silenzio; system input → LLM → speak
+  - **Prompt / recall:** `ABITUDINI ATTESE` / PATTERN = aspettative, mai prova di attività fatte; confrontare solo vs Log Day / HC
+  - Smoke formale: [`guides/PROATTIVITA_SMOKE.md`](guides/PROATTIVITA_SMOKE.md) + spec [`PROACTIVE_ARCHITECTURE.md`](PROACTIVE_ARCHITECTURE.md)
 - [ ] **`ProactiveSpeakGate` — studio utilizzo (non toccare codice per ora):** chiarire se ha ancora senso così (solo cap/cooldown/fascia/SILENT/translation) vs aspettativa “momento in cui disturba meno”; chi lo chiama (Predictivity, commitment verify, …); overlap con presence/idle/mic; eventuale semplificazione o split. **Solo analisi** finché non si decide.
 
 ### Fire-and-check / impegni
 
 - [x] **Commitment sticky (caso 1, ott 2026):** «assolutamente» senza orario → pin icona fino a Elimina (`createStickyCommitment`); prompt non inventa ora / non TODO — [`FIRE_AND_CHECK.md`](FIRE_AND_CHECK.md)
-- [x] **Wellness v2 harden (ott 2026):** compute mic-independent; mark done solo se snapshot salvato; clear inFlight / retry se JSON senza `wellness`
 - [ ] **Caso 2 timing vs deadline:** Verifica +60′ dal primario può cadere dopo l’appuntamento (es. lastre 16:30 → verify 17:30); backlog — non toccare +60 per ora
 - [ ] **Fire-and-check + commitment follow-up — verifica comportamento reale (ott 2026):** mai smoke formale; dubbi sul fisico in uso quotidiano. Studiare **entrambi** i kind vs [`FIRE_AND_CHECK.md`](FIRE_AND_CHECK.md) (solo analisi, niente redesign finché non chiarito):
   - **PHYSICAL** (`fire_and_check`): creazione loop, secondo reminder «Verifica…», presenza/foto, UI icone, chiusura/skip
