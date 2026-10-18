@@ -470,6 +470,10 @@ fun RobotScreen(
         FireAndCheckDetailDialog(
             entry = entry,
             onDismiss = { selectedFireAndCheck = null },
+            onDelete = {
+                onEvent(ConversationUiEvent.OnDeleteFireAndCheck(entry.id))
+                selectedFireAndCheck = null
+            },
         )
     }
 

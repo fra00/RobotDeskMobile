@@ -21,6 +21,8 @@ sealed interface ConversationUiEvent {
 
     data class OnCancelPendingInboxItem(val id: String) : ConversationUiEvent
 
+    data class OnDeleteFireAndCheck(val id: Long) : ConversationUiEvent
+
     data object OnOpenSettings : ConversationUiEvent
 
     data object OnDismissSettings : ConversationUiEvent

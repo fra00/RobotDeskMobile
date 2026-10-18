@@ -581,6 +581,7 @@ class ConversationViewModel(
             ConversationUiEvent.OnBackgroundTapActivateListening -> onBackgroundTapActivateListening()
             is ConversationUiEvent.OnEyePoked -> onEyePoked(event.side)
             is ConversationUiEvent.OnCancelPendingInboxItem -> cancelPendingInboxItem(event.id)
+            is ConversationUiEvent.OnDeleteFireAndCheck -> deleteFireAndCheck(event.id)
             ConversationUiEvent.OnOpenSettings -> openSettings()
             ConversationUiEvent.OnDismissSettings -> dismissSettings()
             ConversationUiEvent.OnOpenLlmSettings -> openLlmSettings()
@@ -710,6 +711,18 @@ class ConversationViewModel(
             PendingInboxMapper.toUi(item, kindLabel)
         }
         _uiState.update { it.copy(pendingInboxItems = uiItems) }
+    }
+
+    private fun deleteFireAndCheck(id: Long) {
+        viewModelScope.launch {
+            val cancelled = fireAndCheckRepository.cancelById(id) ?: return@launch
+            cancelled.reminderIds().forEach { reminderId ->
+                if (scheduledTaskRepository.cancel(reminderId)) {
+                    ScheduledTaskAlarmScheduler.cancel(appContext, reminderId)
+                    memoryWriter.onReminderCancelled(reminderId)
+                }
+            }
+        }
     }
 
     private fun cancelPendingInboxItem(id: String) {

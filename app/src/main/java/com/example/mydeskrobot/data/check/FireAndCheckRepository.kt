@@ -8,6 +8,7 @@ import com.example.mydeskrobot.domain.check.CommitmentFollowUpPolicy
 import com.example.mydeskrobot.domain.check.FireAndCheckEntry
 import com.example.mydeskrobot.domain.check.FireAndCheckKind
 import com.example.mydeskrobot.domain.check.FireAndCheckPhase
+import com.example.mydeskrobot.domain.check.resolveFireAndCheckPhase
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -222,16 +223,41 @@ class FireAndCheckRepository(
         }
     }
 
+    /**
+     * Cancels an active fire-and-check loop by id.
+     * @return reminder ids that should also be cancelled in [ScheduledTaskRepository], if any.
+     */
+    suspend fun cancelById(id: Long): CancelledLoopReminders? {
+        val entry = dao.getById(id) ?: return null
+        if (entry.status != FireAndCheckStatus.ACTIVE) {
+            return CancelledLoopReminders(
+                primaryReminderId = entry.primaryReminderId,
+                verificationReminderId = entry.verificationReminderId,
+            )
+        }
+        dao.updateStatus(entry.id, FireAndCheckStatus.CANCELLED)
+        return CancelledLoopReminders(
+            primaryReminderId = entry.primaryReminderId,
+            verificationReminderId = entry.verificationReminderId,
+        )
+    }
+
+    data class CancelledLoopReminders(
+        val primaryReminderId: Long?,
+        val verificationReminderId: Long?,
+    ) {
+        fun reminderIds(): List<Long> =
+            listOfNotNull(primaryReminderId, verificationReminderId).distinct()
+    }
+
     private fun FireAndCheckEntity.toEntry(): FireAndCheckEntry {
         val now = System.currentTimeMillis()
-        val phase = when {
-            primaryFiredAtMillis == null &&
-                primaryDueAtMillis != null &&
-                now < primaryDueAtMillis -> FireAndCheckPhase.SCHEDULED
-            verificationDueAtMillis != null &&
-                now < verificationDueAtMillis -> FireAndCheckPhase.AWAITING_VERIFICATION
-            else -> FireAndCheckPhase.CHECK_PENDING
-        }
+        val phase = resolveFireAndCheckPhase(
+            nowMillis = now,
+            primaryDueAtMillis = primaryDueAtMillis,
+            verificationDueAtMillis = verificationDueAtMillis,
+            primaryFiredAtMillis = primaryFiredAtMillis,
+        )
         return FireAndCheckEntry(
             id = id,
             kind = kind,

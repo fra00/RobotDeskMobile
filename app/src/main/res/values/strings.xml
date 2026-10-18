@@ -169,11 +169,16 @@
     <string name="fire_and_check_label_verification">Passo di verifica: %1$s</string>
     <string name="fire_and_check_label_trigger">Richiesta: %1$s</string>
     <string name="fire_and_check_label_phase">Stato: %1$s</string>
+    <string name="fire_and_check_label_primary_due">Azione prevista: %1$s</string>
+    <string name="fire_and_check_label_verification_due">Verifica prevista: %1$s</string>
+    <string name="fire_and_check_label_due_missing">Orario non registrato</string>
     <string name="fire_and_check_phase_scheduled">azione programmata</string>
     <string name="fire_and_check_phase_awaiting">in attesa del controllo</string>
     <string name="fire_and_check_phase_awaiting_commitment">in attesa della verifica impegno</string>
-    <string name="fire_and_check_phase_pending">verifica attiva</string>
-    <string name="fire_and_check_phase_pending_commitment">attendo risposta sull\'impegno</string>
+    <string name="fire_and_check_phase_pending">verifica scaduta / ancora aperta</string>
+    <string name="fire_and_check_phase_pending_commitment">verifica impegno scaduta / ancora aperta</string>
+    <string name="fire_and_check_delete">Elimina</string>
+    <string name="fire_and_check_delete_hint">Chiude il controllo e annulla i promemoria collegati. «Chiudi» nasconde solo questo messaggio.</string>
 
     <string name="cd_pending_inbox">Promemoria e notifiche in attesa</string>
     <string name="pending_inbox_title">In attesa</string>

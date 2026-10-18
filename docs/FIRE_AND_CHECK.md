@@ -30,8 +30,20 @@ See `CommitmentFollowUpPolicy`:
 ## UI
 
 - One **icon per active** loop (schedule or fact-check icon by phase).
-- **Tap** → dialog with kind, check/commitment goal, verification step, trigger phrase, phase.
-- Icon removed when verification reminder is handled or reminder cancelled.
+- **Tap** → dialog with kind, check/commitment goal, verification step, trigger phrase, **primary/verification due times**, phase.
+- **Chiudi** — dismisses the dialog only (loop stays active).
+- **Elimina** — cancels the loop (`CANCELLED`) and linked primary/verification reminders + alarms.
+- Icon removed when verification reminder is handled, reminder cancelled, or user taps Elimina.
+
+## Phases (derived from due times)
+
+| Phase | Meaning |
+|-------|---------|
+| `SCHEDULED` | Primary due still in the future |
+| `AWAITING_VERIFICATION` | Primary due passed / fired; verification due still in the future |
+| `CHECK_PENDING` | Verification due has passed (or was never set after primary) — UI shows “scaduta / ancora aperta” |
+
+Verification **runs** when the verification reminder AlarmManager fires → voice/LLM announce. There is **no** auto-close if the alarm was missed or the speak cycle never completed: the loop stays `ACTIVE` until Completata (LLM handled verification) or Elimina / `delete_reminder`.
 
 ## Files
 
