@@ -19,14 +19,18 @@ object ProactivityConstants {
      */
     const val PREDICTIVITY_MERGE_WINDOW_MINUTES = 90
 
-    const val WELLNESS_ANCHOR_MINUTES = 60
-    /** Buffer after last user turn so wellness does not overlap an ongoing dialog. */
+    /** Minutes after first hotword-on before Wellness **compute** is eligible (v2). */
+    const val WELLNESS_ANCHOR_MINUTES = 15
+    /**
+     * Legacy v1 idle buffer — unused by Wellness v2 compute gates (kept for settings migration).
+     */
     const val WELLNESS_IDLE_MINUTES = 5
     /**
-     * Presence fallback: recent interaction when body locate fails / no body.
-     * Must be ≥ [WELLNESS_IDLE_MINUTES] so a non-empty start window exists after the idle buffer.
+     * Legacy v1 presence window — unused by Wellness v2 compute (kept for settings migration).
      */
     const val WELLNESS_PRESENCE_MINUTES = 15
+    /** Max Wellness system notifications per calendar day. */
+    const val WELLNESS_NOTIFY_CAP_PER_DAY = 1
 
     const val PATTERN_TTL_DAYS = 30
 

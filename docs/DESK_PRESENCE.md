@@ -4,7 +4,7 @@ Kotlin-only on-device presence detection and face offset for attention centering
 
 > **Power:** camera is **off at idle**. ML Kit ImageAnalysis runs only during short on-demand sessions (look-around gate, idle re-acquire / sample, `look_at_user`, body locate) or when vision tools bind the camera for a photo. Do **not** assume “always on charger ⇒ continuous analysis”.
 
-> **Wellness / unified proactive speak:** uses [`UserPresencePolicy`](PROACTIVE_ARCHITECTURE.md#userpresencepolicy) (recent user interaction **OR** body locate with a brief camera wake) — **not** continuous ML Kit `DeskPresenceGate`. See [PROACTIVE_ARCHITECTURE.md](PROACTIVE_ARCHITECTURE.md).
+> **Predictivity speak** uses [`UserPresencePolicy`](PROACTIVE_ARCHITECTURE.md#userpresencepolicy) (recent turn **OR** body locate). **Wellness v2 compute/notify does not** — see [PROACTIVE_ARCHITECTURE.md](PROACTIVE_ARCHITECTURE.md). Not continuous ML Kit `DeskPresenceGate`.
 
 ## Components
 
@@ -27,7 +27,7 @@ Kotlin-only on-device presence detection and face offset for attention centering
 | Idle look-around (soft gates OK) | Soft eligibility → `withCamera` → occupancy sample → `DeskPresenceGate` → mimica |
 | Idle visual re-acquire | Policy timer → `tryCenterOnUser()` → `withCamera` |
 | Tool `look_at_user` | Same centering path |
-| Body locate (Wellness / Predictivity) | `locateUserNow()` → `withCamera` |
+| Body locate (Predictivity; Wellness v1 legacy) | `locateUserNow()` → `withCamera` |
 | Vision tools | `CameraXVisionImageCapture` one-shot (not ML Kit stream) |
 | User / LLM needs to observe | Tool chain (`take_photo`, `analyze_room_scene`, …) — explicit or implicit in the plan |
 
@@ -37,7 +37,8 @@ Kotlin-only on-device presence detection and face offset for attention centering
 
 - **Look-around:** samples presence only when soft gates pass; does not keep the stream open afterward
 - **Re-acquire + `lastFaceSeen`:** one periodic sample/centering job (not a continuous face clock). Stopping a session clears live gaze but **keeps** `lastFaceSeenAtMs` until the next face or session `reset`
-- **Wellness speak:** `UserPresencePolicy` — interaction window and/or body locate (brief camera)
+- **Wellness v2:** no presence gate for compute; room order photos via body pans only
+- **Predictivity speak:** `UserPresencePolicy` — interaction window and/or body locate
 - **Room order (Wellness `VISUAL_ORDER`):** photos via vision tools / body pans — not continuous presence
 - **Does not block:** user speech, STT, DEFERRED notifications/reminders
 

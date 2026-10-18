@@ -33,6 +33,7 @@ class ReasoningEngineImpl(
     private val robotContextProvider: RobotContextProvider? = null,
     private val translationModeProvider: TranslationModeProvider? = null,
     private val moodContextProvider: MoodContextProvider? = null,
+    private val wellnessContextProvider: WellnessContextProvider? = null,
     private val heartbeatPlaybookProvider: HeartbeatPlaybookProvider? = null,
     maxChainSteps: Int = 10,
     private val reasoningLogObserver: ReasoningLogObserver = NoOpReasoningLogObserver,
@@ -203,6 +204,7 @@ PHYSICAL BODY — NOT CONNECTED
         val robotContext = robotContextProvider?.buildContextSection().orEmpty()
         val translationContext = translationModeProvider?.buildContextSection().orEmpty()
         val moodContext = moodContextProvider?.buildContextSection().orEmpty()
+        val wellnessContext = wellnessContextProvider?.buildContextSection().orEmpty()
 
         return Result.success(
             buildString {
@@ -234,6 +236,10 @@ PHYSICAL BODY — NOT CONNECTED
                 if (moodContext.isNotBlank()) {
                     append("\n\n")
                     append(moodContext)
+                }
+                if (wellnessContext.isNotBlank()) {
+                    append("\n\n")
+                    append(wellnessContext)
                 }
                 // Clock last among dynamic injects so the static base+tools prefix stays cacheable.
                 append("\n\n")

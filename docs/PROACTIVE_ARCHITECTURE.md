@@ -12,10 +12,12 @@ Replaces the fragmented model of per-domain heartbeat triggers (`TimeDaily`, `EV
 | Component | Talks to user? | Role |
 |-----------|----------------|------|
 | **Predictivity** | Yes (deviation prompts) | Learn recurring activities from Log Day; ask when habits break |
-| **Wellness** | Yes (max 1 short line/day) | Daily check: score care domains; speak if one is clearly deficient |
+| **Wellness** | **No TTS by default** — notify if attention needed; voice only on user ask | Daily **compute** of care domains → persist snapshot (SSOT); optional system notification |
 | **Room order (visual)** | **No** | Input **for** Wellness only: body scan + photos + order assessment → stored |
 
 **Not three channels.** Room order is **not** a separate proactive speak path — it is silent data collection inside the Wellness tick (when ESP32 body is available).
+
+> **Wellness v2 (ott 2026):** **compute ≠ communicate**. Scoring runs with light gates; results are **persisted** (`WellnessSnapshot`). Engagement is a **notification** (if a domain needs attention), not proactive TTS. The user may ask the robot about wellness anytime (`STATO WELLNESS` inject); settings → Proattività → Riepilogo wellness reads the same snapshot.
 
 ```mermaid
 flowchart TB
@@ -28,19 +30,22 @@ flowchart TB
         Deviation -->|speak if deviation| User[User]
     end
 
-    subgraph wellness [Wellness]
-        Gates[Gate tick]
+    subgraph wellness [Wellness v2]
+        Gates[Compute gates]
         BodyPhase{Body OK?}
         Visual[Room order scan plus photos]
-        Store[(OBSERVATION plus ROOM_SCENE)]
+        Obs[(OBSERVATION plus ROOM_SCENE)]
         Score[Domain scoring]
-        Speak{userPresentEnough and score high?}
+        Snap[(WellnessSnapshot SSOT)]
+        Notify{needsAttention?}
         Gates --> BodyPhase
-        BodyPhase -->|yes| Visual --> Store --> Score
+        BodyPhase -->|yes| Visual --> Obs --> Score
         BodyPhase -->|no| Score
-        Score --> Speak
-        Speak -->|yes| User
-        Speak -->|no| Silent[Silence data saved]
+        Score --> Snap
+        Snap --> Notify
+        Notify -->|yes| Notif[System notification]
+        Notify -->|no| Saved[Persist only]
+        Snap -->|user ask or UI| User
     end
 ```
 
@@ -50,10 +55,11 @@ flowchart TB
 
 | Constant | Default | Meaning |
 |----------|---------|---------|
-| `N` (`wellnessAnchorMinutes`) | 60 | Minutes after **first hotword-on of the day** before Wellness tick is eligible |
-| `idleMinutes` | 5 | Post-dialog buffer: do not start wellness while a conversation may still be ongoing |
-| `W` (`wellnessPresenceMinutes`) | 15 | Presence fallback: recent user turn when body locate fails / no body (clamped ≥ idle) |
-| `wellnessSpeakCapPerDay` | 1 | Max Wellness **spoken** lines per day (once-per-day check; independent of predictivity cap) |
+| `N` (`wellnessAnchorMinutes`) | **15** (was 60 in v1) | Minutes after **first hotword-on of the day** before Wellness **compute** is eligible — only to avoid work at cold start |
+| `idleMinutes` | — (v2) | **Removed from compute gates.** Was 5 min post-dialog buffer for v1 speak-coupled tick |
+| `W` (`wellnessPresenceMinutes`) | — (v2 compute) | **Not required for compute.** Kept only if a future optional voice path is re-enabled |
+| `wellnessNotifyCapPerDay` | 1 | Max Wellness **notifications** per day (replaces v1 `wellnessSpeakCapPerDay` TTS cap) |
+| `wellnessSpeakCapPerDay` | 1 | **v1 only** — max spoken lines; retired when v2 notify ships |
 | `predictivityPresenceMinutes` | 10 | Max minutes since last user turn for predictivity speak (without body locate) |
 | `predictivityPromoteHitCount` | 7 | Distinct calendar days on same slot → confidence cap (~90%) |
 | `predictivityMinHitCount` | 3 | Minimum slot hits before deviation speak is eligible |
@@ -265,127 +271,186 @@ predictivityUserPresentEnough =
 
 ## Channel 2 — Wellness
 
-### Purpose
+### Purpose (v2 target)
 
-Once per day (when gates pass), run a **unified check**:
+Once per day (when **compute** gates pass), run a **unified check**:
 
-1. Optionally capture **room order** (body only).
+1. Optionally capture **room order** (body only) — always silent.
 2. Score care domains: meals, workload, movement, social contacts, **order** (if data available).
-3. Speak **at most one** short sentence if the top domain is clearly deficient and presence allows.
+3. **Persist** a structured **WellnessSnapshot** (single SSOT for UI, notify, and on-demand dialogue).
+4. **Communicate** only if needed: system **notification** when ≥1 domain needs attention — **not** proactive TTS.
 
-**Silence is the default** (80–95% of ticks).
+**Voice:** the user asks (“come sto?”, “wellness”, “come vanno i pasti?”) → robot answers from the **latest snapshot** (no mandatory recompute).  
+**UI:** a summary page lists per-domain status from the same snapshot.
+
+**Silence / non-interrupt is the default.** Compute may run in the background; talking is never the delivery path for the daily check.
+
+### Design principle — compute ≠ communicate
+
+| Concern | Responsibility |
+|---------|----------------|
+| **Compute** | Kotlin schedules tick; LLM scores + emits structured snapshot; store persists |
+| **Communicate** | Kotlin: optional notification from snapshot; TTS only on user ask (normal dialogue) |
+| **SSOT** | Last successful `WellnessSnapshot` written by the DOMAIN_SCORE turn — **not** a parallel Kotlin scorecard |
+
+Do **not** keep a second Kotlin-computed score for UI while the LLM writes another judgment. Inject habit/log context freely; the **persisted snapshot is authoritative**.
 
 ### Health Connect (exercise → Log Day)
 
 When `ProactivitySettings.healthConnectEnabled` is on and the user granted Health Connect **exercise read** permission, `HealthConnectExerciseSync` runs **before** Wellness `DOMAIN_SCORE` (and on voice session / app catch-up). Sessions become confirmed `PHYSICAL_NOW` episodes so **Today activities** and dialogue EPISODI see real workouts (e.g. bike from Google Fit via Health Connect). Expected habits remain comparison-only. Sync is best-effort no-op if HC is missing or permission denied.
 
-### Timing gates (Kotlin)
+### Compute gates (Kotlin) — v2
 
-All must pass before `SYSTEM_INPUT: wellness_check`:
+All must pass before `SYSTEM_INPUT: wellness_check` **compute** phases:
 
 | Gate | Rule |
 |------|------|
 | Wellness enabled | `ProactivitySettings.wellnessEnabled` (**not** micro-tick / `HeartbeatSettings.enabled`) |
-| Mic active | Hotword / voice session active **at check time** |
-| Not busy | No Thinking/Speaking/ActiveListening/CapturingImage; LLM idle |
-| Night | Suppressed |
-| Robot context | Not SILENT profile ([`RobotContextPolicy`](../app/src/main/java/com/example/mydeskrobot/domain/context/RobotContextPolicy.kt)) |
-| Daily anchor | `now - firstHotwordOnToday >= N` minutes |
-| Idle buffer | No user voice turn for `idleMinutes` (anti-overlap with dialog) |
-| Presence | Body configured+reachable → `locateUser` first; if miss → recent turn within `W` (≥ idle). No body → recent turn only |
-| Once per day | `wellnessCheckDoneToday` / `wellnessVisualDoneToday` marked **after** successful tick (not before dispatch) |
+| Mic / hotword session | Listening session active (scheduler lives in mood tick while hotword on) |
+| Not busy | LLM idle (no Thinking/Speaking/ActiveListening/CapturingImage / open tool chain) |
+| Night | Suppress whole tick at night |
+| Translation mode | Off |
+| Daily anchor | `now - firstHotwordOnToday >= N` minutes (`N` default **15**) — avoid cold-start thrash |
+| Once per day | `wellnessCheckDoneToday` / `wellnessVisualDoneToday` after successful phase |
+| Body for visual | `ordine_ambiente` on **and** body configured+reachable → may run `VISUAL_ORDER`; else skip visual |
 
-**Independent from predictivity** speak gates (daily cap 3 / cooldown 20).  
-**Not** gated on ML Kit `DeskPresenceGate` for starting the tick.
+**Removed from compute (were v1 speak-coupled):**
 
-### Wellness pipeline (four phases)
+| Gate (v1) | v2 |
+|-----------|-----|
+| Idle buffer ≥ 5 min after last user turn | **Dropped** — dialog overlap handled by **LLM idle** only |
+| User presence / body `locateUser` | **Dropped** for compute — presence is irrelevant to saving a snapshot |
+| Robot context SILENT | Does **not** block compute; **does** block **notification** (see below) |
+
+**Scheduler note:** the mood-tick poll that drives Wellness runs while hotword listening is active (`VoiceSessionState` / mic session). That is an app-lifecycle constraint, not a “user must be present” gate.
+
+**Independent from predictivity** speak gates.  
+**Not** gated on ML Kit `DeskPresenceGate`.
+
+### Notify gates (Kotlin) — after snapshot saved
+
+| Gate | Rule |
+|------|------|
+| Snapshot has ≥1 domain in `attention` or `critical` | Else no notification |
+| `wellnessNotifyCapPerDay` not exceeded | Default 1 |
+| Robot context not SILENT | Same policy family as notification TTS suppress |
+| Notification permission / channel available | Else persist only |
+
+Notification copy: soft, non-imperative, non-shaming (same tone as former speak). Deep link / tap → optional Wellness summary UI.
+
+### WellnessSnapshot (SSOT schema)
+
+Emitted by the DOMAIN_SCORE LLM turn (structured tool result or JSON side-channel — implementation choice); validated and stored by Kotlin.
+
+```text
+WellnessSnapshot {
+  computedAtMs: Long
+  dayKey: yyyy-MM-dd
+  domains: [
+    {
+      id: pasti | carico_lavoro | attivita_fisica | contatti_sociali | ordine_ambiente | custom_*
+      status: ok | attention | critical
+      summaryIt: short Italian rationale (1 sentence, for UI + ask)
+    }
+  ]
+  needsAttention: Boolean   // any attention|critical
+  notifySuggested: Boolean  // LLM or Kotlin: true if user should get a cue today
+  visualOrderDone: Boolean
+}
+```
+
+| Consumer | Reads |
+|----------|--------|
+| Summary UI | Full `domains[]` |
+| Notification | `needsAttention` + top domain `summaryIt` |
+| Dialogue ask | Inject latest snapshot (or tool `get_wellness_status`) into MEMORIA / context |
+
+Replacing the snapshot on the next successful daily compute is expected — one current SSOT, not dual histories (optional: keep last N days later).
+
+### Wellness pipeline (v2)
 
 ```mermaid
 sequenceDiagram
     participant K as Kotlin
     participant LLM as LLM
     participant Body as ESP32
-    participant Mem as Memory
+    participant Store as WellnessSnapshotStore
 
-    K->>K: Gates pass
+    K->>K: Compute gates pass
     K->>LLM: SYSTEM_INPUT wellness_check phase visual
-    alt bodyConfigured and body_status OK
+    alt bodyConfigured and body_status OK and order domain on
         LLM->>Body: base_pan -25 / 0 / +25
         LLM->>LLM: take_photo x3 plus ROOM_ORDER_AUDIT
-        LLM->>Mem: save_memory OBSERVATION order objective
+        LLM->>LLM: save_memory OBSERVATION order objective
         K->>K: SensingLog ROOM_SCENE
-    else no body
-        Note over K: Skip order dimension
+    else no body or order off
+        Note over K: Skip visual
     end
-    K->>LLM: wellness_check phase score domains
-    LLM->>LLM: habit summary log PATTERN order OBS
-    alt userPresentEnough and score above threshold
-        LLM->>K: reply one line speak_confidence
-        K->>K: TTS once mark wellnessCheckDoneToday
+    K->>LLM: wellness_check phase DOMAIN_SCORE
+    LLM->>K: structured WellnessSnapshot (reply empty)
+    K->>Store: persist snapshot SSOT
+    alt needsAttention and notify gates pass
+        K->>K: system notification once
     else
-        LLM->>K: reply empty speak_confidence 0
+        Note over K: persist only
     end
 ```
 
 #### Phase 1 — Gate (Kotlin only)
 
-Schedule: poll every ~5 min while mic active (same loop as mood monitor), or integrate into existing heartbeat alarm with Wellness-specific selector.
+Schedule: poll every ~5 min while process eligible (same loop as mood monitor), or dedicated scheduler. Does **not** wait for idle-after-dialog or presence.
 
 #### Phase 2 — Visual order (conditional)
 
-**Prerequisite:** [`BodySettings.isConfigured()`](../app/src/main/java/com/example/mydeskrobot/data/body/BodySettingsRepository.kt) **and** `body_status` reachable.
+**Prerequisite:** [`BodySettings.isConfigured()`](../app/src/main/java/com/example/mydeskrobot/data/body/BodySettingsRepository.kt) **and** body reachable; domain `ordine_ambiente` enabled.
 
-**Not** required: ML Kit presence, user dialog photos.
+**Not** required: ML Kit presence, user at desk, user dialog photos.
 
 **Actions (mandatory 3-angle scan — once/day cost accepted):**
 
-- `base_pan` ≈ **−25 / 0 / +25**, each followed by `take_photo` (one sector per chain turn; planner-driven).
-- Dedicated playbook [`room_order_audit_prompt.txt`](../app/src/main/assets/prompts/room_order_audit_prompt.txt) (`ROOM_ORDER_AUDIT`).
-- Evaluate clutter/order only — **no** object inventory, no entity catalog, no spatial landmark identity.
-- **Judgment in OBSERVATION is objective** (call disorder what it is; level `ordinato` | `disordinato` | `molto_disordinato`). Soft wording is for phase 4 speak only.
-- `save_memory` OBSERVATION with dated order summary after all three angles.
-- `SensingLogRepository.record(SensingKind.ROOM_SCENE)`.
+- `base_pan` ≈ **−25 / 0 / +25**, each followed by `take_photo`.
+- Playbook [`room_order_audit_prompt.txt`](../app/src/main/assets/prompts/room_order_audit_prompt.txt) (`ROOM_ORDER_AUDIT`).
+- Evaluate clutter/order only — **no** object inventory / landmark identity.
+- **Judgment in OBSERVATION is objective** (`ordinato` | `disordinato` | `molto_disordinato`). Soft wording is for **notification / ask**, not for stored OBS.
+- `save_memory` OBSERVATION + `SensingLogRepository.record(SensingKind.ROOM_SCENE)`.
 
-**Without body:** skip phase 2; Wellness scores text-only domains.
+**Without body:** skip phase 2; score text-only domains.
 
-#### Phase 3 — Domain scoring
+#### Phase 3 — Domain scoring → snapshot
 
-Inputs:
+Inputs (unchanged):
 
 | Domain | Signals |
 |--------|---------|
 | Meals | Habit summary, today's PHYSICAL_NOW meals, PATTERN lunch times |
 | Workload | Late sessions, weekend work episodes, PATTERN |
-| Movement | Missing walk/gym vs PATTERN, habit summary |
+| Movement | Missing walk/gym vs PATTERN, habit summary (+ HC exercises as done) |
 | Social | SOCIAL_THREAD episodes, weekly PATTERN |
 | Order | Fresh OBSERVATION from phase 2 only |
 
-Kotlin may pre-compute scores; LLM formulates final message from injected context.
+LLM produces **WellnessSnapshot** (structured). Prefer `reply: ""` on this system turn (no TTS). Kotlin validates and persists.
 
-#### Phase 4 — Speak (optional)
+#### Phase 4 — Notify (optional) + ask / UI
 
-Speak only if:
-
-- `userPresentEnough` (see below)
-- Top domain score > threshold
-- `speak_confidence` ≥ proactive threshold
-- `wellnessSpeakCapPerDay` not exceeded
-
-**Exposure tone:** soft, non-imperative, non-shaming — even when the stored order judgment is objectively `disordinato` / `molto_disordinato`. Soft speak ≠ soft facts.
-
-Otherwise: silence; phase 2 data still persisted.
+- **Notify:** if snapshot `needsAttention` and notify gates pass → one notification / day.
+- **Ask:** user utterance → dialogue uses stored snapshot (inject or tool).
+- **UI:** Wellness summary page binds to store.
 
 ### Wellness domains vs attention domain toggles
 
-Care domains in [`AttentionDomainRepository`](../app/src/main/java/com/example/mydeskrobot/data/heartbeat/AttentionDomainRepository.kt) (`pasti`, `carico_lavoro`, `attivita_fisica`, `contatti_sociali`, `ordine_ambiente`) and **user custom domains** (name + prompt) are **not** separate scheduled triggers. They are **toggleable scopes** for the unified Wellness check:
+Care domains in [`AttentionDomainRepository`](../app/src/main/java/com/example/mydeskrobot/data/heartbeat/AttentionDomainRepository.kt) (`pasti`, `carico_lavoro`, `attivita_fisica`, `contatti_sociali`, `ordine_ambiente`) and **user custom domains** (name + prompt) are **not** separate scheduled triggers. They are **toggleable scopes** for the unified Wellness compute:
 
 | Domain id | Role in Wellness |
 |-----------|------------------|
 | `pasti` / `carico_lavoro` / `attivita_fisica` / `contatti_sociali` | Scored in `DOMAIN_SCORE` when enabled |
 | `ordine_ambiente` | When enabled: silent `VISUAL_ORDER` **before** score (body required); then scored from fresh OBS |
-| `custom_*` (user-authored) | Scored in `DOMAIN_SCORE` using the user prompt; same engagement gates as built-ins |
+| `custom_*` (user-authored) | Scored in `DOMAIN_SCORE` using the user prompt |
 
-Room identity (`set_current_place` / spatial SSOT) is **not** an attention domain. Do not fire heartbeat ticks on place change.
+Room identity (`set_current_place` / spatial SSOT) is **not** an attention domain.
+
+### v1 runtime (until code migration)
+
+Code still couples tick to mic + idle + presence and may TTS one soft line (`wellnessSpeakCapPerDay`). Treat that as **legacy behaviour**; new work implements v2 gates + snapshot + notify. Do not extend v1 speak path.
 
 ---
 
@@ -412,20 +477,13 @@ Optional structured fields in future Kotlin DTO: `orderLevel` = `ordinato` | `di
 
 ## UserPresencePolicy
 
-Replaces ML Kit `DeskPresenceGate` for proactive **speak / start** paths.
+Replaces ML Kit `DeskPresenceGate` for proactive **speak** paths that still need a human nearby (chiefly **Predictivity**).
 
-### Wellness (body first)
+### Wellness v2
 
-```text
-if bodyConfigured && bodyReachable:
-  locateUserNow() OR lastUserTurnWithin(max(W, idle) minutes)
-else:
-  lastUserTurnWithin(max(W, idle) minutes)   // default W=15, idle=5
-```
+**Compute and notify do not use UserPresencePolicy.** Visual order needs body **reachability** (HTTP), not `locateUser` / face presence.
 
-Idle buffer (do not start right after a dialog) is a **separate** scheduling gate from presence.
-
-### Predictivity (baseline)
+### Predictivity (baseline — unchanged)
 
 ```text
 predictivityUserPresentEnough =
@@ -435,35 +493,41 @@ predictivityUserPresentEnough =
 
 Evaluated at **deviation window** time. Body locate = on-demand scan (pan + face), not "ESP32 online".
 
-| Action | Wellness presence | Predictivity presence | Requires body? |
-|--------|-------------------|----------------------|----------------|
-| Wellness tick (visual + score) | Yes (locate first, else turn ≤W) | — | Locate preferred |
-| Predictivity deviation TTS | — | Yes (10 min OR locate) | Locate only |
+| Action | Presence required? | Notes |
+|--------|-------------------|--------|
+| Wellness compute (visual + score) | **No** | Anchor + LLM idle + once/day |
+| Wellness notification | **No** (SILENT context may suppress) | From snapshot |
+| Predictivity deviation TTS | Yes (10 min OR locate) | Unchanged |
 
-### Scenario table
+### Scenario table (v2)
 
-| Scenario | Wellness start | Predictivity speak |
-|----------|----------------|-------------------|
-| Spoke 8 min ago, no body (idle≥5, W=15) | Yes | Yes |
-| Spoke 30 min ago, body finds user | Yes | Yes |
-| Spoke 30 min ago, no body | No | No |
-| Mic on, never spoke, body scan empty | No | No |
+| Scenario | Wellness compute | Predictivity speak |
+|----------|------------------|-------------------|
+| Spoke 8 min ago, no body | Yes (if anchor+idle LLM) | Yes |
+| Spoke 30 min ago, no body | Yes | No |
+| Never spoke today, after anchor N | Yes | No |
+| LLM busy mid-chain | No | No |
 
-ML Kit [`DeskPresenceMonitor`](DESK_PRESENCE.md) runs **on-demand** (not continuous) for conversational centering, look-around occupancy samples, and body locate — not a mandatory always-on gate for Wellness.
+ML Kit [`DeskPresenceMonitor`](DESK_PRESENCE.md) remains on-demand for dialog centering / locate — not a Wellness compute gate.
+
+### v1 note
+
+Until migration, Wellness tick still used body-first presence + idle buffer; see git history / code `WellnessWatcher`.
 
 ---
 
 ## Predictivity vs Wellness
 
-| | Predictivity | Wellness |
+| | Predictivity | Wellness (v2) |
 |--|--------------|----------|
-| Trigger | Habitual time window | T+N after first hotword-on + idle + presence |
+| Trigger | Habitual time window | T+N after first hotword-on (light anchor); LLM idle |
 | Enable switch | `predictivityEnabled` | `wellnessEnabled` |
-| Data | Log Day episodes | Habit summary, log, PATTERN, order OBS |
+| Data | Log Day episodes | Habit summary, log, PATTERN, order OBS → **snapshot** |
 | Photos | Never | Only room order in Wellness tick (body) |
-| Speak | Deviation question (cap/cooldown shared among predictivity speaks) | At most one care line / day |
-| Presence | 10 min turn OR body locate | Body locate first, else turn ≤W |
+| User cue | Deviation **question** (TTS; cap/cooldown) | **Notification** if attention; TTS only on ask |
+| Presence | 10 min turn OR body locate | Not for compute |
 | Mining | Incremental catch-up + pre-prune | — |
+| UI | Abitudini dedotte | Wellness domain summary (from snapshot) |
 
 `HeartbeatSettings.enabled` = **micro-tick look-around only** (eyes/body in mood loop, no LLM, no AlarmManager).
 
@@ -476,7 +540,8 @@ ML Kit [`DeskPresenceMonitor`](DESK_PRESENCE.md) runs **on-demand** (not continu
 | `DomainScheduler` round-robin + `TimeDaily` / `EVENT` triggers for care domains | Single Wellness scheduler; care domains = toggles only |
 | `EVENT nuova_foto` → `ordine_ambiente` | Removed |
 | `onDomainEvent("nuova_foto")` / `cambio_stanza` as attention domain | Removed from care path; room identity via spatial SSOT only |
-| `ProactiveGatePolicy` + ML Kit for all proactive | ML Kit optional; `UserPresencePolicy` for Wellness speak |
+| `ProactiveGatePolicy` + ML Kit for all proactive | ML Kit optional; `UserPresencePolicy` for Predictivity (not Wellness v2 compute) |
+| Wellness proactive TTS | Replaced by snapshot + notification + on-demand ask |
 | `assets/prompts/domains/*.txt` per tick | Care prompts optional reference; runtime uses `wellness_check_prompt.txt` + `room_order_audit_prompt.txt` |
 | `HEARTBEAT_PLAYBOOK` on domain ticks | `WELLNESS_CHECK` / room-order prompts for Wellness; playbook only for remaining custom heartbeat ticks |
 | Idle look-around (bored / mood loop) | **Keep** — zero LLM, in VM mood poll; see [HEARTBEAT_ARCHITECTURE.md](HEARTBEAT_ARCHITECTURE.md) |
@@ -486,16 +551,17 @@ ML Kit [`DeskPresenceMonitor`](DESK_PRESENCE.md) runs **on-demand** (not continu
 ### Code references (migration complete for care domains)
 
 - [`AttentionDomainRepository.kt`](../app/src/main/java/com/example/mydeskrobot/data/heartbeat/AttentionDomainRepository.kt) — care catalog + toggles; `enabledCareDomainIds()` / `enabledHeartbeatDomains()`
-- [`WellnessWatcher.kt`](../app/src/main/java/com/example/mydeskrobot/integration/wellness/WellnessWatcher.kt) — `VISUAL_ORDER` before `DOMAIN_SCORE` when order enabled
+- [`WellnessWatcher.kt`](../app/src/main/java/com/example/mydeskrobot/integration/wellness/WellnessWatcher.kt) — today: v1 gates; **target:** compute gates only + phase order `VISUAL_ORDER` → `DOMAIN_SCORE`
 - Spatial place change no longer emits attention-domain events
+- **To add (v2):** `WellnessSnapshot` store/DTO, notify path, summary UI, dialogue inject/tool, drop idle/presence from watcher
 
 ---
 
-## Future prompt assets
+## Prompt assets
 
 | Label | Asset | Injected when |
 |-------|-------|---------------|
-| `WELLNESS_CHECK` | `wellness_check_prompt.txt` | `SYSTEM_INPUT: wellness_check` |
+| `WELLNESS_CHECK` | `wellness_check_prompt.txt` | `SYSTEM_INPUT: wellness_check` DOMAIN_SCORE — update for structured snapshot, `reply: ""` |
 | `ROOM_ORDER_AUDIT` | `room_order_audit_prompt.txt` | Wellness tick phase 2 (vision turn) |
 | `HABIT_LABEL_NORMALIZE` | `habit_label_normalize_prompt.txt` | One batch call per incremental mining run |
 
@@ -505,12 +571,12 @@ See [PROMPT_PHILOSOPHY.md](PROMPT_PHILOSOPHY.md).
 
 ## Implementation phases (roadmap)
 
-See [TODO.md](TODO.md) § H7 — Predictivity + Wellness.
+See [TODO.md](TODO.md) — Wellness v2 + H7 follow-ups.
 
-1. **Docs** (this file) — done
-2. **Wellness:** `UserPresencePolicy`, Wellness scheduler, unified system input, prompts, WorkingMemory flags
-3. **Predictivity:** `RecurringHabitSlotMiner` (catch-up + pre-prune), PATTERN slots, `DeviationWatcher`
-4. **Cleanup:** settings UI labels aligned; care domains no longer scheduled on heartbeat; custom domains optional on heartbeat
+1. **Docs** — this file + guide (Wellness v2) — **done**
+2. **Plan** — snapshot storage, gate matrix, notify vs ask vs UI — **done**
+3. **Wellness v2 code:** watcher gates, snapshot persist, notify, retire proactive TTS, summary UI, ask path — **done** (smoke manuale aperto)
+4. **Predictivity** — unchanged by this redesign (separate channel)
 
 ---
 
@@ -518,8 +584,8 @@ See [TODO.md](TODO.md) § H7 — Predictivity + Wellness.
 
 - [ACTIVITY_LOG.md](ACTIVITY_LOG.md) — Predictivity input
 - [BODY_INTEGRATION.md](BODY_INTEGRATION.md) — Room order scan
-- [DESK_PRESENCE.md](DESK_PRESENCE.md) — ML Kit vs `UserPresencePolicy`
-- [ROBOT_CONTEXT.md](ROBOT_CONTEXT.md) — WORK/CALL silence
+- [DESK_PRESENCE.md](DESK_PRESENCE.md) — ML Kit vs `UserPresencePolicy` (Predictivity)
+- [ROBOT_CONTEXT.md](ROBOT_CONTEXT.md) — WORK/CALL silence (blocks notify, not compute)
 - [HEARTBEAT_ARCHITECTURE.md](HEARTBEAT_ARCHITECTURE.md) — Legacy runtime (superseded for domains)
 - [PROMPT_PHILOSOPHY.md](PROMPT_PHILOSOPHY.md) — Prompt labels
 - [guides/PROATTIVITA.md](guides/PROATTIVITA.md) — Human overview (IT)

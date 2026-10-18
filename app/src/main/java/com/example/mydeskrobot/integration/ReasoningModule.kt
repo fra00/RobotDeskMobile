@@ -78,6 +78,7 @@ import com.example.mydeskrobot.reasoning.NoOpReasoningLogObserver
 import com.example.mydeskrobot.reasoning.ReasoningLogObserver
 import com.example.mydeskrobot.reasoning.ReasoningEngine
 import com.example.mydeskrobot.reasoning.ReasoningEngineImpl
+import com.example.mydeskrobot.reasoning.WellnessContextProvider
 
 /**
  * Module that configures and creates the ReasoningEngine.
@@ -97,6 +98,7 @@ object ReasoningModule {
         visionImageCapture: VisionImageCapture,
         llmSettings: LlmSettings,
         moodContextProvider: MoodContextProvider = DelegatingMoodContextProvider(),
+        wellnessContextProvider: WellnessContextProvider? = null,
         spatialBindings: SpatialRuntimeBindings? = null,
         additionalTools: List<Tool> = emptyList(),
         reasoningLogObserver: ReasoningLogObserver = NoOpReasoningLogObserver,
@@ -241,6 +243,7 @@ object ReasoningModule {
             robotContextProvider = robotContextProvider,
             translationModeProvider = translationModeProvider,
             moodContextProvider = moodContextProvider,
+            wellnessContextProvider = wellnessContextProvider,
             maxChainSteps = 10,
             reasoningLogObserver = reasoningLogObserver,
             onBodyHardwareBusyChanged = onBodyHardwareBusyChanged,

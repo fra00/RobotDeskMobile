@@ -1,6 +1,8 @@
 package com.example.mydeskrobot.reasoning
 
 import android.util.Log
+import com.example.mydeskrobot.domain.wellness.WellnessSnapshot
+import com.example.mydeskrobot.domain.wellness.WellnessSnapshotParser
 import com.example.mydeskrobot.reasoning.model.ChainStatus
 import com.example.mydeskrobot.reasoning.model.LlmAction
 import com.example.mydeskrobot.reasoning.model.ToolInvocation
@@ -23,6 +25,8 @@ data class ParsedLlmResponse(
     val think: String? = null,
     /** LLM-judged tone of the user's last utterance: positive | negative | apology | neutral. */
     val userTone: String? = null,
+    /** Wellness DOMAIN_SCORE structured snapshot (optional). */
+    val wellnessSnapshot: WellnessSnapshot? = null,
 )
 
 /**
@@ -89,6 +93,7 @@ class LlmResponseParser(
                     speakConfidence = json.speakConfidence?.coerceIn(0.0, 1.0),
                     think = json.think?.trim()?.takeIf { it.isNotBlank() },
                     userTone = json.userTone?.trim()?.lowercase()?.takeIf { it.isNotBlank() },
+                    wellnessSnapshot = WellnessSnapshotParser.fromFullLlmJson(jsonPayload),
                 )
             }
             // JSON extraction found something but Moshi parsing failed

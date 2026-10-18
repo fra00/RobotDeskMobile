@@ -145,6 +145,10 @@ sealed interface ConversationUiEvent {
 
     data object OnDismissHabitSlotsSettings : ConversationUiEvent
 
+    data object OnOpenWellnessSummary : ConversationUiEvent
+
+    data object OnDismissWellnessSummary : ConversationUiEvent
+
     data class OnDeleteHabitSlot(val slotKey: String) : ConversationUiEvent
 
     data object OnConfirmDeleteHabitSlot : ConversationUiEvent

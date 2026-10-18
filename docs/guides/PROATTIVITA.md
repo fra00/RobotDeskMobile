@@ -2,54 +2,55 @@
 
 Il robot può intervenire in due modi distinti (oltre ai promemoria che **tu** chiedi esplicitamente):
 
-1. **Predittività** — impara dalle attività che racconti (passeggiata, tapis roulant, pranzo fuori…) e, se un giorno salti un’abitudine, può chiedertelo con tatto.
-2. **Wellness** — una volta al giorno (in condizioni precise) valuta come stai su pasti, lavoro, movimento, contatti e — se hai il **corpo ESP32** — anche ordine della scrivania/stanza.
+1. **Predittività** — impara dalle attività che racconti (passeggiata, tapis roulant, pranzo fuori…) e, se un giorno salti un’abitudine, può chiedertelo con tatto (**a voce**).
+2. **Wellness** — una volta al giorno valuta pasti, lavoro, movimento, contatti e — se hai il **corpo ESP32** — anche ordine della scrivania/stanza. **Calcolo e comunicazione sono separati** (v2): il check salva uno **stato**; se qualcosa richiede attenzione arriva una **notifica**; a voce parla solo se **glielo chiedi**.
 
 Sono **canali separati**: spegnere uno non spegne l’altro. Hanno regole e interruttori diversi.
 
 ## Cosa non fa
 
 - Non usa le foto che chiedi con «cosa vedi» per giudicare il disordine.
-- Non ti interrompe a metà dialogo.
-- Non parla in modalità lavoro / call / riunione / focus.
+- Non ti interrompe a metà dialogo per il wellness (niente TTS proattivo del check).
+- In profilo lavoro / call / riunione / focus: può ancora **calcolare**, ma **non** manda la notifica wellness.
 
-## Wellness — quando può partire
+## Wellness v2 — calcolo vs comunicazione
 
-In sequenza:
+| Fase | Cosa succede |
+|------|----------------|
+| **Calcolo** | Con gate leggeri (toggle on, LLM libero, ~15 min dopo il primo mic del giorno, max 1×/giorno). **Non** aspetta 5 min di silenzio dopo che hai parlato, né che il corpo ti “veda”. |
+| **Salvataggio** | Risultato strutturato per dominio (ok / attenzione / critico + breve motivo) = **unica fonte di verità**. |
+| **Notifica** | Solo se almeno un dominio è in attenzione/critico (max 1 notifica/giorno), tono soft. |
+| **Voce** | Tu chiedi («come sto?», «wellness», «i pasti?») → risponde dallo **stato salvato**. |
+| **UI** | Pagina riepilogo domini (stesso stato). |
 
-1. **Anchor** — è passata almeno ~1 ora (configurabile) dalla **prima** accensione del microfono del giorno (così non parte appena accendi).
-2. **Buffer dopo dialogo** — dall’ultimo turno vocale sono passati almeno ~5 minuti (evita di accavallarsi con una conversazione ancora “calda”).
-3. **Presenza** — se c’è il corpo, prova a localizzarti (accende la camera **solo per quel tentativo**); se non ti trova, serve un’interazione recente (finestra presenza, default ~15 min, comunque ≥ buffer). Senza corpo resta solo l’interazione recente. La presence ML Kit **non** resta sempre accesa a riposo.
-4. **Sessione libera** — microfono attivo, non notte, non in thinking/speaking/ascolto attivo.
-5. **Start** — al massimo un check al giorno; parla solo se qualcosa è chiaramente carente (altrimenti silenzio).
+### Ordine ambientale
 
-Se non vuoi più un ambito (es. pasti), disattivalo da **Gestisci domini** — non serve anti-ripetizione extra: parla al più una volta al giorno.
+Se il corpo è configurato e raggiungibile e il dominio ordine è attivo, durante il calcolo il robot può girare su **tre angoli** e scattare foto **senza parlarti**. In memoria l’ordine è **oggettivo**; notifica e risposte vocali restano soft.
 
-## Ordine ambientale
+Senza ESP32 il wellness resta su abitudini e log testuali.
 
-Se il corpo robot è configurato e raggiungibile, durante il check wellness il robot **deve** girare su **tre angoli** (sinistra / centro / destra) e scattare una foto per angolo — senza dirti nulla in quel momento. La valutazione in memoria è **oggettiva** (se è disordinato lo scrive chiaro); se poi ti parla, lo fa in modo **soft**, senza ordini né toni punitivi.
+### Runtime
 
-Senza corpo ESP32 il wellness resta su abitudini e log testuali, senza valutazione visiva dell’ordine.
+v2 è attivo: check silenzioso → snapshot → eventuale notifica; voce solo se chiedi. Spec: [`PROACTIVE_ARCHITECTURE.md`](../PROACTIVE_ARCHITECTURE.md).
 
 ## Predittività — esempio
 
-Se fai spesso tapis verso le 19:00 e un giorno non risulta nel log, il robot può chiedere con tatto — solo se l’abitudine ha **confidence sufficiente** (più giorni ripetuti) e sei **presente** (parlato negli ultimi 10 minuti o il corpo ti trova). Ha un proprio tetto di interventi e cooldown, indipendente dal wellness.
+Se fai spesso tapis verso le 19:00 e un giorno non risulta nel log, il robot può chiedere con tatto — solo se l’abitudine ha **confidence sufficiente** e sei **presente** (parlato negli ultimi 10 minuti o il corpo ti trova). Ha un proprio tetto di interventi e cooldown, **indipendente** dal wellness.
 
-I pattern si aggiornano dal **Log Day** con mining **incrementale** (all’apertura app, prima di cancellare episodi vecchi): una chiamata LLM allinea i nomi (sinonimi → una chiave), poi Kotlin conta i giorni e **unisce** slot spezzati con la stessa attività e orario vicino (es. più «pranzo/cena/mangiare» in serata → una cena). Se dici che non fai più quell’abitudine, il pattern viene **eliminato**. Le scene di svago del robot sono etichettate `[robot]` e **non** entrano nel tuo Log Day / abitudini / «cosa ho fatto oggi» (restano solo nel diario di conversazione).
+I pattern si aggiornano dal **Log Day** con mining **incrementale**. Le scene di svago del robot (`[robot]`) non entrano nel tuo Log Day / abitudini.
 
 ## Impostazioni
 
 **Impostazioni → Proattività**:
 
-- **Micro-tick** — look-around occhi/corpo in standby (niente LLM; mood loop). Indipendente da wellness/predittività.
+- **Micro-tick** — look-around occhi/corpo (niente LLM). Indipendente.
 - **Predittività** / **Wellness** — interruttori dei due canali.
-- **Sincronizza allenamenti (Health Connect)** — importa sessioni di esercizio (es. bici da Google Fit → Health Connect) nel Log Day come attività **fatte** (non come abitudini). Serve il permesso Exercise; senza Health Connect o senza permesso l’app continua solo col Log Day vocale.
-- Minuti anchor / buffer dialogo / presenza; soglia `speak_confidence`.
-- **Abitudini dedotte** — elenco pattern dal Log Day (orario tipico, finestra, giorni/confidence, se è già «pronto a chiedere»). Puoi **eliminare** uno slot se non vuoi che te lo proponga.
-- **Gestisci domini** — abilita/disabilita ambiti del check wellness (predefiniti + personalizzati).
-
-Se la predittività non ti parla mai: apri **Abitudini dedotte**. Lista vuota o voci «in apprendimento» (~6 giorni distinti sullo stesso slot) = ancora non eleggibili. Solo quelle «pronte» possono chiedere nella finestra oraria.
+- **Sincronizza allenamenti (Health Connect)** — esercizi → Log Day come attività fatte.
+- Minuti anchor wellness (v2 default più basso del vecchio 60′); soglie predittività.
+- **Abitudini dedotte** — pattern Log Day.
+- **Gestisci domini** — ambiti del check wellness.
+- **(v2)** Riepilogo stato wellness — dalla snapshot salvata.
 
 ## Spec tecnica
 
-Per implementatori e agenti AI: [`docs/PROACTIVE_ARCHITECTURE.md`](../PROACTIVE_ARCHITECTURE.md).
+Per implementatori e agenti AI: [`docs/PROACTIVE_ARCHITECTURE.md`](../PROACTIVE_ARCHITECTURE.md) (Channel 2 — Wellness v2).

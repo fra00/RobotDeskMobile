@@ -8,6 +8,9 @@ import com.example.mydeskrobot.domain.llm.LlmProvider
 import com.example.mydeskrobot.domain.llm.LlmSettings
 import com.example.mydeskrobot.domain.speech.SttProvider
 import com.example.mydeskrobot.data.body.BodySettings
+import com.example.mydeskrobot.domain.wellness.WellnessDomainStatus
+import com.example.mydeskrobot.domain.wellness.WellnessDomains
+import com.example.mydeskrobot.domain.wellness.WellnessSnapshot
 import com.example.mydeskrobot.memory.MemoryReorganizePolicy
 import com.example.mydeskrobot.memory.MemorySettings
 
@@ -49,6 +52,8 @@ data class SettingsUiState(
     val showHeartbeatDialog: Boolean = false,
     val showDeskPresenceDialog: Boolean = false,
     val showHabitSlotsDialog: Boolean = false,
+    val showWellnessSummaryDialog: Boolean = false,
+    val wellnessSummary: WellnessSummaryUiState? = null,
     val habitSlots: List<HabitSlotUiState> = emptyList(),
     val habitSlotDeleteConfirmKey: String? = null,
     val showAttentionDomainsDialog: Boolean = false,
@@ -118,7 +123,7 @@ data class HeartbeatSettingsFormState(
     val proactiveThreshold: Float = 0.75f,
     val predictivityEnabled: Boolean = true,
     val wellnessEnabled: Boolean = true,
-    val wellnessAnchorMinutes: Int = 60,
+    val wellnessAnchorMinutes: Int = ProactivityConstants.WELLNESS_ANCHOR_MINUTES,
     val wellnessIdleMinutes: Int = ProactivityConstants.WELLNESS_IDLE_MINUTES,
     val wellnessPresenceMinutes: Int = 15,
     val healthConnectEnabled: Boolean = false,
@@ -159,4 +164,28 @@ data class AttentionDomainUiState(
     val enabled: Boolean,
     val subtitle: String,
     val isBuiltIn: Boolean = true,
+)
+
+data class WellnessSummaryUiState(
+    val dayKey: String,
+    val domains: List<WellnessDomainSummaryUi>,
+)
+
+data class WellnessDomainSummaryUi(
+    val id: String,
+    val displayName: String,
+    val status: WellnessDomainStatus,
+    val summaryIt: String,
+)
+
+fun WellnessSnapshot.toUiState(): WellnessSummaryUiState = WellnessSummaryUiState(
+    dayKey = dayKey,
+    domains = domains.map { entry ->
+        WellnessDomainSummaryUi(
+            id = entry.id,
+            displayName = WellnessDomains.DISPLAY_NAMES[entry.id] ?: entry.id,
+            status = entry.status,
+            summaryIt = entry.summaryIt,
+        )
+    },
 )

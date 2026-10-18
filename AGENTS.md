@@ -149,7 +149,7 @@ Indice guide: `docs/guides/README.md`.
 |------|-----------|------------------------|
 | H1 | Heartbeat base → retired to idle look-around in mood loop | ✅ Completato (care → Wellness; alarm LLM rimosso) |
 | H2 | `speak_confidence`, soglia invasività | ✅ Completato |
-| **H7** | **Predictivity + Wellness unificato** | ✅ Completato (v1) — smoke manuale aperto |
+| **H7** | **Predictivity + Wellness unificato** | ✅ Completato (v1 + Wellness v2 snapshot/notify; smoke manuale aperto) |
 | H3 | State machine emozioni (`MoodManager` + corpo ESP32) | 🟡 Parziale — core ok, smoke `docs/guides/UMORE_SMOKE.md` |
 | H4 | Working memory giornaliera | 🟡 Parziale — prompt anti-ripetizione + ignoro utente |
 | H5 | Self-reflection settimanale | 🟡 Parziale — gate mic E2E + consolidamento PATTERN |
@@ -161,13 +161,13 @@ Indice guide: `docs/guides/README.md`.
 
 ### Stato implementazione
 
-**Fatto:** architettura 3 layer, tool JSON + catene, STT unificato, input notifiche (+ proxy v1), phone capability bridge (exercises/contacts pull + dual reminder), memoria unificata RAG, recall planner LLM, activity log (+ Health Connect exercise sync), spatial memory, robot context, web/meteo/Spotify, body ESP32 + espressione corpo, desk presence ML Kit + attention centering, idle look-around, proattività H7 v1, domini attenzione (Wellness), liste strutturate, policy nome utente IDENTITY (no guess da notifiche), lettura notifiche via LLM (no keyword shortcut), modalità traduzione continua (`set_translation_mode`), follow-up impegni urgenti (`commitment_follow_up`).
+**Fatto:** architettura 3 layer, tool JSON + catene, STT unificato, input notifiche (+ proxy v1), phone capability bridge (exercises/contacts pull + dual reminder), memoria unificata RAG, recall planner LLM, activity log (+ Health Connect exercise sync), spatial memory, robot context, web/meteo/Spotify, body ESP32 + espressione corpo, desk presence ML Kit + attention centering, idle look-around, proattività H7 (Predictivity + Wellness v2 snapshot/notify), domini attenzione (Wellness), liste strutturate, policy nome utente IDENTITY (no guess da notifiche), lettura notifiche via LLM (no keyword shortcut), modalità traduzione continua (`set_translation_mode`), follow-up impegni urgenti (`commitment_follow_up`).
 
 **Backlog:** chiusura H3–H5 (smoke, WM ignoro, reflection memory); studio Predictivity / `ProactiveSpeakGate` / fire-and-check+commitment (solo analisi — `TODO.md`); body kinematics prompt; news/domotica; memory fragmentation analyzer; tool note; speaker ID / Blockly (draft).
 
 ### Avvertenze documentazione
 
-- **`docs/PROACTIVE_ARCHITECTURE.md`** è SSOT per Predittività + Wellness (H7 v1 implementato); idle look-around → `docs/HEARTBEAT_ARCHITECTURE.md`.
+- **`docs/PROACTIVE_ARCHITECTURE.md`** è SSOT per Predittività + Wellness (H7; Wellness v2: compute ≠ notify); idle look-around → `docs/HEARTBEAT_ARCHITECTURE.md`.
 - **`docs/TODO.md`** è SSOT per roadmap aperta; `docs/Drafts/AUTONOMOUS_AGENT_VISION.md` è visione storica (banner in testa) — **non** usarlo come checklist di cosa resta da fare.
 - **Draft rimossi (non più in repo):** `AgentEvolution-GapAnalysis.md`, `STT-Analysis.md`, `AnalysysClaude.md`, `UNIFIED_MEMORY_RAG_PLAN`. Memoria RAG: SSOT `docs/MEMORY.md`, `docs/MEMORY_EMBEDDING.md`, `docs/MEMORY_ACCESS.md`.
 - **WhatsApp/telefono:** tool in tabella sotto, nessuna spec dedicata in `docs/` — comportamento da `AGENTS.md` + codice.

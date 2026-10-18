@@ -34,6 +34,15 @@
 - [x] `wellnessPresentEnough` cablato (body first → fallback interazione; idle buffer separato)
 - [x] Wellness done solo dopo esito; micro-tick switch separato da wellness/predittività
 - [ ] Smoke manuale: [`guides/PROATTIVITA_SMOKE.md`](guides/PROATTIVITA_SMOKE.md)
+
+### Wellness v2 — compute ≠ communicate (ott 2026)
+
+Spec SSOT: [`PROACTIVE_ARCHITECTURE.md`](PROACTIVE_ARCHITECTURE.md) Channel 2 · guida [`guides/PROATTIVITA.md`](guides/PROATTIVITA.md).
+
+- [x] **Docs** — calcolo con gate leggeri; snapshot LLM SSOT; notifica se attenzione; voce solo on-demand; UI riepilogo
+- [x] **Plan** — store DTO, wire notify, retirement TTS path, ask/inject
+- [x] **Code** — `WellnessWatcher` senza idle/presence; persist snapshot; notify cap; drop proactive TTS; summary UI; dialogue ask (`STATO WELLNESS`)
+- [ ] Smoke v2 in [`guides/PROATTIVITA_SMOKE.md`](guides/PROATTIVITA_SMOKE.md)
 - [ ] Feedback loop strutturato dopo proactive speak (accettato / ignorato / rifiutato)
 - [ ] **Predictivity — verifica uso reale (ott 2026):** in uso quotidiano (senza smoke formale) non ha quasi mai proposto/suggerito nulla; a volte tratta come avvenute cose non fatte. Da indagare end-to-end:
   - miner → slot abitudini eleggibili / confidence / UI «Abitudini dedotte»

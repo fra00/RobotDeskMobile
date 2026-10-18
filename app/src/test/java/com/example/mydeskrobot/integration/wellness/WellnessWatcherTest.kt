@@ -11,6 +11,10 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 
+/**
+ * Wellness v2 compute gates: enabled, mic session, LLM idle, not night, translation off,
+ * daily anchor, once/day. Idle buffer / presence / SILENT do **not** block compute.
+ */
 class WellnessWatcherTest {
 
     private val anchorMs = 1_000_000L
@@ -30,7 +34,6 @@ class WellnessWatcherTest {
             baseContext(
                 bodyConfigured = true,
                 bodyReachable = true,
-                locateUser = { true },
             ),
         )
         assertEquals(WellnessPhase.VISUAL_ORDER, phase)
@@ -42,7 +45,6 @@ class WellnessWatcherTest {
             baseContext(
                 bodyConfigured = true,
                 bodyReachable = true,
-                locateUser = { true },
                 enabledDomainIds = setOf("pasti", "carico_lavoro"),
             ),
         )
@@ -56,8 +58,21 @@ class WellnessWatcherTest {
 
     @Test
     fun `nextPhase null before anchor elapsed`() = runTest {
-        val earlyWatcher = WellnessWatcher(nowMillis = { anchorMs + 30 * 60_000L })
-        assertNull(earlyWatcher.nextPhase(baseContext()))
+        val earlyWatcher = WellnessWatcher(nowMillis = { anchorMs + 10 * 60_000L })
+        assertNull(
+            earlyWatcher.nextPhase(
+                baseContext(proactivity = ProactivitySettings(wellnessAnchorMinutes = 15)),
+            ),
+        )
+    }
+
+    @Test
+    fun `nextPhase ok after default 15 min anchor`() = runTest {
+        val midWatcher = WellnessWatcher(nowMillis = { anchorMs + 16 * 60_000L })
+        val phase = midWatcher.nextPhase(
+            baseContext(proactivity = ProactivitySettings(wellnessAnchorMinutes = 15)),
+        )
+        assertEquals(WellnessPhase.DOMAIN_SCORE, phase)
     }
 
     @Test
@@ -73,20 +88,19 @@ class WellnessWatcherTest {
     fun `nextPhase null when check already done today`() = runTest {
         val wm = WorkingMemory.forToday()
             .withFirstHotwordOn(anchorMs)
-            .withUserTurn(anchorMs + 50 * 60_000L)
             .withWellnessCheckDone()
         assertNull(watcher.nextPhase(baseContext(workingMemory = wm)))
     }
 
     @Test
-    fun `nextPhase null on silent robot context`() = runTest {
+    fun `nextPhase proceeds on silent robot context — SILENT does not block compute`() = runTest {
         val context = baseContext(
             robotContext = RobotContextState(
                 profile = RobotProfile.WORK,
                 notificationMode = NotificationMode.SILENT,
             ),
         )
-        assertNull(watcher.nextPhase(context))
+        assertEquals(WellnessPhase.DOMAIN_SCORE, watcher.nextPhase(context))
     }
 
     @Test
@@ -95,18 +109,17 @@ class WellnessWatcherTest {
     }
 
     @Test
-    fun `nextPhase null when idle below threshold`() = runTest {
+    fun `nextPhase ok despite recent user turn — idle buffer dropped in v2`() = runTest {
         val wm = WorkingMemory.forToday()
             .withFirstHotwordOn(anchorMs)
-            .withUserTurn(nowMs - 3 * 60_000L)
-        assertNull(
-            watcher.nextPhase(
-                baseContext(
-                    workingMemory = wm,
-                    proactivity = ProactivitySettings(wellnessIdleMinutes = 5),
-                ),
+            .withUserTurn(nowMs - 30_000L)
+        val phase = watcher.nextPhase(
+            baseContext(
+                workingMemory = wm,
+                proactivity = ProactivitySettings(wellnessIdleMinutes = 5),
             ),
         )
+        assertEquals(WellnessPhase.DOMAIN_SCORE, phase)
     }
 
     @Test
@@ -123,112 +136,45 @@ class WellnessWatcherTest {
     fun `nextPhase skips visual when already done today`() = runTest {
         val wm = WorkingMemory.forToday()
             .withFirstHotwordOn(anchorMs)
-            .withUserTurn(nowMs - 8 * 60_000L)
             .withWellnessVisualDone()
         val phase = watcher.nextPhase(
             baseContext(
                 workingMemory = wm,
                 bodyConfigured = true,
                 bodyReachable = true,
-                locateUser = { true },
             ),
         )
         assertEquals(WellnessPhase.DOMAIN_SCORE, phase)
     }
 
     @Test
-    fun `nextPhase null when body misses and no recent interaction`() = runTest {
-        val wm = WorkingMemory.forToday()
-            .withFirstHotwordOn(anchorMs)
-            .withUserTurn(nowMs - 30 * 60_000L)
-        assertNull(
-            watcher.nextPhase(
-                baseContext(
-                    workingMemory = wm,
-                    bodyConfigured = true,
-                    bodyReachable = true,
-                    locateUser = { false },
-                    proactivity = ProactivitySettings(
-                        wellnessIdleMinutes = 5,
-                        wellnessPresenceMinutes = 5,
-                    ),
-                ),
-            ),
-        )
-    }
-
-    @Test
-    fun `nextPhase proceeds when body misses but recent interaction within presence window`() = runTest {
-        val wm = WorkingMemory.forToday()
-            .withFirstHotwordOn(anchorMs)
-            .withUserTurn(nowMs - 4 * 60_000L)
-        // idle buffer would block at 5 — use idle=3 so presence is the focus
+    fun `nextPhase proceeds when body misses — presence dropped in v2`() = runTest {
         val phase = watcher.nextPhase(
             baseContext(
-                workingMemory = wm,
                 bodyConfigured = true,
                 bodyReachable = true,
                 locateUser = { false },
-                proactivity = ProactivitySettings(
-                    wellnessIdleMinutes = 3,
-                    wellnessPresenceMinutes = 5,
-                ),
             ),
         )
         assertEquals(WellnessPhase.VISUAL_ORDER, phase)
     }
 
     @Test
-    fun `nextPhase null without body when last turn outside presence window`() = runTest {
-        val wm = WorkingMemory.forToday()
-            .withFirstHotwordOn(anchorMs)
-            .withUserTurn(nowMs - 20 * 60_000L)
-        assertNull(
-            watcher.nextPhase(
-                baseContext(
-                    workingMemory = wm,
-                    bodyConfigured = false,
-                    proactivity = ProactivitySettings(
-                        wellnessIdleMinutes = 5,
-                        wellnessPresenceMinutes = 15,
-                    ),
-                ),
-            ),
-        )
-    }
-
-    @Test
-    fun `nextPhase without body ok when turn after idle and inside presence`() = runTest {
-        val wm = WorkingMemory.forToday()
-            .withFirstHotwordOn(anchorMs)
-            .withUserTurn(nowMs - 8 * 60_000L)
-        val phase = watcher.nextPhase(
-            baseContext(
-                workingMemory = wm,
-                bodyConfigured = false,
-                proactivity = ProactivitySettings(
-                    wellnessIdleMinutes = 5,
-                    wellnessPresenceMinutes = 15,
-                ),
-            ),
-        )
-        assertEquals(WellnessPhase.DOMAIN_SCORE, phase)
+    fun `nextPhase null when llm busy`() = runTest {
+        assertNull(watcher.nextPhase(baseContext(llmBusy = true)))
     }
 
     private fun baseContext(
         workingMemory: WorkingMemory = WorkingMemory.forToday()
-            .withFirstHotwordOn(anchorMs)
-            .withUserTurn(nowMs - 8 * 60_000L),
+            .withFirstHotwordOn(anchorMs),
         bodyConfigured: Boolean = false,
         bodyReachable: Boolean = false,
-        proactivity: ProactivitySettings = ProactivitySettings(
-            wellnessIdleMinutes = 5,
-            wellnessPresenceMinutes = 15,
-        ),
+        proactivity: ProactivitySettings = ProactivitySettings(wellnessAnchorMinutes = 15),
         robotContext: RobotContextState? = null,
         micSessionActive: Boolean = true,
         isNightMode: Boolean = false,
         translationModeActive: Boolean = false,
+        llmBusy: Boolean = false,
         enabledDomainIds: Set<String> = com.example.mydeskrobot.domain.wellness.WellnessDomains.ALL,
         locateUser: suspend () -> Boolean = { false },
     ) = WellnessWatchContext(
@@ -238,7 +184,7 @@ class WellnessWatcherTest {
         micSessionActive = micSessionActive,
         bodyConfigured = bodyConfigured,
         bodyReachable = bodyReachable,
-        llmBusy = false,
+        llmBusy = llmBusy,
         isNightMode = isNightMode,
         translationModeActive = translationModeActive,
         enabledDomainIds = enabledDomainIds,

@@ -1,5 +1,7 @@
 package com.example.mydeskrobot.reasoning.model
 
+import com.example.mydeskrobot.domain.wellness.WellnessSnapshot
+
 /**
  * Final result of a reasoning/tool chain execution.
  */
@@ -11,6 +13,8 @@ sealed class ReasoningResult {
         val speakConfidence: Double? = null,
         /** LLM-judged tone of the user's last utterance (positive | negative | apology | neutral). */
         val userTone: String? = null,
+        /** Structured Wellness DOMAIN_SCORE snapshot when present. */
+        val wellnessSnapshot: WellnessSnapshot? = null,
     ) : ReasoningResult()
     
     /** Reasoning requires user confirmation to proceed */

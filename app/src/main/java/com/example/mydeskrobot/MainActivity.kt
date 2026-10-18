@@ -1,6 +1,7 @@
 package com.example.mydeskrobot
 
 import android.Manifest
+import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import android.view.WindowManager
@@ -29,6 +30,7 @@ import com.example.mydeskrobot.domain.proxy.DeviceMode
 import com.example.mydeskrobot.integration.input.notification.proxy.NotificationProxyForegroundService
 import com.example.mydeskrobot.integration.input.notification.proxy.NotificationProxyHttpServer
 import com.example.mydeskrobot.integration.proxy.capability.PhoneCapabilityHttpServer
+import com.example.mydeskrobot.integration.wellness.WellnessNotifier
 import com.example.mydeskrobot.presentation.conversation.ConversationUiEvent
 import com.example.mydeskrobot.presentation.conversation.ConversationViewModel
 import com.example.mydeskrobot.presentation.conversation.ConversationViewModelFactory
@@ -147,6 +149,22 @@ class MainActivity : ComponentActivity() {
             }
         }
         requestOptionalPermissionsIfNeeded()
+        handleWellnessDeepLink(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleWellnessDeepLink(intent)
+    }
+
+    private fun handleWellnessDeepLink(intent: Intent?) {
+        if (deviceMode != DeviceMode.ROBOT) return
+        if (intent?.getBooleanExtra(WellnessNotifier.EXTRA_OPEN_WELLNESS_SUMMARY, false) != true) {
+            return
+        }
+        intent.removeExtra(WellnessNotifier.EXTRA_OPEN_WELLNESS_SUMMARY)
+        viewModel.onEvent(ConversationUiEvent.OnOpenWellnessSummary)
     }
 
     override fun onStart() {

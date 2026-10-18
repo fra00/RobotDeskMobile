@@ -63,6 +63,7 @@ import com.example.mydeskrobot.ui.components.DeskPresenceSettingsDialog
 import com.example.mydeskrobot.ui.components.HabitSlotsSettingsDialog
 import com.example.mydeskrobot.ui.components.HabitSlotDeleteConfirmDialog
 import com.example.mydeskrobot.ui.components.HeartbeatSettingsDialog
+import com.example.mydeskrobot.ui.components.WellnessSummaryDialog
 import com.example.mydeskrobot.ui.components.LlmSettingsDialog
 import com.example.mydeskrobot.ui.components.MicButton
 import com.example.mydeskrobot.ui.components.MemoryExtractingIndicator
@@ -658,9 +659,19 @@ fun RobotScreen(
             onManageHabitSlots = {
                 onEvent(ConversationUiEvent.OnOpenHabitSlotsSettings)
             },
+            onOpenWellnessSummary = {
+                onEvent(ConversationUiEvent.OnOpenWellnessSummary)
+            },
             onRequestHealthConnectPermission = requestHealthConnectPermission,
             onSave = { onEvent(ConversationUiEvent.OnSaveHeartbeatSettings) },
             onDismiss = { onEvent(ConversationUiEvent.OnDismissHeartbeatSettings) },
+        )
+    }
+
+    if (settingsUiState.showWellnessSummaryDialog) {
+        WellnessSummaryDialog(
+            summary = settingsUiState.wellnessSummary,
+            onDismiss = { onEvent(ConversationUiEvent.OnDismissWellnessSummary) },
         )
     }
 

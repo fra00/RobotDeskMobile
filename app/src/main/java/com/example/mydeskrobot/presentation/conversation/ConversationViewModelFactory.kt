@@ -189,6 +189,8 @@ class ConversationViewModelFactory(
         val llmSettingsRepository = LlmSettingsRepositoryImpl.create(appContext)
         val initialLlmSettings = runBlocking { llmSettingsRepository.load() }
         val moodContextProvider = DelegatingMoodContextProvider()
+        val wellnessContextProvider =
+            com.example.mydeskrobot.integration.wellness.DelegatingWellnessContextProvider()
         val spatialBindings = SpatialRuntimeBindings(
             placeRepository = SpatialPlaceRepository.create(appContext),
             contextRepository = SpatialContextRepository(appContext),
@@ -201,6 +203,7 @@ class ConversationViewModelFactory(
             visionImageCapture = visionImageCapture,
             llmSettings = initialLlmSettings,
             moodContextProvider = moodContextProvider,
+            wellnessContextProvider = wellnessContextProvider,
             spatialBindings = spatialBindings,
             reasoningLogObserver = reasoningLogBuffer,
             onBodyHardwareBusyChanged = { bodyHardwareBusyGate.isBusy = it },
@@ -221,6 +224,7 @@ class ConversationViewModelFactory(
             reasoningEngine = reasoningEngine,
             llmSettingsRepository = llmSettingsRepository,
             moodContextProvider = moodContextProvider,
+            wellnessContextProvider = wellnessContextProvider,
             spatialBindings = spatialBindings,
             reasoningLogBuffer = reasoningLogBuffer,
             bodyHardwareBusyGate = bodyHardwareBusyGate,

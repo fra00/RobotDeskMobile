@@ -80,6 +80,30 @@ class LlmResponseParserTest {
     }
     
     @Test
+    fun `parse reply with wellness snapshot object`() {
+        val json = """
+            {
+                "reply": "",
+                "speak_confidence": 0.0,
+                "emotion": "neutral",
+                "action": {"type": "none"},
+                "wellness": {
+                    "day_key": "2026-10-18",
+                    "notify_suggested": true,
+                    "domains": [
+                        {"id": "pasti", "status": "attention", "summary_it": "Pranzo assente"}
+                    ]
+                }
+            }
+        """.trimIndent()
+
+        val result = parser.parse(json)
+        assertNotNull(result.wellnessSnapshot)
+        assertEquals("pasti", result.wellnessSnapshot!!.domains.single().id)
+        assertTrue(result.wellnessSnapshot!!.needsAttention)
+    }
+
+    @Test
     fun `parse reply with multiple tools`() {
         val json = """
             {

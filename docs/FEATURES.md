@@ -51,7 +51,7 @@
 | Funzionalità | Stato | Spec |
 |--------------|-------|------|
 | Predictivity (habit slots + deviation) | ✅ v1 | [`PROACTIVE_ARCHITECTURE.md`](PROACTIVE_ARCHITECTURE.md) |
-| Wellness (domini + ordine stanza) | ✅ v1 | idem · guida [`guides/PROATTIVITA.md`](guides/PROATTIVITA.md) |
+| Wellness (domini + ordine stanza) | ✅ **v2** (snapshot SSOT + notifica se attenzione; no TTS proattivo; UI riepilogo) | [`PROACTIVE_ARCHITECTURE.md`](PROACTIVE_ARCHITECTURE.md) · guida [`guides/PROATTIVITA.md`](guides/PROATTIVITA.md) |
 | Gate invasività / cooldown / cap giornaliero | ✅ | `ProactiveSpeakGate` |
 | Weekly reflection (tick + stats) | ✅ core | H5 consolidamento strutturato → [`TODO.md`](TODO.md) |
 | Umore utente in decisioni proattive | ❌ non obiettivo | H6 chiuso |

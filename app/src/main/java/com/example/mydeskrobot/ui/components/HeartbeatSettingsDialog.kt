@@ -29,6 +29,7 @@ fun HeartbeatSettingsDialog(
     onFormChange: (HeartbeatSettingsFormState) -> Unit,
     onManageDomains: () -> Unit,
     onManageHabitSlots: () -> Unit,
+    onOpenWellnessSummary: () -> Unit = {},
     onRequestHealthConnectPermission: () -> Unit = {},
     onSave: () -> Unit,
     onDismiss: () -> Unit,
@@ -208,30 +209,6 @@ fun HeartbeatSettingsDialog(
                     modifier = Modifier.fillMaxWidth(),
                 )
 
-                Text(
-                    text = stringResource(R.string.proactivity_wellness_idle_label, form.wellnessIdleMinutes),
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-                Slider(
-                    value = form.wellnessIdleMinutes.toFloat(),
-                    onValueChange = { onFormChange(form.copy(wellnessIdleMinutes = it.roundToInt())) },
-                    valueRange = 5f..60f,
-                    steps = 10,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-
-                Text(
-                    text = stringResource(R.string.proactivity_wellness_presence_label, form.wellnessPresenceMinutes),
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-                Slider(
-                    value = form.wellnessPresenceMinutes.toFloat(),
-                    onValueChange = { onFormChange(form.copy(wellnessPresenceMinutes = it.roundToInt())) },
-                    valueRange = 5f..60f,
-                    steps = 10,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-
                 Spacer(modifier = Modifier.height(12.dp))
 
                 TextButton(onClick = onManageHabitSlots) {
@@ -240,6 +217,10 @@ fun HeartbeatSettingsDialog(
 
                 TextButton(onClick = onManageDomains) {
                     Text(stringResource(R.string.heartbeat_manage_domains))
+                }
+
+                TextButton(onClick = onOpenWellnessSummary) {
+                    Text(stringResource(R.string.proactivity_wellness_summary))
                 }
             }
         },

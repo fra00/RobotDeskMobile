@@ -82,6 +82,7 @@ import com.example.mydeskrobot.domain.heartbeat.AttentionDomainState
 import com.example.mydeskrobot.domain.heartbeat.AttentionDomainValidator
 import com.example.mydeskrobot.domain.heartbeat.IdleLookAroundEligibility
 import com.example.mydeskrobot.presentation.settings.toFormState
+import com.example.mydeskrobot.presentation.settings.toUiState
 import com.example.mydeskrobot.reasoning.ReasoningEngine
 import com.example.mydeskrobot.reasoning.model.ConversationMessage
 import com.example.mydeskrobot.reasoning.model.IntermediateResponse
@@ -130,6 +131,8 @@ import com.example.mydeskrobot.domain.mood.RobotMood
 import com.example.mydeskrobot.domain.mood.TtsProsody
 import com.example.mydeskrobot.domain.mood.UserInteractionTone
 import com.example.mydeskrobot.integration.mood.DelegatingMoodContextProvider
+import com.example.mydeskrobot.integration.wellness.DelegatingWellnessContextProvider
+import com.example.mydeskrobot.domain.wellness.WellnessSnapshot
 import com.example.mydeskrobot.integration.spatial.SpatialRuntimeBindings
 import com.example.mydeskrobot.domain.spatial.SpatialIntentDetector
 import com.example.mydeskrobot.domain.spatial.SpatialScanSession
@@ -195,6 +198,7 @@ class ConversationViewModel(
     private var reasoningEngine: ReasoningEngine,
     private val llmSettingsRepository: LlmSettingsRepository,
     private val moodContextProvider: DelegatingMoodContextProvider,
+    private val wellnessContextProvider: DelegatingWellnessContextProvider,
     private val spatialBindings: SpatialRuntimeBindings,
     private val reasoningLogBuffer: ReasoningLogBuffer,
     private val bodyHardwareBusyGate: BodyHardwareBusyGate,
@@ -339,6 +343,8 @@ class ConversationViewModel(
     private val predictivityDeviationOrchestrator = PredictivityDeviationOrchestrator()
     private val wellnessWatcher by lazy { WellnessModule.createWatcher() }
     private val wellnessContextBuilder by lazy { WellnessModule.createContextBuilder(appContext) }
+    private val wellnessSnapshotRepository by lazy { WellnessModule.createSnapshotRepository(appContext) }
+    private val wellnessNotifier by lazy { WellnessModule.createNotifier(appContext) }
     private val wellnessCheckOrchestrator = WellnessCheckOrchestrator()
     private val healthConnectExerciseSync by lazy {
         com.example.mydeskrobot.data.health.HealthConnectModule.createSync(appContext)
@@ -458,6 +464,7 @@ class ConversationViewModel(
         moodContextProvider.snapshotProvider = { moodManager.currentMood.value }
         moodContextProvider.ephemeralProvider = { moodManager.ephemeralExpression.value }
         moodContextProvider.promptHintsProvider = { moodManager.currentPromptHints() }
+        wellnessContextProvider.repository = wellnessSnapshotRepository
         moodContextProvider.idleDistractionProvider = {
             moodManager.idleBoredomController.currentDistractionKind()
         }
@@ -630,6 +637,8 @@ class ConversationViewModel(
             is ConversationUiEvent.OnHeartbeatFormChange -> updateHeartbeatForm(event.form)
             ConversationUiEvent.OnSaveHeartbeatSettings -> saveHeartbeatSettings()
             ConversationUiEvent.OnOpenHabitSlotsSettings -> openHabitSlotsSettings()
+            ConversationUiEvent.OnOpenWellnessSummary -> openWellnessSummary()
+            ConversationUiEvent.OnDismissWellnessSummary -> dismissWellnessSummary()
             ConversationUiEvent.OnDismissHabitSlotsSettings -> dismissHabitSlotsSettings()
             is ConversationUiEvent.OnDeleteHabitSlot -> requestDeleteHabitSlot(event.slotKey)
             ConversationUiEvent.OnConfirmDeleteHabitSlot -> confirmDeleteHabitSlot()
@@ -1572,6 +1581,25 @@ class ConversationViewModel(
         }
     }
 
+    private fun openWellnessSummary() {
+        viewModelScope.launch {
+            val snapshot = wellnessSnapshotRepository.getLatest()
+            _settingsUiState.update {
+                it.copy(
+                    showWellnessSummaryDialog = true,
+                    wellnessSummary = snapshot?.toUiState(),
+                    feedbackMessage = null,
+                )
+            }
+        }
+    }
+
+    private fun dismissWellnessSummary() {
+        _settingsUiState.update {
+            it.copy(showWellnessSummaryDialog = false)
+        }
+    }
+
     private suspend fun refreshHabitSlotsList() {
         habitSlotRepository.deleteRobotSelfSlots()
         val slots = habitSlotRepository.listAll()
@@ -2203,6 +2231,7 @@ class ConversationViewModel(
             visionImageCapture = visionImageCapture,
             llmSettings = settings,
             moodContextProvider = moodContextProvider,
+            wellnessContextProvider = wellnessContextProvider,
             spatialBindings = spatialBindings,
             reasoningLogObserver = reasoningLogBuffer,
             onBodyHardwareBusyChanged = { bodyHardwareBusyGate.isBusy = it },
@@ -2714,20 +2743,22 @@ class ConversationViewModel(
                     return
                 }
 
-                if (shouldSuppressWellness(result.copy(finalText = finalText))) {
-                    Log.i(TAG, "Wellness check suppressed: confidence ${result.speakConfidence}")
+                if (shouldSuppressWellness()) {
+                    Log.i(TAG, "Wellness check silent (v2: snapshot/notify, no TTS)")
                     val suppressedPhase = currentWellnessPhase
                     if (currentInputIsWellnessCheck && suppressedPhase == WellnessPhase.VISUAL_ORDER) {
                         viewModelScope.launch {
                             sensingLogRepository.record(SensingKind.ROOM_SCENE)
                         }
                     }
+                    if (currentInputIsWellnessCheck && suppressedPhase == WellnessPhase.DOMAIN_SCORE) {
+                        viewModelScope.launch {
+                            persistWellnessSnapshotAndMaybeNotify(result.wellnessSnapshot)
+                        }
+                    }
                     currentInputIsWellnessCheck = false
                     currentWellnessPhase = null
                     markWellnessPhaseCompleted(suppressedPhase)
-                    viewModelScope.launch {
-                        proactiveTracker.recordSuppressed("wellness", "low speak_confidence")
-                    }
                     finalizeTurnWithoutSpeech(LlmEmotionMapper.fromLlmValue(emotion))
                     return
                 }
@@ -2927,15 +2958,38 @@ class ConversationViewModel(
         }
     }
 
-    private suspend fun shouldSuppressWellness(result: ReasoningResult.Success): Boolean {
-        if (!currentInputIsWellnessCheck) return false
-        if (currentWellnessPhase == WellnessPhase.VISUAL_ORDER) return true
+    /** Wellness v2: never TTS the check turn — persist snapshot + optional notification instead. */
+    private fun shouldSuppressWellness(): Boolean = currentInputIsWellnessCheck
 
-        val confidence = result.speakConfidence ?: return true
-        if (result.finalText.isBlank()) return true
-
-        val settings = heartbeatSettingsRepository.load()
-        return confidence < settings.proactiveThreshold
+    private suspend fun persistWellnessSnapshotAndMaybeNotify(snapshot: WellnessSnapshot?) {
+        val toSave = snapshot ?: return
+        wellnessSnapshotRepository.save(toSave)
+        val dayKey = toSave.dayKey.ifBlank { wellnessSnapshotRepository.todayDayKey() }
+        val robotContext = robotContextRepository.getStoredState()
+        val silent = RobotContextPolicy.shouldSuppressNotificationTts(
+            robotContext,
+            System.currentTimeMillis(),
+        )
+        if (silent) {
+            proactiveTracker.recordSilent("wellness")
+            return
+        }
+        if (!toSave.needsAttention && !toSave.notifySuggested) {
+            proactiveTracker.recordSilent("wellness")
+            return
+        }
+        if (!wellnessSnapshotRepository.canNotifyToday(dayKey)) {
+            proactiveTracker.recordSilent("wellness")
+            return
+        }
+        val posted = wellnessNotifier.postIfNeeded(toSave)
+        if (posted) {
+            wellnessSnapshotRepository.markNotifyPosted(dayKey)
+            // Notify path — not TTS; do not count against proactive speak cap.
+            proactiveTracker.recordSuppressed("wellness", "notified")
+        } else {
+            proactiveTracker.recordSilent("wellness")
+        }
     }
 
     private suspend fun shouldSuppressPredictivity(result: ReasoningResult.Success): Boolean {

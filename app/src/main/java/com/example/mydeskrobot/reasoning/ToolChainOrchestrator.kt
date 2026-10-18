@@ -188,6 +188,7 @@ class ToolChainOrchestrator(
                         emotion = parsed.emotion,
                         speakConfidence = parsed.speakConfidence,
                         userTone = turnUserTone,
+                        wellnessSnapshot = parsed.wellnessSnapshot,
                     )
                 }
                 
@@ -235,6 +236,7 @@ class ToolChainOrchestrator(
                             emotion = emotion,
                             speakConfidence = parsed.speakConfidence,
                             userTone = turnUserTone,
+                            wellnessSnapshot = parsed.wellnessSnapshot,
                         )
                     }
                 }
@@ -295,6 +297,7 @@ class ToolChainOrchestrator(
                     emotion = parsed.emotion,
                     speakConfidence = parsed.speakConfidence,
                     userTone = parsed.userTone,
+                    wellnessSnapshot = parsed.wellnessSnapshot,
                 )
             }
             
@@ -334,6 +337,7 @@ class ToolChainOrchestrator(
                         emotion = emotion,
                         speakConfidence = parsed.speakConfidence,
                         userTone = parsed.userTone,
+                        wellnessSnapshot = parsed.wellnessSnapshot,
                     )
                 } else {
                     executeChain(onIntermediateResponse, initialUserTone = parsed.userTone)
