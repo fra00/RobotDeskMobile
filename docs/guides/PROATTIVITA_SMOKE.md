@@ -14,7 +14,7 @@ Checklist manuale. Eseguire con LLM configurato. Spec: [`PROACTIVE_ARCHITECTURE.
 
 ## Wellness v2
 
-1. Dopo ~N min dal primo mic del giorno (default **15**), con LLM libero: parte il **calcolo** anche senza idle 5′ e senza presenza volto (mic session attiva per lo scheduler).
+1. Dopo ~N min dal primo avvio sessione / giorno (default **15**), con LLM libero: parte il **calcolo** anche con mic OFF, senza idle 5′ e senza presenza volto.
 2. Risultato **persistito** (snapshot); Impostazioni → Proattività → Riepilogo wellness mostra i domini.
 3. Se un dominio è in attenzione → **una notifica** (non TTS). Secondo tick stesso giorno → no secondo notify.
 4. Chiedere a voce «come sto?» / «wellness» → risposta dallo snapshot, senza ricalcolo obbligatorio.

@@ -80,6 +80,8 @@ data class WorkingMemory(
 
     fun withWellnessCheckDone(): WorkingMemory = copy(wellnessCheckDoneToday = true)
 
+    fun withWellnessCheckCleared(): WorkingMemory = copy(wellnessCheckDoneToday = false)
+
     fun withWellnessVisualDone(): WorkingMemory = copy(wellnessVisualDoneToday = true)
 
     fun minutesSinceLastUserTurn(now: Long = System.currentTimeMillis()): Long? {

@@ -1,7 +1,5 @@
 Dominio: pasti (pranzo/cena).
-- Done evidence: Today activities / meal episodes. Expected habits and declared meal routines = usual windows, not proof a meal already happened.
-- Compare usual meal windows vs what is logged today; nudge only if a usual meal is clearly missing.
+- Done evidence: Today activities / meal episodes only. Expected habits and meal routines = usual windows, never proof a meal already happened.
+- No meal logged and usual lunch/dinner window already passed (use clock) → status attention (or critical if both main meals missing late in the day). Summary must say that nothing was logged — never invent that the user ate.
+- Still before the usual window → ok with "ancora presto per …" is fine.
 - list_memories for food habits only if needed; treat PATTERN/habits as expected, not done.
-- Presence gate already PRESENT; if UNCERTAIN and idle ≥ 15 min you may detect_presence before speaking.
-- High speak_confidence only if relevant; silence if already discussed today.
-- Do not repeat the same suggestion within 24h.

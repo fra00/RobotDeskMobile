@@ -7,7 +7,7 @@ import com.example.mydeskrobot.data.check.db.FireAndCheckEntity
 import com.example.mydeskrobot.domain.check.CommitmentFollowUpPolicy
 import com.example.mydeskrobot.domain.check.FireAndCheckEntry
 import com.example.mydeskrobot.domain.check.FireAndCheckKind
-import com.example.mydeskrobot.domain.check.FireAndCheckPhase
+import com.example.mydeskrobot.domain.check.isStickyCommitment
 import com.example.mydeskrobot.domain.check.resolveFireAndCheckPhase
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
@@ -132,12 +132,45 @@ class FireAndCheckRepository(
         dao.findByPrimaryReminderId(reminderId)
 
     /**
-     * Prepares a new commitment follow-up loop.
+     * Pins an urgent commitment with no schedule (icon until user deletes).
+     * @return new entity id
+     */
+    suspend fun createStickyCommitment(
+        goal: String,
+        triggerReason: String?,
+        primaryMessage: String,
+    ): Long {
+        val trimmedGoal = goal.trim().ifBlank { primaryMessage.trim() }
+        val reason = triggerReason?.trim().orEmpty().ifBlank { trimmedGoal }
+        return dao.insert(
+            FireAndCheckEntity(
+                kind = FireAndCheckKind.COMMITMENT,
+                triggerReason = reason,
+                checkGoal = trimmedGoal.takeIf { it.isNotBlank() },
+                primaryMessage = primaryMessage.trim().ifBlank { trimmedGoal },
+                primaryReminderId = null,
+                verificationMessage = null,
+                verificationReminderId = null,
+                primaryDueAtMillis = null,
+                verificationDueAtMillis = null,
+                reRemindCount = 0,
+                status = FireAndCheckStatus.ACTIVE,
+                createdAtMillis = System.currentTimeMillis(),
+            ),
+        )
+    }
+
+    /**
+     * Prepares a new **timed** commitment follow-up loop.
+     * Sticky commitments are ignored (they stay until Elimina).
      * @return reRemindCount for the new entity, or null if capped (schedule plain reminder only).
      */
     suspend fun prepareNewCommitmentFollowUp(): Int? {
         val active = dao.listByStatus(FireAndCheckStatus.ACTIVE)
-            .filter { it.kind == FireAndCheckKind.COMMITMENT }
+            .filter {
+                it.kind == FireAndCheckKind.COMMITMENT &&
+                    !isStickyCommitment(it.kind, it.primaryDueAtMillis, it.verificationDueAtMillis)
+            }
             .maxByOrNull { it.createdAtMillis }
         if (active == null) return 0
         if (!CommitmentFollowUpPolicy.canReRemind(active.reRemindCount)) return null

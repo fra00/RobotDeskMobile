@@ -18,7 +18,7 @@ set_reminder → Room (PENDING) + AlarmManager
 
 | Tool | Role |
 |------|------|
-| `set_reminder` | Schedule announce task; optional `fire_and_check` (physical) or `commitment_follow_up` (urgent task + auto `Verifica impegno` +60m) |
+| `set_reminder` | Schedule announce task; optional `fire_and_check` (physical) or `commitment_follow_up` (urgent + time → Verifica +60m; urgent **without** time → sticky icon, no alarm) |
 | `get_reminders` | List PENDING tasks |
 | `delete_reminder` | Cancel alarm + mark CANCELLED |
 

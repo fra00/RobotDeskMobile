@@ -64,4 +64,33 @@ class SystemInputEnvelopeTest {
 
         assertTrue(envelope.formattedForLlm.contains("[SYSTEM_INPUT: weekly_reflection]"))
     }
+
+    @Test
+    fun `fromWellnessCheck always lists Today activities even when empty`() {
+        val check = RobotInput.WellnessCheck(
+            phase = com.example.mydeskrobot.domain.wellness.WellnessPhase.DOMAIN_SCORE,
+            enabledDomainIds = setOf("pasti"),
+            recentDailyActivities = emptyList(),
+        )
+
+        val envelope = SystemInputEnvelope.fromWellnessCheck(check)
+
+        assertTrue(envelope.formattedForLlm.contains("Today activities:"))
+        assertTrue(envelope.formattedForLlm.contains("(none logged today)"))
+    }
+
+    @Test
+    fun `fromWellnessCheck lists logged Today activities`() {
+        val check = RobotInput.WellnessCheck(
+            phase = com.example.mydeskrobot.domain.wellness.WellnessPhase.DOMAIN_SCORE,
+            enabledDomainIds = setOf("pasti"),
+            recentDailyActivities = listOf("13:10 pranzo"),
+        )
+
+        val envelope = SystemInputEnvelope.fromWellnessCheck(check)
+
+        assertTrue(envelope.formattedForLlm.contains("Today activities:"))
+        assertTrue(envelope.formattedForLlm.contains("13:10 pranzo"))
+        assertFalse(envelope.formattedForLlm.contains("(none logged today)"))
+    }
 }

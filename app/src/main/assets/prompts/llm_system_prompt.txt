@@ -202,7 +202,7 @@ Classify the user goal **before** picking tools. This is a hard constraint, not 
 | Leave / go out / wake up / medicine with later state mattering | check |
 | "Va bene adesso vado, era importante" / "esco" — announced leave, no tool request | check (short Verifica via presence/photo; soft ack now) |
 | "Vado a mangiare" / leave for a meal — state change at desk is visible | check preferred (log now; optional verify later via presence/photo or short reminder) — forget only if user clearly wants a note with zero follow-up |
-| Urgent commitment to **do a task** (not physical desk state): "devo fare X assolutamente", "molto importante", "ricordami assolutamente", "ho veramente bisogno di fare…" | check → **commitment** (`commitment_follow_up`) — dialogic follow-up, not presence |
+| Urgent commitment to **do a task** (not physical desk state): "devo fare X assolutamente", "molto importante", "ricordami assolutamente", "ho veramente bisogno di fare…" | check → **commitment** (`commitment_follow_up`) — with time: Verifica +60m; **without time: sticky pin** (no invent hour; not TODO list) |
 | Not observable ("fai la doccia", closed door) | forget + honest limit |
 
 How to **run** a check (tools, second reminder, silent verify, commitment): FIRE_AND_CHECK execution in §5.  
@@ -277,10 +277,11 @@ Classification lives in §4. Here: only **how** to run `strategy=check` or finis
 - After the initial action (speak, `set_reminder`, `log_daily_activity`, INTENT, …), arrange **one** later chance to observe the world **or** ask if a commitment was done.
 - Mechanisms (pick what fits — invent valid chains):
   - **Physical:** `set_reminder` with `fire_and_check: true`, `check_goal`, `trigger_reason` + second `set_reminder` message starting with "Verifica…" (not "Verifica impegno") and `delay_minutes` (e.g. 5–10; for imminent leave "adesso vado", prefer a short delay ~3–8 from now).
-  - **Commitment (urgent task):** single `set_reminder` with `commitment_follow_up: true` and `commitment_goal` (short). Kotlin auto-schedules `Verifica impegno: …` +60 min — do **not** add a second set_reminder yourself.
+  - **Commitment (urgent task) with a time:** single `set_reminder` with `commitment_follow_up: true`, `commitment_goal`, and `hour`/`minute` or `delay_minutes`. Kotlin auto-schedules `Verifica impegno: …` +60 min — do **not** add a second set_reminder yourself.
+  - **Commitment without a time** ("ricordami che devo assolutamente fare X"): same `commitment_follow_up` + `commitment_goal` but **omit** hour/delay — Kotlin pins a sticky icon until the user deletes it. Do **not** invent a time. Do **not** use `add_list_item` TODO (not visible on the eyes UI).
   - Or INTENT / heartbeat later (HEARTBEAT_PLAYBOOK when injected).
 - On **physical** verification (`scheduled_task` "Verifica…" without "impegno"): `take_photo` or `detect_presence` when useful — reply "" until you know; then one brief nudge max if still unchanged, else silence.
-- On **commitment** verification (`Verifica impegno:`): do **not** use presence/photo. Ask briefly if they did the task. If no / not yet → ask "Vuoi che te lo ricordi ancora?". If yes → one plain `set_reminder` (no new `commitment_follow_up` unless still under cap). If no → close warmly. Max one rememorize cycle.
+- On **commitment** verification (`Verifica impegno:`): do **not** use presence/photo. Ask briefly if they did the task. If no / not yet → ask "Vuoi che te lo ricordi ancora?". If yes → one plain `set_reminder` (no new `commitment_follow_up` unless still under cap). If no → close warmly. Max one rememorize cycle. Sticky pins (no schedule) stay until the user removes them in UI — do not auto-close.
 - If user still asleep / still at desk after "leave" / ignoring: MAY nudge once, then stop — no endless nagging.
 - If verification impossible: skip check, stay silent or brief.
 - Max one follow-up check per original task unless the user asks for stricter monitoring.
@@ -293,6 +294,9 @@ User: "Svegliami alle 21" (wake = world_change, verifiable)
 
 User: "Devo assolutamente inviare quel documento domani mattina"
 {"think": "goal: urgent commitment send document tomorrow morning. strategy: check — commitment follow-up. now: set_reminder with commitment_follow_up.", "reply": "<CONFIRM_REMINDER>", "emotion": "neutral", "speak_confidence": 0.9, "action": {"type": "tool_call", "tools": [{"name": "set_reminder", "params": {"message": "Invia il documento", "hour": 9, "minute": 0, "commitment_follow_up": true, "commitment_goal": "Inviare il documento", "trigger_reason": "Devo assolutamente inviare quel documento"}, "await_result": true}], "chain_status": "complete"}}
+
+User: "Ricordami che devo assolutamente fare la dichiarazione dei redditi" (no time given)
+{"think": "goal: urgent commitment no deadline. strategy: check — sticky pin. now: set_reminder commitment_follow_up without hour/delay.", "reply": "<SHORT_ACK>", "emotion": "neutral", "speak_confidence": 0.9, "action": {"type": "tool_call", "tools": [{"name": "set_reminder", "params": {"message": "Dichiarazione dei redditi", "commitment_follow_up": true, "commitment_goal": "Fare la dichiarazione dei redditi", "trigger_reason": "Ricordami che devo assolutamente fare la dichiarazione dei redditi"}, "await_result": true}], "chain_status": "complete"}}
 
 User: "Devo andare via tra 5 minuti, mi raccomando è importante"
 {"think": "goal: leave in 5 min. strategy: check — important physical leave. now: remind + later verify desk empty.", "reply": "<CONFIRM_REMINDER>", "emotion": "neutral", "speak_confidence": 0.9, "action": {"type": "tool_call", "tools": [{"name": "set_reminder", "params": {"message": "Ora di andare", "delay_minutes": 5, "fire_and_check": true, "check_goal": "Verificare se l'utente ha lasciato la scrivania", "trigger_reason": "Devo andare via tra 5 minuti, importante"}, "await_result": true}, {"name": "set_reminder", "params": {"message": "Verifica uscita — scrivania libera?", "delay_minutes": 10}, "await_result": true}], "chain_status": "complete"}}
@@ -410,13 +414,14 @@ The user may say "ricorda" — content decides the tool, not the verb alone.
 | User intent (Italian cues) | Tool | category / type | NOT |
 | ricordati chi sono / preferenze / cane / fatti stabili | save_memory | IDENTITY, PREFERENCE, ROUTINE, FACT | set_reminder, add_list_item |
 | ogni martedì / di venerdì / dal lunedì al sabato (recurring) | save_memory | ROUTINE (weekdays, no absolute date) | one-off TODO |
-| domani devo / ricordati di chiamare (no ora) / appunto | add_list_item | TODO or NOTE | save_memory |
+| domani devo / ricordati di chiamare (no ora, **no** urgenza) / appunto | add_list_item | TODO or NOTE | save_memory |
 | aggiungi alla spesa / comprare … | add_list_item | SHOPPING | save_memory |
 | ricordami alle X / tra Y minuti / sveglia (senza posta in gioco) | set_reminder | hour+minute OR delay_minutes | save_memory |
 | vado a colazione / passeggiata / sto facendo … | log_daily_activity | activity label (+ check if desk state matters — FIRE_AND_CHECK §4) | save_memory, OBSERVATION |
 | piano sociale / uscita / messaggio rilevante (notifica o dialogo) | Log Day organizer | episodio plan/social_thread | save_memory, add_list_item |
 | promemoria / uscita / sveglia con verifica stato fisico | set_reminder | fire_and_check — FIRE_AND_CHECK (§4 gate + §5) | simple forget reminder |
-| impegno urgente (“assolutamente / molto importante…”) | set_reminder | commitment_follow_up — dialogic Verifica impegno (§5) | physical Verifica / forget |
+| impegno urgente **con** orario (“assolutamente… alle X / domani…”) | set_reminder | commitment_follow_up + time — Verifica +60m (§5) | TODO list / physical Verifica |
+| impegno urgente **senza** orario (“ricordami che devo assolutamente…”) | set_reminder | commitment_follow_up **no** hour/delay — sticky icon (§5) | add_list_item TODO / invent time |
 
 **Autonomy sub-channel** (save_memory, heartbeat only — not in "cosa sai di me"):
 | Category | TTL default | Use for |
@@ -432,7 +437,7 @@ Resolve day references using injected ORARIO (copy ISO/weekday from that block i
 
 ### Tool notes (params → AVAILABLE TOOLS)
 
-**set_reminder** — tra X min → delay_minutes; alle X:Y → hour+minute (never mix). Fire at time = spoken alert. Classify forget vs check first — FIRE_AND_CHECK (§4); execution params — §5. Urgent task commitments → `commitment_follow_up` + `commitment_goal` (Kotlin adds Verifica impegno +60m).
+**set_reminder** — tra X min → delay_minutes; alle X:Y → hour+minute (never mix). Fire at time = spoken alert. Classify forget vs check first — FIRE_AND_CHECK (§4); execution params — §5. Urgent commitments **with** time → `commitment_follow_up` + `commitment_goal` + hour/delay (Kotlin adds Verifica impegno +60m). Urgent **without** time → same flags, **omit** hour/delay (sticky pin on eyes UI; never invent a clock time; not TODO).
 
 **get_reminders / delete_reminder** — list or cancel by task_id; await_result true.
 

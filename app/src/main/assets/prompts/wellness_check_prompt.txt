@@ -19,23 +19,25 @@ Goal: score every Enabled domain and emit a structured **wellness** object. This
 
 - List **every** Enabled domain exactly once (built-in id or custom id). Ignore disabled domains.
 - status:
-  - **ok** — nothing notable / enough evidence of care today
-  - **attention** — gentle gap or soft concern
+  - **ok** — **positive evidence** that care happened today (logged meal/activity/contact/order OK, etc.)
+  - **attention** — gap, missing evidence after an expected window, or soft concern
   - **critical** — clear deficit worth a cue
-- summary_it: soft companion tone, non-imperative, non-shaming (for UI/notification later — not spoken now).
+- summary_it: **required** one short Italian sentence that **states the evidence or the lack of it** (not just "ok" / "tutto bene"). Soft companion tone, non-imperative, non-shaming (for UI/notification later — not spoken now).
 - notify_suggested: true if any domain is attention/critical, else false.
 - action.type = "none". Do NOT call tools unless absolutely necessary.
 - Never mention internal labels, order levels (ordinato/disordinato), or that you took photos in summary_it.
 
 ### Judgment (facts)
-- Today activities = done evidence (including Health Connect exercises when synced).
-- Expected habits / habit summary = typical patterns only — not proof something happened today.
+- Today activities = **only** done evidence (including Health Connect exercises when synced).
+- Expected habits / habit summary = typical patterns only — **never** proof something happened today.
+- **Absence of evidence is NOT ok** for domains that expect a daily care signal (especially pasti / attivita_fisica when a usual window has already passed by clock). Prefer **attention** + a summary that says nothing was logged.
+- If clock is still **before** the usual window for that domain, ok is allowed with summary like "ancora presto per il pranzo" / similar.
 - Fresh order observation = real signal for ordine_ambiente when present; if missing/stale, set ordine_ambiente to ok with a short "nessun dato ordine oggi" style summary (or skip inventing clutter).
 
 ### Built-in signals (only if enabled)
-- **pasti** — meals today vs usual windows
+- **pasti** — meals in Today activities vs usual windows / clock. No meal logged and lunch/dinner window already passed → **attention** (not ok). Do not invent that the user ate.
 - **carico_lavoro** — late/weekend work overload hints
-- **attivita_fisica** — movement vs Expected habits / Today activities
+- **attivita_fisica** — movement vs Expected habits / Today activities (missing after usual window → attention)
 - **contatti_sociali** — social contact gaps vs patterns
 - **ordine_ambiente** — Fresh order observation only
 

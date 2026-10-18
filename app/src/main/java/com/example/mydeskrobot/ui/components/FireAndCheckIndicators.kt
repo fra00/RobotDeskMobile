@@ -22,10 +22,11 @@ fun FireAndCheckIndicator(
     modifier: Modifier = Modifier,
 ) {
     val description = stringResource(
-        when (entry.phase) {
-            FireAndCheckPhase.SCHEDULED -> R.string.cd_fire_and_check_scheduled
-            FireAndCheckPhase.AWAITING_VERIFICATION -> R.string.cd_fire_and_check_awaiting
-            FireAndCheckPhase.CHECK_PENDING -> R.string.cd_fire_and_check_pending
+        when {
+            entry.isSticky -> R.string.cd_fire_and_check_sticky
+            entry.phase == FireAndCheckPhase.SCHEDULED -> R.string.cd_fire_and_check_scheduled
+            entry.phase == FireAndCheckPhase.AWAITING_VERIFICATION -> R.string.cd_fire_and_check_awaiting
+            else -> R.string.cd_fire_and_check_pending
         },
     )
 

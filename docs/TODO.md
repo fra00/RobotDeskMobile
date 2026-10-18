@@ -54,9 +54,12 @@ Spec SSOT: [`PROACTIVE_ARCHITECTURE.md`](PROACTIVE_ARCHITECTURE.md) Channel 2 ·
 
 ### Fire-and-check / impegni
 
+- [x] **Commitment sticky (caso 1, ott 2026):** «assolutamente» senza orario → pin icona fino a Elimina (`createStickyCommitment`); prompt non inventa ora / non TODO — [`FIRE_AND_CHECK.md`](FIRE_AND_CHECK.md)
+- [x] **Wellness v2 harden (ott 2026):** compute mic-independent; mark done solo se snapshot salvato; clear inFlight / retry se JSON senza `wellness`
+- [ ] **Caso 2 timing vs deadline:** Verifica +60′ dal primario può cadere dopo l’appuntamento (es. lastre 16:30 → verify 17:30); backlog — non toccare +60 per ora
 - [ ] **Fire-and-check + commitment follow-up — verifica comportamento reale (ott 2026):** mai smoke formale; dubbi sul fisico in uso quotidiano. Studiare **entrambi** i kind vs [`FIRE_AND_CHECK.md`](FIRE_AND_CHECK.md) (solo analisi, niente redesign finché non chiarito):
   - **PHYSICAL** (`fire_and_check`): creazione loop, secondo reminder «Verifica…», presenza/foto, UI icone, chiusura/skip
-  - **COMMITMENT** (`commitment_follow_up` → auto «Verifica impegno:» +60 min): primario vs follow-up, voce gated da `ProactiveSpeakGate`, rememorize max 1, UI
+  - **COMMITMENT** timed (`commitment_follow_up` → auto «Verifica impegno:» +60 min): primario vs follow-up, voce gated da `ProactiveSpeakGate`, rememorize max 1, UI
   - Overlap reminder / gate speak / notifica-only se mic off
 
 ---

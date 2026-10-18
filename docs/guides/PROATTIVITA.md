@@ -17,7 +17,7 @@ Sono **canali separati**: spegnere uno non spegne l’altro. Hanno regole e inte
 
 | Fase | Cosa succede |
 |------|----------------|
-| **Calcolo** | Con gate leggeri (toggle on, LLM libero, ~15 min dopo il primo mic del giorno, max 1×/giorno). **Non** aspetta 5 min di silenzio dopo che hai parlato, né che il corpo ti “veda”. |
+| **Calcolo** | Con gate leggeri (toggle on, LLM libero, ~15 min dopo il primo avvio del giorno, max 1×/giorno). **Indipendente dal mic.** Non aspetta idle 5′ né presenza volto. |
 | **Salvataggio** | Risultato strutturato per dominio (ok / attenzione / critico + breve motivo) = **unica fonte di verità**. |
 | **Notifica** | Solo se almeno un dominio è in attenzione/critico (max 1 notifica/giorno), tono soft. |
 | **Voce** | Tu chiedi («come sto?», «wellness», «i pasti?») → risponde dallo **stato salvato**. |

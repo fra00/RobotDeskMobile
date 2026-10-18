@@ -390,6 +390,7 @@ class ConversationViewModel(
     )
     private var moodMonitorJob: Job? = null
     private var moodTickJob: Job? = null
+    private var wellnessSchedulerJob: Job? = null
     private val workingMemoryRepository = WorkingMemoryRepository(appContext)
     private val weeklyStatsRepository = WeeklyStatsRepository(appContext)
     /** Last user phrase for working-memory topic extraction after a completed turn. */
@@ -505,6 +506,9 @@ class ConversationViewModel(
         }
         memoryExtractionScheduler.start()
         activityLogExtractionScheduler.start()
+        // Day-anchor for Wellness even before first mic-on; compute is mic-independent.
+        viewModelScope.launch { workingMemoryRepository.recordFirstHotwordOn() }
+        startWellnessScheduler()
         viewModelScope.launch {
             MemoryEmbeddingBootstrap.start(
                 context = appContext,
@@ -2759,19 +2763,28 @@ class ConversationViewModel(
                 if (shouldSuppressWellness()) {
                     Log.i(TAG, "Wellness check silent (v2: snapshot/notify, no TTS)")
                     val suppressedPhase = currentWellnessPhase
-                    if (currentInputIsWellnessCheck && suppressedPhase == WellnessPhase.VISUAL_ORDER) {
-                        viewModelScope.launch {
-                            sensingLogRepository.record(SensingKind.ROOM_SCENE)
-                        }
-                    }
-                    if (currentInputIsWellnessCheck && suppressedPhase == WellnessPhase.DOMAIN_SCORE) {
-                        viewModelScope.launch {
-                            persistWellnessSnapshotAndMaybeNotify(result.wellnessSnapshot)
-                        }
-                    }
                     currentInputIsWellnessCheck = false
                     currentWellnessPhase = null
-                    markWellnessPhaseCompleted(suppressedPhase)
+                    when (suppressedPhase) {
+                        WellnessPhase.VISUAL_ORDER -> {
+                            viewModelScope.launch {
+                                sensingLogRepository.record(SensingKind.ROOM_SCENE)
+                                markWellnessPhaseCompleted(WellnessPhase.VISUAL_ORDER)
+                            }
+                        }
+                        WellnessPhase.DOMAIN_SCORE -> {
+                            viewModelScope.launch {
+                                val saved = persistWellnessSnapshotAndMaybeNotify(result.wellnessSnapshot)
+                                if (saved) {
+                                    markWellnessPhaseCompleted(WellnessPhase.DOMAIN_SCORE)
+                                } else {
+                                    Log.w(TAG, "Wellness DOMAIN_SCORE finished without snapshot — will retry")
+                                    clearWellnessInFlightWithoutDone()
+                                }
+                            }
+                        }
+                        null -> clearWellnessInFlightWithoutDone()
+                    }
                     finalizeTurnWithoutSpeech(LlmEmotionMapper.fromLlmValue(emotion))
                     return
                 }
@@ -2884,11 +2897,16 @@ class ConversationViewModel(
             is ReasoningResult.MaxStepsReached -> {
                 val maxStepsWellnessPhase =
                     if (currentInputIsWellnessCheck) currentWellnessPhase else null
-                 currentInputIsPredictivityDeviation = false
+                currentInputIsPredictivityDeviation = false
                 currentInputIsWellnessCheck = false
                 currentWellnessPhase = null
-                if (maxStepsWellnessPhase != null) {
-                    markWellnessPhaseCompleted(maxStepsWellnessPhase)
+                when (maxStepsWellnessPhase) {
+                    WellnessPhase.DOMAIN_SCORE -> {
+                        // No reliable snapshot — allow retry later today.
+                        clearWellnessInFlightWithoutDone()
+                    }
+                    WellnessPhase.VISUAL_ORDER -> markWellnessPhaseCompleted(maxStepsWellnessPhase)
+                    null -> Unit
                 }
                 if (suppressTtsForCurrentTurn) {
                     val envelope = pendingSilentNotificationEnvelope
@@ -2974,9 +2992,20 @@ class ConversationViewModel(
     /** Wellness v2: never TTS the check turn — persist snapshot + optional notification instead. */
     private fun shouldSuppressWellness(): Boolean = currentInputIsWellnessCheck
 
-    private suspend fun persistWellnessSnapshotAndMaybeNotify(snapshot: WellnessSnapshot?) {
-        val toSave = snapshot ?: return
+    /**
+     * @return true if a snapshot was persisted (day can be marked DOMAIN_SCORE done).
+     */
+    private suspend fun persistWellnessSnapshotAndMaybeNotify(snapshot: WellnessSnapshot?): Boolean {
+        val toSave = snapshot ?: run {
+            Log.w(TAG, "Wellness persist skipped: no wellness object in LLM response")
+            return false
+        }
         wellnessSnapshotRepository.save(toSave)
+        Log.i(
+            TAG,
+            "Wellness snapshot saved day=${toSave.dayKey} domains=${toSave.domains.size} " +
+                "needsAttention=${toSave.needsAttention}",
+        )
         val dayKey = toSave.dayKey.ifBlank { wellnessSnapshotRepository.todayDayKey() }
         val robotContext = robotContextRepository.getStoredState()
         val silent = RobotContextPolicy.shouldSuppressNotificationTts(
@@ -2985,15 +3014,15 @@ class ConversationViewModel(
         )
         if (silent) {
             proactiveTracker.recordSilent("wellness")
-            return
+            return true
         }
         if (!toSave.needsAttention && !toSave.notifySuggested) {
             proactiveTracker.recordSilent("wellness")
-            return
+            return true
         }
         if (!wellnessSnapshotRepository.canNotifyToday(dayKey)) {
             proactiveTracker.recordSilent("wellness")
-            return
+            return true
         }
         val posted = wellnessNotifier.postIfNeeded(toSave)
         if (posted) {
@@ -3003,6 +3032,7 @@ class ConversationViewModel(
         } else {
             proactiveTracker.recordSilent("wellness")
         }
+        return true
     }
 
     private suspend fun shouldSuppressPredictivity(result: ReasoningResult.Success): Boolean {
@@ -3832,19 +3862,44 @@ class ConversationViewModel(
         userAttentionCentering.tryCenterOnUser()
     }
 
+    /**
+     * Mic-independent Wellness poll (ViewModel lifetime). Mood tick may also call this
+     * while hotword is on; [wellnessCheckInFlight] dedupes.
+     */
+    private fun startWellnessScheduler() {
+        if (wellnessSchedulerJob?.isActive == true) return
+        wellnessSchedulerJob = viewModelScope.launch {
+            while (isActive) {
+                delay(MOOD_RECHECK_MS)
+                workingMemoryRepository.checkAndResetIfNewDay()
+                pollWellnessCheck()
+            }
+        }
+    }
+
+    private fun stopWellnessScheduler() {
+        wellnessSchedulerJob?.cancel()
+        wellnessSchedulerJob = null
+    }
+
     private suspend fun pollWellnessCheck() {
-        if (!VoiceSessionState.isActive) return
         if (wellnessCheckInFlight) return
         val uiState = _uiState.value
         // Do not disturb an active assistant turn / dialog.
-        if (uiState.phase is ConversationPhase.Thinking ||
-            uiState.phase is ConversationPhase.Speaking ||
-            uiState.phase is ConversationPhase.ActiveListening ||
-            uiState.phase is ConversationPhase.CapturingImage
-        ) {
+        if (isAssistantTurnBlockingWellness(uiState)) {
             return
         }
-        if (llmJob?.isActive == true) return
+
+        // Recover prior bug: marked done today but no snapshot stored for today.
+        val wm = workingMemoryRepository.load()
+        if (wm.wellnessCheckDoneToday) {
+            val snap = wellnessSnapshotRepository.getLatest()
+            val today = wellnessSnapshotRepository.todayDayKey()
+            if (snap == null || snap.dayKey != today) {
+                Log.w(TAG, "Wellness done flag set without today's snapshot — clearing for retry")
+                workingMemoryRepository.clearWellnessCheckDone()
+            }
+        }
 
         val bodySettings = bodySettingsRepository.load()
         val enabledWellness = attentionDomainRepository.enabledWellnessDomains()
@@ -3885,6 +3940,7 @@ class ConversationViewModel(
             customDomains = customDomains,
         )
         wellnessCheckInFlight = true
+        Log.i(TAG, "Wellness dispatch phase=$phase micActive=${VoiceSessionState.isActive}")
         wellnessCheckOrchestrator.dispatch(input)
     }
 
@@ -4098,7 +4154,10 @@ class ConversationViewModel(
 
     private fun onSystemInputReceived(envelope: SystemInputEnvelope) {
         val uiState = _uiState.value
-        if (!InputPolicyEngine.canAcceptInput(uiState)) {
+        val isWellness = envelope.input is RobotInput.WellnessCheck
+
+        // Wellness compute is independent of mic/hotword session.
+        if (!isWellness && !InputPolicyEngine.canAcceptInput(uiState)) {
             Log.d(TAG, "Mic not active, dropping system input")
             return
         }
@@ -4107,16 +4166,35 @@ class ConversationViewModel(
             InputPolicyEngine.shouldSuppressForNightMode(uiState, envelope.input.priority)
         ) {
             Log.d(TAG, "Night mode, suppressing system input")
+            if (isWellness) clearWellnessInFlightWithoutDone()
             return
         }
-        if (InputPolicyEngine.canProcessNow(envelope.input.priority, uiState)) {
+
+        val canProcess = if (isWellness) {
+            !isAssistantTurnBlockingWellness(uiState)
+        } else {
+            InputPolicyEngine.canProcessNow(envelope.input.priority, uiState)
+        }
+
+        if (canProcess) {
             deferredInputQueue.markSeen(envelope.dedupKey)
             sendSystemInputToLlm(envelope)
+        } else if (isWellness) {
+            // Do not wedge inFlight / mic-gated deferred queue — poll will retry.
+            Log.i(TAG, "Wellness busy — will retry")
+            clearWellnessInFlightWithoutDone()
         } else {
             Log.i(TAG, "Deferring system input: ${envelope.input.sourceId}")
             deferredInputQueue.enqueue(envelope)
         }
     }
+
+    private fun isAssistantTurnBlockingWellness(uiState: ConversationUiState): Boolean =
+        uiState.phase is ConversationPhase.Thinking ||
+            uiState.phase is ConversationPhase.Speaking ||
+            uiState.phase is ConversationPhase.ActiveListening ||
+            uiState.phase is ConversationPhase.CapturingImage ||
+            llmJob?.isActive == true
 
     private fun sendSystemInputToLlm(envelope: SystemInputEnvelope) {
         val turnId = ++llmTurnGeneration
@@ -4212,10 +4290,14 @@ class ConversationViewModel(
                     },
                 )
 
-                if (turnId != llmTurnGeneration || !_uiState.value.isHotwordListeningActive) {
+                if (turnId != llmTurnGeneration) {
                     if (currentInputIsWellnessCheck) clearWellnessInFlightWithoutDone()
                     currentInputIsWellnessCheck = false
                     currentWellnessPhase = null
+                    return@launch
+                }
+                // Wellness compute must finish (persist snapshot) even with mic/hotword off.
+                if (!_uiState.value.isHotwordListeningActive && !currentInputIsWellnessCheck) {
                     return@launch
                 }
 
@@ -4261,6 +4343,7 @@ class ConversationViewModel(
         emotionTransitionJob?.cancel()
         stopNightModeMonitor()
         stopMoodMonitor()
+        stopWellnessScheduler()
         ttsRepository.stop()
         if (_uiState.value.isHotwordListeningActive) {
             HotwordServiceStarter.stop(appContext)

@@ -32,33 +32,33 @@ class ReminderTool(
     override fun getDefinition(): ToolDefinition {
         return ToolDefinition(
             name = name,
-            description = "Schedule a reminder the robot will announce aloud at the given time. " +
-                "Use 'delay_minutes' for relative times, or 'hour' + 'minute' for absolute times. " +
-                "For urgent user commitments, set commitment_follow_up=true (Kotlin auto-schedules " +
-                "a dialogic 'Verifica impegno' follow-up +60 min).",
+            description = "Schedule a spoken reminder (delay_minutes or hour+minute), or pin an urgent " +
+                "commitment with no time. With commitment_follow_up=true and a time: Kotlin adds " +
+                "'Verifica impegno' +60 min. With commitment_follow_up=true and no time: sticky " +
+                "icon until the user deletes it (do not invent an hour).",
             parameters = listOf(
                 ToolParameter(
                     name = "message",
                     type = "string",
-                    description = "Reminder message",
+                    description = "Reminder / commitment message",
                     required = true,
                 ),
                 ToolParameter(
                     name = "delay_minutes",
                     type = "integer",
-                    description = "Minutes from now (e.g. 'tra 10 minuti')",
+                    description = "Minutes from now (e.g. 'tra 10 minuti'). Omit for sticky commitment.",
                     required = false,
                 ),
                 ToolParameter(
                     name = "hour",
                     type = "integer",
-                    description = "Hour 0-23 with minute for absolute time",
+                    description = "Hour 0-23 with minute for absolute time. Omit for sticky commitment.",
                     required = false,
                 ),
                 ToolParameter(
                     name = "minute",
                     type = "integer",
-                    description = "Minute 0-59 with hour",
+                    description = "Minute 0-59 with hour. Omit for sticky commitment.",
                     required = false,
                 ),
                 ToolParameter(
@@ -83,17 +83,17 @@ class ReminderTool(
                     name = "commitment_follow_up",
                     type = "boolean",
                     description = "True when user urgency is clear (assolutamente / molto importante / …). " +
-                        "Schedules dialogic follow-up asking if they did the task.",
+                        "With time: dialogic Verifica +60 min. Without time: sticky pin on the eyes UI.",
                     required = false,
                 ),
                 ToolParameter(
                     name = "commitment_goal",
                     type = "string",
-                    description = "Short description of the commitment to ask about later",
+                    description = "Short description of the commitment (sticky label or verify ask)",
                     required = false,
                 ),
             ),
-            returns = "success, reminder_id, scheduled_time, commitment_follow_up, verification_reminder_id",
+            returns = "success, sticky|reminder_id, scheduled_time, commitment_follow_up, verification_reminder_id",
             example = """{"name": "set_reminder", "params": {"message": "Invia il documento", "hour": 9, "minute": 0, "commitment_follow_up": true, "commitment_goal": "Inviare il documento"}, "await_result": true}""",
         )
     }
@@ -107,14 +107,20 @@ class ReminderTool(
                 code = "MISSING_PARAM",
             )
 
+        val commitmentRequested = parseBoolean(invocation.params["commitment_follow_up"])
         val triggerMillis = computeTriggerMillis(invocation.params)
-            ?: return ToolResult.Error(
-                message = "Specifica 'delay_minutes' oppure 'hour' + 'minute'",
-                code = "MISSING_TIME",
-            )
+
+        if (triggerMillis == null) {
+            if (!commitmentRequested) {
+                return ToolResult.Error(
+                    message = "Specifica 'delay_minutes' oppure 'hour' + 'minute'",
+                    code = "MISSING_TIME",
+                )
+            }
+            return createStickyCommitmentResult(message, invocation.params)
+        }
 
         return try {
-            val commitmentRequested = parseBoolean(invocation.params["commitment_follow_up"])
             var commitmentFollowUp = commitmentRequested
             var reRemindCount = 0
             if (commitmentFollowUp) {
@@ -203,6 +209,39 @@ class ReminderTool(
         } catch (e: Exception) {
             ToolResult.Error(
                 message = "Impossibile impostare il promemoria: ${e.message}",
+                code = "REMINDER_ERROR",
+                recoverable = true,
+            )
+        }
+    }
+
+    private suspend fun createStickyCommitmentResult(
+        message: String,
+        params: Map<String, Any?>,
+    ): ToolResult {
+        return try {
+            val goal = params["commitment_goal"]?.toString()?.trim()
+                ?.takeIf { it.isNotBlank() }
+                ?: message
+            val id = fireAndCheckRepository.createStickyCommitment(
+                goal = goal,
+                triggerReason = params["trigger_reason"]?.toString() ?: message,
+                primaryMessage = message,
+            )
+            Log.i(TAG, "Sticky commitment id=$id goal=$goal")
+            ToolResult.Success(
+                data = mapOf(
+                    "success" to true,
+                    "sticky" to true,
+                    "commitment_follow_up" to true,
+                    "fire_and_check_id" to id,
+                    "message" to message,
+                    "commitment_goal" to goal,
+                ),
+            )
+        } catch (e: Exception) {
+            ToolResult.Error(
+                message = "Impossibile salvare l'impegno: ${e.message}",
                 code = "REMINDER_ERROR",
                 recoverable = true,
             )

@@ -25,8 +25,11 @@ data class WellnessWatchContext(
  * Scheduling for Wellness **compute** (v2).
  *
  * Gates: enabled, LLM idle, not night, translation off, daily anchor, once/day.
+ * **Not** gated on mic / hotword session (compute ≠ communicate).
  * Dropped vs v1: idle-after-dialog, user presence / locateUser, SILENT robot context
  * (SILENT still blocks **notification**, not compute).
+ *
+ * [WellnessWatchContext.micSessionActive] is unused for compute; kept for call-site compatibility.
  */
 class WellnessWatcher(
     private val nowMillis: () -> Long = System::currentTimeMillis,
@@ -47,12 +50,12 @@ class WellnessWatcher(
     }
 
     private fun baseSchedulingGates(context: WellnessWatchContext): Boolean {
-        if (!context.micSessionActive) return false
         if (!context.proactivitySettings.wellnessEnabled) return false
         if (context.isNightMode) return false
         if (context.llmBusy) return false
         if (context.translationModeActive) return false
 
+        // Anchor = first day activity timestamp (hotword-on or app session open).
         val anchor = context.workingMemory.firstHotwordOnTodayMs ?: return false
         val now = nowMillis()
         val anchorElapsedMinutes = (now - anchor) / 60_000L

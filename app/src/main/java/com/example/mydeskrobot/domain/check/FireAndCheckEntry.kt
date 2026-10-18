@@ -25,4 +25,20 @@ data class FireAndCheckEntry(
 
     val isCommitment: Boolean
         get() = kind == FireAndCheckKind.COMMITMENT
+
+    /**
+     * Urgent commitment without a scheduled time — stays ACTIVE until the user deletes it.
+     */
+    val isSticky: Boolean
+        get() = isStickyCommitment(kind, primaryDueAtMillis, verificationDueAtMillis)
 }
+
+/** Sticky = commitment with no primary/verification due times. */
+fun isStickyCommitment(
+    kind: FireAndCheckKind,
+    primaryDueAtMillis: Long?,
+    verificationDueAtMillis: Long?,
+): Boolean =
+    kind == FireAndCheckKind.COMMITMENT &&
+        primaryDueAtMillis == null &&
+        verificationDueAtMillis == null

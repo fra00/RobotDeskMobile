@@ -46,7 +46,13 @@ fun FireAndCheckDetailDialog(
                     color = MaterialTheme.colorScheme.onSurface,
                 )
                 Text(
-                    text = stringResource(R.string.fire_and_check_delete_hint),
+                    text = stringResource(
+                        if (entry.isSticky) {
+                            R.string.fire_and_check_delete_hint_sticky
+                        } else {
+                            R.string.fire_and_check_delete_hint
+                        },
+                    ),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.fillMaxWidth(),
@@ -69,7 +75,9 @@ fun FireAndCheckDetailDialog(
 @Composable
 private fun buildDetailBody(entry: FireAndCheckEntry): String {
     val lines = mutableListOf<String>()
-    if (entry.isCommitment) {
+    if (entry.isSticky) {
+        lines += stringResource(R.string.fire_and_check_kind_sticky)
+    } else if (entry.isCommitment) {
         lines += stringResource(R.string.fire_and_check_kind_commitment)
     }
     entry.checkGoal?.trim()?.takeIf { it.isNotBlank() }?.let {
@@ -80,8 +88,10 @@ private fun buildDetailBody(entry: FireAndCheckEntry): String {
         }
         lines += stringResource(labelRes, it)
     }
-    entry.verificationMessage?.trim()?.takeIf { it.isNotBlank() }?.let {
-        lines += stringResource(R.string.fire_and_check_label_verification, it)
+    if (!entry.isSticky) {
+        entry.verificationMessage?.trim()?.takeIf { it.isNotBlank() }?.let {
+            lines += stringResource(R.string.fire_and_check_label_verification, it)
+        }
     }
     if (entry.triggerReason.isNotBlank() &&
         entry.triggerReason != entry.checkGoal &&
@@ -93,6 +103,14 @@ private fun buildDetailBody(entry: FireAndCheckEntry): String {
         if (entry.primaryMessage.isNotBlank()) {
             lines += entry.primaryMessage
         }
+    }
+
+    if (entry.isSticky) {
+        lines += stringResource(
+            R.string.fire_and_check_label_phase,
+            stringResource(R.string.fire_and_check_phase_sticky),
+        )
+        return lines.joinToString("\n\n")
     }
 
     lines += stringResource(
@@ -126,7 +144,7 @@ private fun buildDetailBody(entry: FireAndCheckEntry): String {
 @Composable
 private fun formatDue(millis: Long?): String {
     if (millis == null || millis <= 0L) {
-        return stringResource(R.string.fire_and_check_label_due_missing)
+        return stringResource(R.string.fire_and_check_label_due_none)
     }
     val formatter = SimpleDateFormat("EEE d MMM yyyy, HH:mm", Locale.ITALY)
     return formatter.format(Date(millis))

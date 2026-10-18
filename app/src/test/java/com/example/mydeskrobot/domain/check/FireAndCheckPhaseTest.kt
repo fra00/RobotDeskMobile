@@ -58,4 +58,17 @@ class FireAndCheckPhaseTest {
             ),
         )
     }
+
+    @Test
+    fun pending_whenStickyCommitmentHasNoDues() {
+        assertEquals(
+            FireAndCheckPhase.CHECK_PENDING,
+            resolveFireAndCheckPhase(
+                nowMillis = now,
+                primaryDueAtMillis = null,
+                verificationDueAtMillis = null,
+                primaryFiredAtMillis = null,
+            ),
+        )
+    }
 }

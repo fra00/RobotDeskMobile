@@ -12,8 +12,8 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 /**
- * Wellness v2 compute gates: enabled, mic session, LLM idle, not night, translation off,
- * daily anchor, once/day. Idle buffer / presence / SILENT do **not** block compute.
+ * Wellness v2 compute gates: enabled, LLM idle, not night, translation off,
+ * daily anchor, once/day. Idle / presence / SILENT / **mic session** do not block compute.
  */
 class WellnessWatcherTest {
 
@@ -123,8 +123,18 @@ class WellnessWatcherTest {
     }
 
     @Test
-    fun `nextPhase null when mic session inactive`() = runTest {
-        assertNull(watcher.nextPhase(baseContext(micSessionActive = false)))
+    fun `nextPhase proceeds when mic session inactive — mic independent compute`() = runTest {
+        val phase = watcher.nextPhase(baseContext(micSessionActive = false))
+        assertEquals(WellnessPhase.DOMAIN_SCORE, phase)
+    }
+
+    @Test
+    fun `nextPhase null without day anchor timestamp`() = runTest {
+        assertNull(
+            watcher.nextPhase(
+                baseContext(workingMemory = WorkingMemory.forToday()),
+            ),
+        )
     }
 
     @Test
@@ -145,18 +155,6 @@ class WellnessWatcherTest {
             ),
         )
         assertEquals(WellnessPhase.DOMAIN_SCORE, phase)
-    }
-
-    @Test
-    fun `nextPhase proceeds when body misses — presence dropped in v2`() = runTest {
-        val phase = watcher.nextPhase(
-            baseContext(
-                bodyConfigured = true,
-                bodyReachable = true,
-                locateUser = { false },
-            ),
-        )
-        assertEquals(WellnessPhase.VISUAL_ORDER, phase)
     }
 
     @Test

@@ -180,8 +180,11 @@ data class SystemInputEnvelope(
                 check.habitProfileSummary?.takeIf { it.isNotBlank() }?.let {
                     append("Habit summary:\n$it\n")
                 }
-                if (check.recentDailyActivities.isNotEmpty()) {
-                    append("Today activities:\n")
+                // Always emit Today activities so missing meals/movement are visible (absence ≠ ok).
+                append("Today activities:\n")
+                if (check.recentDailyActivities.isEmpty()) {
+                    append("- (none logged today)\n")
+                } else {
                     check.recentDailyActivities.forEach { append("- $it\n") }
                 }
                 if (check.activePatterns.isNotEmpty()) {

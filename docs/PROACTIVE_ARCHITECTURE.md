@@ -306,23 +306,23 @@ All must pass before `SYSTEM_INPUT: wellness_check` **compute** phases:
 | Gate | Rule |
 |------|------|
 | Wellness enabled | `ProactivitySettings.wellnessEnabled` (**not** micro-tick / `HeartbeatSettings.enabled`) |
-| Mic / hotword session | Listening session active (scheduler lives in mood tick while hotword on) |
 | Not busy | LLM idle (no Thinking/Speaking/ActiveListening/CapturingImage / open tool chain) |
 | Night | Suppress whole tick at night |
 | Translation mode | Off |
-| Daily anchor | `now - firstHotwordOnToday >= N` minutes (`N` default **15**) — avoid cold-start thrash |
-| Once per day | `wellnessCheckDoneToday` / `wellnessVisualDoneToday` after successful phase |
+| Daily anchor | `now - firstHotwordOnToday >= N` minutes (`N` default **15**) — timestamp set on first app session / hotword of the day |
+| Once per day | `wellnessCheckDoneToday` only after **snapshot persisted**; visual done after VISUAL_ORDER |
 | Body for visual | `ordine_ambiente` on **and** body configured+reachable → may run `VISUAL_ORDER`; else skip visual |
 
 **Removed from compute (were v1 speak-coupled):**
 
 | Gate (v1) | v2 |
 |-----------|-----|
+| Mic / hotword session | **Dropped** — dedicated ViewModel scheduler; compute runs with mic off |
 | Idle buffer ≥ 5 min after last user turn | **Dropped** — dialog overlap handled by **LLM idle** only |
 | User presence / body `locateUser` | **Dropped** for compute — presence is irrelevant to saving a snapshot |
 | Robot context SILENT | Does **not** block compute; **does** block **notification** (see below) |
 
-**Scheduler note:** the mood-tick poll that drives Wellness runs while hotword listening is active (`VoiceSessionState` / mic session). That is an app-lifecycle constraint, not a “user must be present” gate.
+**Persist:** DOMAIN_SCORE marks the day done **only** if `WellnessSnapshot` was saved. Missing `wellness` JSON → retry later (and recover if a prior bug set done without snapshot).
 
 **Independent from predictivity** speak gates.  
 **Not** gated on ML Kit `DeskPresenceGate`.
@@ -422,7 +422,7 @@ Inputs (unchanged):
 
 | Domain | Signals |
 |--------|---------|
-| Meals | Habit summary, today's PHYSICAL_NOW meals, PATTERN lunch times |
+| Meals | Habit summary, today's PHYSICAL_NOW meals, PATTERN lunch times. **No meal logged after usual window → attention** (absence ≠ ok; do not invent eaten) |
 | Workload | Late sessions, weekend work episodes, PATTERN |
 | Movement | Missing walk/gym vs PATTERN, habit summary (+ HC exercises as done) |
 | Social | SOCIAL_THREAD episodes, weekly PATTERN |

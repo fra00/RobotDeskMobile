@@ -110,6 +110,11 @@ class WorkingMemoryRepository(
         update { it.withWellnessCheckDone() }
     }
 
+    /** Clears DOMAIN_SCORE done flag (e.g. recovery when no snapshot was persisted). */
+    suspend fun clearWellnessCheckDone() {
+        update { it.withWellnessCheckCleared() }
+    }
+
     suspend fun recordWellnessVisualDone() {
         update { it.withWellnessVisualDone() }
     }
