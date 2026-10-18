@@ -43,6 +43,7 @@ Cross-references in prompts use **labels** + section numbers — never duplicate
 | `WELLNESS_CHECK` | `wellness_check_prompt.txt` *(future)* | `SYSTEM_INPUT: wellness_check` only |
 | `HABIT_LABEL_NORMALIZE` | `habit_label_normalize_prompt.txt` | incremental predictivity mining (one batch per run) |
 | `BODY_SEARCH` | `body_capabilities_prompt.txt` | ESP32 body configured |
+| `ORARIO` | `ClockPromptFormatter` (adesso, oggi/ieri/domani, prossimo weekday) | every dialog turn (end of prompt — keeps base prefix cacheable) |
 
 ### Audit matrix (removed text → where it lives)
 

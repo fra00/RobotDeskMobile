@@ -189,7 +189,7 @@ Indice guide: `docs/guides/README.md`.
 8a. Per traduzione one-shot / modalità continua → `docs/TRANSLATION_MODE.md`.
 8b. **Per proattività target (Predittività + Wellness, ordine come input)** → `docs/PROACTIVE_ARCHITECTURE.md`; guida umana → `docs/guides/PROATTIVITA.md`. Idle look-around → `docs/HEARTBEAT_ARCHITECTURE.md`.
 9. Per corpo fisico ESP32 (myDeskBody) → `docs/BODY_INTEGRATION.md` + prompt dinamico `body_capabilities_prompt.txt` via `BodyPromptProviderImpl`.
-9b. **Assembly prompt runtime** (`ReasoningEngineImpl.buildPromptWithContext`): base `llm_system_prompt.txt` + AVAILABLE TOOLS + condizionali: `body_capabilities` (ESP32), `heartbeat_playbook` (solo tick heartbeat/weekly_reflection), memory/day/activity/robot/spatial/mood. SSOT labels: `docs/PROMPT_PHILOSOPHY.md`.
+9b. **Assembly prompt runtime** (`ReasoningEngineImpl.buildPromptWithContext`): base `llm_system_prompt.txt` + AVAILABLE TOOLS + condizionali: `body_capabilities` (ESP32), `heartbeat_playbook` (solo tick heartbeat/weekly_reflection), memory/day/activity/robot/spatial/mood, then **`ORARIO`** (`ClockPromptFormatter` — clock + relative days at end for prefix cache). SSOT labels: `docs/PROMPT_PHILOSOPHY.md`.
 10. **Per filosofia prompt (capability + vincoli, esempi illustrativi)** → `docs/PROMPT_PHILOSOPHY.md`.
 11. Per policy risoluzione autonoma (tool diretto vs catena) → `docs/AGENT_REASONING.md`.
 12. Per espressioni occhi (campo `emotion` LLM) → `docs/ROBOT_EXPRESSIONS.md`; architettura umore → `docs/MOOD.md`; guida umana → `docs/guides/UMORE.md`.

@@ -114,6 +114,7 @@
     <string name="mood_reason_night_time">notte</string>
     <string name="mood_reason_llm_expression">espressione del turno</string>
     <string name="mood_reason_task_completed">task completato</string>
+    <string name="mood_reason_self_care">svago / auto-cura</string>
 
     <string name="cd_service_off">Servizio di ascolto disattivato</string>
     <string name="cd_standby_on">In standby — in attesa della wake word</string>

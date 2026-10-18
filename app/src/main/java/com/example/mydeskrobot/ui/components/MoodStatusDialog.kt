@@ -417,4 +417,5 @@ private fun formatMoodReason(reason: MoodReason): String = when (reason) {
     MoodReason.NIGHT_TIME -> stringResource(R.string.mood_reason_night_time)
     MoodReason.TASK_COMPLETED -> stringResource(R.string.mood_reason_task_completed)
     MoodReason.LLM_EXPRESSION -> stringResource(R.string.mood_reason_llm_expression)
+    MoodReason.SELF_CARE -> stringResource(R.string.mood_reason_self_care)
 }

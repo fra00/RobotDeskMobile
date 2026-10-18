@@ -15,10 +15,6 @@ import com.example.mydeskrobot.reasoning.model.RobotInput
 import com.example.mydeskrobot.reasoning.model.SystemInputEnvelope
 import com.example.mydeskrobot.reasoning.tool.ToolExecutor
 import com.example.mydeskrobot.reasoning.tool.toSystemPromptSection
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
-
 /**
  * Implementation of [ReasoningEngine].
  * Platform-agnostic: no Android dependencies.
@@ -44,8 +40,6 @@ class ReasoningEngineImpl(
 ) : ReasoningEngine {
 
     companion object {
-        private const val DATETIME_PLACEHOLDER = "{{CURRENT_DATETIME}}"
-
         private val BODY_TOOL_NAMES = setOf(
             "move_body_joint",
             "move_body_joints",
@@ -143,21 +137,11 @@ PHYSICAL BODY — NOT CONNECTED
     
     private fun buildFullSystemPrompt(): String {
         val toolSection = toolExecutor.getAvailableTools().toSystemPromptSection()
-        val promptWithDateTime = baseSystemPrompt.replace(
-            DATETIME_PLACEHOLDER, 
-            getCurrentDateTimeString()
-        )
-        
         return if (toolSection.isNotBlank()) {
-            "$promptWithDateTime\n\n$toolSection"
+            "$baseSystemPrompt\n\n$toolSection"
         } else {
-            promptWithDateTime
+            baseSystemPrompt
         }
-    }
-
-    private fun getCurrentDateTimeString(): String {
-        val dateFormat = SimpleDateFormat("EEEE d MMMM yyyy, HH:mm", Locale.ITALIAN)
-        return dateFormat.format(Date())
     }
 
     private suspend fun refreshSystemPrompt(userText: String): Result<Unit> {
@@ -251,6 +235,9 @@ PHYSICAL BODY — NOT CONNECTED
                     append("\n\n")
                     append(moodContext)
                 }
+                // Clock last among dynamic injects so the static base+tools prefix stays cacheable.
+                append("\n\n")
+                append(ClockPromptFormatter.buildSection())
             },
         )
     }
