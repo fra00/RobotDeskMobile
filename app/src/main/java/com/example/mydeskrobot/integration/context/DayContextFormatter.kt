@@ -54,6 +54,7 @@ internal object DayContextFormatter {
     private fun formatKindSuffix(eventKind: EpisodeKind): String {
         val kindHint = when (eventKind) {
             EpisodeKind.SOCIAL_THREAD -> "conversazione aperta"
+            EpisodeKind.WORK_THREAD -> "messaggio lavoro"
             EpisodeKind.COMMITMENT -> "impegno"
             EpisodeKind.PLAN -> "piano"
             EpisodeKind.PHYSICAL_NOW -> ""

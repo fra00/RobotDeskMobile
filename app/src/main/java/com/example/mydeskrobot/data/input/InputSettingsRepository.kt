@@ -43,6 +43,8 @@ class InputSettingsRepository(
         val KNOWN_APPS = mapOf(
             "com.whatsapp" to "WhatsApp",
             "com.microsoft.teams" to "Microsoft Teams",
+            "com.Slack" to "Slack",
+            "com.slack" to "Slack",
             "org.telegram.messenger" to "Telegram",
             "com.google.android.apps.messaging" to "Messaggi (Google)",
             "com.google.android.gm" to "Gmail",

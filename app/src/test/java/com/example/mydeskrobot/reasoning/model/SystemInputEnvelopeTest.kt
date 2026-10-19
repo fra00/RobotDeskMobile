@@ -77,6 +77,9 @@ class SystemInputEnvelopeTest {
 
         assertTrue(envelope.formattedForLlm.contains("Today activities:"))
         assertTrue(envelope.formattedForLlm.contains("(none logged today)"))
+        assertTrue(envelope.formattedForLlm.contains("Recent social threads"))
+        assertTrue(envelope.formattedForLlm.contains("Recent work threads"))
+        assertTrue(envelope.formattedForLlm.contains("(none logged)"))
     }
 
     @Test
@@ -85,6 +88,8 @@ class SystemInputEnvelopeTest {
             phase = com.example.mydeskrobot.domain.wellness.WellnessPhase.DOMAIN_SCORE,
             enabledDomainIds = setOf("pasti"),
             recentDailyActivities = listOf("13:10 pranzo"),
+            recentSocialThreads = listOf("12:00 Marco (WhatsApp)"),
+            recentWorkThreads = listOf("11:00 Luca (Microsoft Teams)"),
         )
 
         val envelope = SystemInputEnvelope.fromWellnessCheck(check)
@@ -92,5 +97,7 @@ class SystemInputEnvelopeTest {
         assertTrue(envelope.formattedForLlm.contains("Today activities:"))
         assertTrue(envelope.formattedForLlm.contains("13:10 pranzo"))
         assertFalse(envelope.formattedForLlm.contains("(none logged today)"))
+        assertTrue(envelope.formattedForLlm.contains("12:00 Marco (WhatsApp)"))
+        assertTrue(envelope.formattedForLlm.contains("11:00 Luca (Microsoft Teams)"))
     }
 }

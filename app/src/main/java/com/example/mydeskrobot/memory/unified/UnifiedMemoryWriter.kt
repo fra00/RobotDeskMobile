@@ -9,6 +9,7 @@ import com.example.mydeskrobot.domain.activitylog.ActivitySource
 import com.example.mydeskrobot.domain.activitylog.EpisodeConfidence
 import com.example.mydeskrobot.domain.activitylog.EpisodeKind
 import com.example.mydeskrobot.domain.activitylog.RobotSelfActivityFilter
+import com.example.mydeskrobot.domain.activitylog.WorkCommunicationChannels
 import com.example.mydeskrobot.domain.list.ListItemType
 import com.example.mydeskrobot.memory.MemorySettingsRepository
 
@@ -121,6 +122,7 @@ class UnifiedMemoryWriter(
         text: String?,
         dedupKey: String,
         receivedAtMillis: Long,
+        packageName: String? = null,
     ): EpisodeWriteResult? {
         val externalRef = UnifiedMemoryRepository.notificationExternalRef(dedupKey)
         if (unifiedMemoryRepository.getByExternalRef(externalRef) != null) {
@@ -131,11 +133,16 @@ class UnifiedMemoryWriter(
         val label = actor ?: appLabel.trim()
         if (label.isBlank()) return null
 
+        val eventKind = WorkCommunicationChannels.episodeKindForNotification(
+            packageName = packageName,
+            appLabel = appLabel,
+        )
+
         return saveEpisode(
             label = label,
             rawPhrase = body,
             source = ActivitySource.NOTIFICATION,
-            eventKind = EpisodeKind.SOCIAL_THREAD,
+            eventKind = eventKind,
             confidence = EpisodeConfidence.CONFIRMED,
             actor = actor,
             sourceChannel = appLabel.trim(),

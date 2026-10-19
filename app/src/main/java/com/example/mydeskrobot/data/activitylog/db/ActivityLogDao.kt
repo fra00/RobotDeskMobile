@@ -79,7 +79,7 @@ interface ActivityLogDao {
         """
         SELECT * FROM activity_log_events
         WHERE scheduledDayKey = :targetDayKey
-          AND eventKind IN ('PLAN', 'SOCIAL_THREAD', 'COMMITMENT')
+          AND eventKind IN ('PLAN', 'SOCIAL_THREAD', 'WORK_THREAD', 'COMMITMENT')
         ORDER BY
           CASE WHEN scheduledAtMs IS NULL THEN 1 ELSE 0 END,
           scheduledAtMs ASC,
@@ -99,6 +99,17 @@ interface ActivityLogDao {
         """,
     )
     suspend fun getOpenSocialThreads(sinceMs: Long, limit: Int): List<ActivityLogEventEntity>
+
+    @Query(
+        """
+        SELECT * FROM activity_log_events
+        WHERE eventKind = 'WORK_THREAD'
+          AND timestampMs >= :sinceMs
+        ORDER BY timestampMs DESC
+        LIMIT :limit
+        """,
+    )
+    suspend fun getRecentWorkThreads(sinceMs: Long, limit: Int): List<ActivityLogEventEntity>
 
     @Query("SELECT COUNT(*) FROM activity_log_events WHERE timestampMs >= :sinceMs")
     suspend fun countSince(sinceMs: Long): Int

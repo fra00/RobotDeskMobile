@@ -247,6 +247,16 @@ class ActivityLogRepository(
         return dao.getOpenSocialThreads(calendar.timeInMillis, limit).map { it.toDomain() }
     }
 
+    suspend fun getRecentWorkThreads(daysBack: Int = 1, limit: Int = 6): List<ActivityLogEntry> {
+        val calendar = Calendar.getInstance()
+        calendar.add(Calendar.DAY_OF_YEAR, -daysBack)
+        calendar.set(Calendar.HOUR_OF_DAY, 0)
+        calendar.set(Calendar.MINUTE, 0)
+        calendar.set(Calendar.SECOND, 0)
+        calendar.set(Calendar.MILLISECOND, 0)
+        return dao.getRecentWorkThreads(calendar.timeInMillis, limit).map { it.toDomain() }
+    }
+
     fun observeEventsLast7Days(): Flow<List<ActivityLogEntry>> {
         val sinceMs = System.currentTimeMillis() - RETENTION_MS
         return dao.observeSince(sinceMs).map { entities -> entities.map { it.toDomain() } }

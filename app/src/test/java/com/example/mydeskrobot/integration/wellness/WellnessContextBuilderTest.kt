@@ -2,6 +2,10 @@ package com.example.mydeskrobot.integration.wellness
 
 import com.example.mydeskrobot.data.activitylog.ActivityLogRepository
 import com.example.mydeskrobot.data.activitylog.FakeActivityLogDao
+import com.example.mydeskrobot.data.activitylog.db.ActivityLogEventEntity
+import com.example.mydeskrobot.domain.activitylog.ActivitySource
+import com.example.mydeskrobot.domain.activitylog.EpisodeKind
+import com.example.mydeskrobot.domain.wellness.WellnessDomains
 import com.example.mydeskrobot.domain.wellness.WellnessPhase
 import com.example.mydeskrobot.memory.db.MemoryCategory
 import com.example.mydeskrobot.memory.unified.FakeMemoryDocumentDao
@@ -14,6 +18,10 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
 
 class WellnessContextBuilderTest {
 
@@ -118,6 +126,51 @@ class WellnessContextBuilderTest {
     }
 
     @Test
+    fun `build domain score separates social and work threads`() = runTest {
+        val dayKey = dayKeyFormat.format(Date(now))
+        val activityDao = FakeActivityLogDao(
+            listOf(
+                ActivityLogEventEntity(
+                    dayKey = dayKey,
+                    timestampMs = now,
+                    label = "Marco",
+                    rawPhrase = "ciao",
+                    source = ActivitySource.NOTIFICATION,
+                    eventKind = EpisodeKind.SOCIAL_THREAD,
+                    actor = "Marco",
+                    sourceChannel = "WhatsApp",
+                ),
+                ActivityLogEventEntity(
+                    dayKey = dayKey,
+                    timestampMs = now - 1_000L,
+                    label = "Luca",
+                    rawPhrase = "sync?",
+                    source = ActivitySource.NOTIFICATION,
+                    eventKind = EpisodeKind.WORK_THREAD,
+                    actor = "Luca",
+                    sourceChannel = "Microsoft Teams",
+                ),
+            ),
+        )
+        val builder = WellnessContextBuilder(
+            activityLogRepository = ActivityLogRepository.createForTest(activityDao),
+            unifiedMemoryRepository = UnifiedMemoryRepository.createForTest(FakeMemoryDocumentDao()),
+        )
+
+        val input = builder.build(
+            phase = WellnessPhase.DOMAIN_SCORE,
+            bodyConfigured = false,
+            bodyReachable = false,
+            enabledDomainIds = setOf(WellnessDomains.SOCIAL, WellnessDomains.WORKLOAD),
+        )
+
+        assertTrue(input.recentSocialThreads.any { it.contains("Marco") && it.contains("WhatsApp") })
+        assertTrue(input.recentWorkThreads.any { it.contains("Luca") && it.contains("Microsoft Teams") })
+        assertTrue(input.recentSocialThreads.none { it.contains("Teams") })
+        assertTrue(input.recentWorkThreads.none { it.contains("WhatsApp") })
+    }
+
+    @Test
     fun `build formats habit slots as expected habits not raw json`() = runTest {
         val slot = com.example.mydeskrobot.domain.predictivity.HabitSlot(
             slotKey = "tapis_roulant|1140",
@@ -169,4 +222,10 @@ class WellnessContextBuilderTest {
             createdAt = now,
             updatedAt = now,
         )
+
+    companion object {
+        private val dayKeyFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
+            timeZone = TimeZone.getDefault()
+        }
+    }
 }

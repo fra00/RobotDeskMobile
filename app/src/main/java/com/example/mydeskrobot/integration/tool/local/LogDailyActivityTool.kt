@@ -40,7 +40,7 @@ class LogDailyActivityTool(
                 ToolParameter(
                     name = "kind",
                     type = "string",
-                    description = "physical_now|plan|social_thread|commitment (default physical_now)",
+                    description = "physical_now|plan|social_thread|work_thread|commitment (default physical_now). work_thread = Teams/Slack/work chat, not personal social",
                     required = false,
                 ),
                 ToolParameter(
@@ -58,7 +58,7 @@ class LogDailyActivityTool(
                 ToolParameter(
                     name = "actor",
                     type = "string",
-                    description = "Contact name for social_thread or plan",
+                    description = "Contact name for social_thread, work_thread, or plan",
                     required = false,
                 ),
                 ToolParameter(
@@ -124,6 +124,7 @@ class LogDailyActivityTool(
         return when (raw?.trim()?.lowercase()) {
             "plan" -> EpisodeKind.PLAN
             "social_thread" -> EpisodeKind.SOCIAL_THREAD
+            "work_thread" -> EpisodeKind.WORK_THREAD
             "commitment" -> EpisodeKind.COMMITMENT
             else -> EpisodeKind.PHYSICAL_NOW
         }

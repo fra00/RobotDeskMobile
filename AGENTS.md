@@ -100,7 +100,7 @@ Indice guide: `docs/guides/README.md`.
 | `docs/MEMORY_RECALL_PLANNER.md` | Piano JSON recall per turno vocale | **No fallback Kotlin** se fallisce |
 | `docs/MEMORY_EMBEDDING.md` | RAG semantico ONNX | Hybrid 0.7 cosine + 0.3 token |
 | `docs/MEMORY_REVIEW_FOLLOWUP.md` | Projection guard, budget, safety pin L1 | |
-| `docs/ACTIVITY_LOG.md` | Log Day episodico (7 giorni) | PHYSICAL_NOW, PLAN, SOCIAL_THREAD |
+| `docs/ACTIVITY_LOG.md` | Log Day episodico (7 giorni) | PHYSICAL_NOW, PLAN, SOCIAL_THREAD, WORK_THREAD, COMMITMENT |
 | `docs/SPATIAL_MEMORY.md` | Stanze, landmark visivi, auto-localizzazione | |
 | `docs/ROBOT_CONTEXT.md` | Profili lavoro/call, silenzio notifiche | |
 | `docs/TRANSLATION_MODE.md` | One-shot + modalità traduzione continua | **v1** |
@@ -251,7 +251,7 @@ Inventario prodotto (aree, proxy, corpo, non-goal): [`docs/FEATURES.md`](docs/FE
 | `get_reminders` | LOCAL | Elenca promemoria attivi |
 | `delete_reminder` | LOCAL | Cancella promemoria per id |
 | `save_memory` | LOCAL | Salva fatto utente (IDENTITY/PREFERENCE/ROUTINE/FACT, optional `pinned`) o memoria autonoma heartbeat (OBSERVATION/INTENT/PATTERN + `ttl_days`) |
-| `log_daily_activity` | LOCAL | Registra attività effimera (pasto, passeggiata, pausa) nel log 7 giorni |
+| `log_daily_activity` | LOCAL | Registra attività effimera (pasto, passeggiata, pausa; kind social_thread / work_thread) nel log 7 giorni |
 | `list_memories` | LOCAL | Elenca memorie attive |
 | `delete_memory` | LOCAL | Dimentica per id o argomento (match fuzzy, più memorie correlate) |
 | `add_list_item` | LOCAL | Aggiunge nota/todo/spesa |

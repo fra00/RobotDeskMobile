@@ -115,6 +115,10 @@ sealed class RobotInput {
         val customDomains: List<com.example.mydeskrobot.domain.wellness.WellnessCustomDomain> = emptyList(),
         val habitProfileSummary: String? = null,
         val recentDailyActivities: List<String> = emptyList(),
+        /** Personal social threads (WhatsApp, …) — not Teams/Slack. */
+        val recentSocialThreads: List<String> = emptyList(),
+        /** Work collaboration threads (Teams, Slack). */
+        val recentWorkThreads: List<String> = emptyList(),
         val activePatterns: List<String> = emptyList(),
         val recentObservations: List<String> = emptyList(),
         val orderObservationFresh: String? = null,

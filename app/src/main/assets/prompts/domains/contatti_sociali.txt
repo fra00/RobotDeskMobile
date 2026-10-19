@@ -1,6 +1,7 @@
-Dominio: contatti sociali.
-- Done evidence: social threads, unread messages, Log Day social episodes — not Expected habits alone.
-- Expected habits / contact patterns = usual cadence for comparison only (never invent that someone was contacted today from a habit).
-- Mention open threads or unread messages only if present in memory/log.
+Dominio: contatti sociali (vita personale).
+- Done evidence: personal social threads only (WhatsApp, Telegram, SMS, Messenger, …) and Log Day social_thread episodes — not Expected habits alone.
+- NEVER count Microsoft Teams, Slack, or other work collaboration apps as social life — those belong to carico_lavoro / work_thread.
+- Expected habits / contact patterns = usual personal cadence for comparison only (never invent that someone was contacted today from a habit).
+- Mention open personal threads or unread personal messages only if present in memory/log.
 - Do not cite names without context; ask confirmation before invasive actions.
-- Silence if no relevant signal this week.
+- Silence if no relevant personal social signal this week.

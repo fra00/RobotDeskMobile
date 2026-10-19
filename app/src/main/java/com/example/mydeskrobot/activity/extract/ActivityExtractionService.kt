@@ -5,6 +5,7 @@ import com.example.mydeskrobot.domain.activitylog.ActivitySource
 import com.example.mydeskrobot.domain.activitylog.EpisodeConfidence
 import com.example.mydeskrobot.domain.activitylog.EpisodeKind
 import com.example.mydeskrobot.domain.activitylog.RobotSelfActivityFilter
+import com.example.mydeskrobot.domain.activitylog.WorkCommunicationChannels
 import com.example.mydeskrobot.memory.unified.MemoryDocumentSource
 import com.example.mydeskrobot.integration.llm.LlmHttpErrors
 import com.example.mydeskrobot.memory.extract.ChatLogEntry
@@ -88,7 +89,11 @@ class ActivityExtractionService(
                 Log.d(TAG, "Skipping robot self-activity raw phrase: $rawPhrase")
                 return@forEach
             }
-            val eventKind = parseKind(item.kind)
+            val sourceChannel = item.source_channel
+            val eventKind = WorkCommunicationChannels.coerceExtractedKind(
+                kind = parseKind(item.kind),
+                sourceChannel = sourceChannel,
+            )
             val confidence = parseConfidence(item.confidence)
             val scheduledDayKey = item.scheduled_day?.trim()?.takeIf { it.isNotBlank() }
             val scheduledAtMs = com.example.mydeskrobot.data.activitylog.ActivityLogRepository.parseScheduledAtMs(
@@ -104,7 +109,7 @@ class ActivityExtractionService(
                 scheduledAtMs = scheduledAtMs,
                 scheduledDayKey = scheduledDayKey,
                 actor = item.actor,
-                sourceChannel = item.source_channel,
+                sourceChannel = sourceChannel,
                 memorySource = MemoryDocumentSource.EXTRACTOR,
             )
             if (result.eventId >= 0L) {
@@ -123,6 +128,7 @@ class ActivityExtractionService(
         return when (raw?.trim()?.lowercase()) {
             "plan" -> EpisodeKind.PLAN
             "social_thread" -> EpisodeKind.SOCIAL_THREAD
+            "work_thread" -> EpisodeKind.WORK_THREAD
             "commitment" -> EpisodeKind.COMMITMENT
             else -> EpisodeKind.PHYSICAL_NOW
         }

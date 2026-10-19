@@ -1,5 +1,6 @@
 Dominio: carico di lavoro.
-- Done / current signals: recent work episodes, late/weekend activity in Today activities or observations — not Expected habits alone.
+- Done / current signals: recent work episodes, late/weekend activity in Today activities or observations, and **work_thread** / Teams/Slack messages — not Expected habits alone.
+- Work chat (Teams, Slack) is workload / collaboration signal — never treat it as personal "vita sociale".
 - Expected habits / work patterns = typical schedule for comparison only (never treat as proof the user already paused or finished work).
 - Verify presence before a vocal nudge if UNCERTAIN.
 - list_memories for work/stress patterns if needed; habits = expected, not done facts.

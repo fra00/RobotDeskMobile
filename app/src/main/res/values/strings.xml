@@ -332,6 +332,7 @@
     <string name="log_day_source_voice">voce</string>
     <string name="log_day_kind_plan">piano</string>
     <string name="log_day_kind_social">sociale</string>
+    <string name="log_day_kind_work">lavoro</string>
     <string name="log_day_kind_commitment">impegno</string>
     <string name="log_day_confidence_tentative">tentativo</string>
     <string name="log_day_source_notification">notifica</string>

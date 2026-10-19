@@ -1265,6 +1265,7 @@ class ConversationViewModel(
         EpisodeKind.PHYSICAL_NOW -> null
         EpisodeKind.PLAN -> appContext.getString(R.string.log_day_kind_plan)
         EpisodeKind.SOCIAL_THREAD -> appContext.getString(R.string.log_day_kind_social)
+        EpisodeKind.WORK_THREAD -> appContext.getString(R.string.log_day_kind_work)
         EpisodeKind.COMMITMENT -> appContext.getString(R.string.log_day_kind_commitment)
     }
 
@@ -3143,6 +3144,7 @@ class ConversationViewModel(
                 text = item.text,
                 dedupKey = item.dedupKey,
                 receivedAtMillis = item.receivedAtMillis,
+                packageName = item.packageName,
             )
         }
         unannouncedNotificationRepository.clearAll()
@@ -3163,6 +3165,7 @@ class ConversationViewModel(
             text = notification.text,
             dedupKey = envelope.dedupKey,
             receivedAtMillis = notification.timestamp,
+            packageName = notification.packageName,
         )
         if (saved != null) {
             bumpUnreadEpisodesTick()

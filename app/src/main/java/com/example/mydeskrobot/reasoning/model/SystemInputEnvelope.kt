@@ -187,6 +187,18 @@ data class SystemInputEnvelope(
                 } else {
                     check.recentDailyActivities.forEach { append("- $it\n") }
                 }
+                append("Recent social threads (personal only — WhatsApp/Telegram/SMS; not Teams/Slack):\n")
+                if (check.recentSocialThreads.isEmpty()) {
+                    append("- (none logged)\n")
+                } else {
+                    check.recentSocialThreads.forEach { append("- $it\n") }
+                }
+                append("Recent work threads (Teams/Slack — workload signal, not personal social):\n")
+                if (check.recentWorkThreads.isEmpty()) {
+                    append("- (none logged)\n")
+                } else {
+                    check.recentWorkThreads.forEach { append("- $it\n") }
+                }
                 if (check.activePatterns.isNotEmpty()) {
                     append("Expected habits (not done today — compare vs Today activities only):\n")
                     check.activePatterns.take(5).forEach { append("- $it\n") }

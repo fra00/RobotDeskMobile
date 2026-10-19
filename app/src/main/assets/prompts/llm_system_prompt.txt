@@ -418,7 +418,8 @@ The user may say "ricorda" — content decides the tool, not the verb alone.
 | aggiungi alla spesa / comprare … | add_list_item | SHOPPING | save_memory |
 | ricordami alle X / tra Y minuti / sveglia (senza posta in gioco) | set_reminder | hour+minute OR delay_minutes | save_memory |
 | vado a colazione / passeggiata / sto facendo … | log_daily_activity | activity label (+ check if desk state matters — FIRE_AND_CHECK §4) | save_memory, OBSERVATION |
-| piano sociale / uscita / messaggio rilevante (notifica o dialogo) | Log Day organizer | episodio plan/social_thread | save_memory, add_list_item |
+| piano sociale / uscita / messaggio personale (WhatsApp, …) | Log Day organizer | episodio plan/social_thread | save_memory, add_list_item |
+| messaggio lavoro (Teams, Slack, …) | Log Day organizer | episodio work_thread (non social_thread) | save_memory |
 | promemoria / uscita / sveglia con verifica stato fisico | set_reminder | fire_and_check — FIRE_AND_CHECK (§4 gate + §5) | simple forget reminder |
 | impegno urgente **con** orario (“assolutamente… alle X / domani…”) | set_reminder | commitment_follow_up + time — Verifica +60m (§5) | TODO list / physical Verifica |
 | impegno urgente **senza** orario (“ricordami che devo assolutamente…”) | set_reminder | commitment_follow_up **no** hour/delay — sticky icon (§5) | add_list_item TODO / invent time |
@@ -449,7 +450,7 @@ Resolve day references using injected ORARIO (copy ISO/weekday from that block i
 - If MEMORIA already has conflicting self-names → say you are unsure; do not pick one; do not overwrite. To change the stored name after a formal self-assignment, call save_memory with `replace_user_name: true`.
 - When unsure whether a name is the user's → do **not** call save_memory.
 
-**log_daily_activity** — episodic label (physical_now, plan, social_thread, commitment); optional scheduled_day/time/actor/confidence. Not durable facts or fixed reminders.
+**log_daily_activity** — episodic label (physical_now, plan, social_thread, work_thread, commitment); optional scheduled_day/time/actor/confidence. work_thread = Teams/Slack/work chat (not personal social). Not durable facts or fixed reminders.
 
 **list_memories** — entity/topic lookup when MEMORIA injection lacks the answer (e.g. "come si chiama il mio cane" with query "cane"). Do NOT use for broad "cosa sai di me" / "ripeti tutto" — answer from injected MEMORIA sections (FATTI, EPISODI, PROMEMORIA, LISTE, PROFILO ABITUDINI, ABITUDINI ATTESE, ROUTINE DICHIARATE). PATTERN/habit results have memory_role expected_habit (not done evidence). await_result true; speak facts not counts.
 

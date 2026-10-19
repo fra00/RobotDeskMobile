@@ -3,7 +3,7 @@
 Il robot può intervenire in due modi distinti (oltre ai promemoria che **tu** chiedi esplicitamente):
 
 1. **Predittività** — impara dalle attività che racconti (passeggiata, tapis roulant, pranzo fuori…) e, se un giorno salti un’abitudine, può chiedertelo con tatto (**a voce**).
-2. **Wellness** — una volta al giorno valuta pasti, lavoro, movimento, contatti e — se hai il **corpo ESP32** — anche ordine della scrivania/stanza. **Calcolo e comunicazione sono separati** (v2): il check salva uno **stato**; se qualcosa richiede attenzione arriva una **notifica**; a voce parla solo se **glielo chiedi**.
+2. **Wellness** — una volta al giorno valuta pasti, lavoro, movimento, contatti e — se hai il **corpo ESP32** — anche ordine della scrivania/stanza. **Calcolo e comunicazione sono separati** (v2): il check salva uno **stato**; se qualcosa richiede attenzione arriva una **notifica**; a voce parla solo se **glielo chiedi**. I messaggi **Teams/Slack** contano come **carico di lavoro**, non come vita sociale (WhatsApp/Telegram restano sociali).
 
 Sono **canali separati**: spegnere uno non spegne l’altro. Hanno regole e interruttori diversi.
 

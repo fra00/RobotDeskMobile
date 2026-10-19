@@ -57,16 +57,40 @@ class UnifiedMemoryWriterTest {
             text = "domani cinema",
             dedupKey = "wa:1",
             receivedAtMillis = System.currentTimeMillis(),
+            packageName = "com.whatsapp",
         )
 
         val unread = unifiedRepository.listUnreadNotificationEpisodes()
         assertEquals(1, unread.size)
         assertTrue(unread.single().isUnread)
+        assertEquals(1, activityRepository.getOpenSocialThreads().size)
+        assertEquals(0, activityRepository.getRecentWorkThreads().size)
 
         val recalled = unifiedRepository.recallForQuestion(
             MemoryRecallRequest(query = "messaggi Marco"),
         )
         assertTrue(recalled.any { it.externalRef == UnifiedMemoryRepository.notificationExternalRef("wa:1") })
+    }
+
+    @Test
+    fun saveNotificationEpisode_teams_is_work_thread_not_social() = runTest {
+        val unifiedRepository = UnifiedMemoryRepository.createForTest(FakeMemoryDocumentDao())
+        val activityRepository = ActivityLogRepository.createForTest(FakeActivityLogDao())
+        val writer = UnifiedMemoryWriter(unifiedRepository, activityRepository, settingsRepository = null)
+
+        writer.saveNotificationEpisode(
+            appLabel = "Microsoft Teams",
+            title = "Luca",
+            text = "call alle 15?",
+            dedupKey = "teams:1",
+            receivedAtMillis = System.currentTimeMillis(),
+            packageName = "com.microsoft.teams",
+        )
+
+        assertEquals(0, activityRepository.getOpenSocialThreads().size)
+        val work = activityRepository.getRecentWorkThreads()
+        assertEquals(1, work.size)
+        assertEquals(EpisodeKind.WORK_THREAD, work.single().eventKind)
     }
 
     @Test

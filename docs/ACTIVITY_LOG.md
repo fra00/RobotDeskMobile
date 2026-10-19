@@ -24,7 +24,7 @@ Episodic timeline of the user's day — physical activities, future plans, socia
 
 | Field | Use |
 |-------|-----|
-| `eventKind` | `PHYSICAL_NOW`, `PLAN`, `SOCIAL_THREAD`, `COMMITMENT` |
+| `eventKind` | `PHYSICAL_NOW`, `PLAN`, `SOCIAL_THREAD`, `WORK_THREAD`, `COMMITMENT` |
 | `confidence` | `TENTATIVE` (congettura), `CONFIRMED` |
 | `scheduledDayKey` | Target day `yyyy-MM-dd` for upcoming episodes |
 | `scheduledAtMs` | Optional precise time on that day |
@@ -38,7 +38,7 @@ Episodic timeline of the user's day — physical activities, future plans, socia
 
 1. **Background extraction** — `ActivityLogExtractionScheduler` in standby reads new `conversationLog` lines (Tu/Robot/**Sistema**) via `episodic_extractor_prompt.txt`. Robot pastimes (`Sistema (svago): [robot] …`) are **excluded** before extraction and never written as user episodes.
 2. **Tool** — `log_daily_activity` during dialogue (optional kind, scheduled_day, actor, confidence), via `UnifiedMemoryWriter` (same rejection for `[robot]` / channel `svago`).
-3. **Notifications** — selective archive through the same writer when actionable.
+3. **Notifications** — selective archive through the same writer when actionable. **Work apps** (Teams, Slack — package allowlist in `WorkCommunicationChannels`) → `WORK_THREAD`; personal messengers (WhatsApp, …) → `SOCIAL_THREAD`. Work threads are workload signals, not personal social life.
 4. **Health Connect** — `HealthConnectExerciseSync` imports `ExerciseSessionRecord` (last 7 days) as `PHYSICAL_NOW` + `CONFIRMED` with `source=HEALTH_CONNECT` and stable `sourceChannel=health_connect:<id>` (dedup). Triggered before Wellness `DOMAIN_SCORE` and on voice session start / app catch-up when `ProactivitySettings.healthConnectEnabled` is on and exercise read permission is granted. These are **done** episodes (dialogue + Wellness “Today activities”), never habit slots.
 
 ## Predictivity mining (incremental)

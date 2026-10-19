@@ -423,9 +423,9 @@ Inputs (unchanged):
 | Domain | Signals |
 |--------|---------|
 | Meals | Habit summary, today's PHYSICAL_NOW meals, PATTERN lunch times. **No meal logged after usual window → attention** (absence ≠ ok; do not invent eaten) |
-| Workload | Late sessions, weekend work episodes, PATTERN |
+| Workload | Late sessions, weekend work episodes, PATTERN, **`WORK_THREAD` (Teams/Slack)** |
 | Movement | Missing walk/gym vs PATTERN, habit summary (+ HC exercises as done) |
-| Social | SOCIAL_THREAD episodes, weekly PATTERN |
+| Social | Personal `SOCIAL_THREAD` only (WhatsApp/Telegram/SMS…). **Teams/Slack never count as vita sociale** |
 | Order | Fresh OBSERVATION from phase 2 only |
 
 LLM produces **WellnessSnapshot** (structured). Prefer `reply: ""` on this system turn (no TTS). Kotlin validates and persists.

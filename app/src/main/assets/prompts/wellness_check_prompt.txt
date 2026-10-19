@@ -36,9 +36,9 @@ Goal: score every Enabled domain and emit a structured **wellness** object. This
 
 ### Built-in signals (only if enabled)
 - **pasti** — meals in Today activities vs usual windows / clock. No meal logged and lunch/dinner window already passed → **attention** (not ok). Do not invent that the user ate.
-- **carico_lavoro** — late/weekend work overload hints
+- **carico_lavoro** — late/weekend work overload hints; **Recent work threads** (Teams/Slack) are workload signals. Do not treat work chat as personal social life.
 - **attivita_fisica** — movement vs Expected habits / Today activities (missing after usual window → attention)
-- **contatti_sociali** — social contact gaps vs patterns
+- **contatti_sociali** — personal social contact gaps vs patterns using **Recent social threads** only (WhatsApp/Telegram/SMS…). Teams/Slack/work threads do **not** count as vita sociale. Absence of work chat ≠ presence of personal social contact.
 - **ordine_ambiente** — Fresh order observation only
 
 ### Custom domains

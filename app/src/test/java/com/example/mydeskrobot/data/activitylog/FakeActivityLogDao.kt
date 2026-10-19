@@ -66,7 +66,12 @@ class FakeActivityLogDao(
     override suspend fun getUpcomingForDay(targetDayKey: String, limit: Int): List<ActivityLogEventEntity> =
         events.filter {
             it.scheduledDayKey == targetDayKey &&
-                it.eventKind in listOf(EpisodeKind.PLAN, EpisodeKind.SOCIAL_THREAD, EpisodeKind.COMMITMENT)
+                it.eventKind in listOf(
+                    EpisodeKind.PLAN,
+                    EpisodeKind.SOCIAL_THREAD,
+                    EpisodeKind.WORK_THREAD,
+                    EpisodeKind.COMMITMENT,
+                )
         }
             .sortedWith(
                 compareBy<ActivityLogEventEntity> { it.scheduledAtMs == null }
@@ -77,6 +82,11 @@ class FakeActivityLogDao(
 
     override suspend fun getOpenSocialThreads(sinceMs: Long, limit: Int): List<ActivityLogEventEntity> =
         events.filter { it.eventKind == EpisodeKind.SOCIAL_THREAD && it.timestampMs >= sinceMs }
+            .sortedByDescending { it.timestampMs }
+            .take(limit)
+
+    override suspend fun getRecentWorkThreads(sinceMs: Long, limit: Int): List<ActivityLogEventEntity> =
+        events.filter { it.eventKind == EpisodeKind.WORK_THREAD && it.timestampMs >= sinceMs }
             .sortedByDescending { it.timestampMs }
             .take(limit)
 

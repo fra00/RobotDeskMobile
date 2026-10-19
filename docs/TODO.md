@@ -44,6 +44,7 @@ Spec SSOT: [`PROACTIVE_ARCHITECTURE.md`](PROACTIVE_ARCHITECTURE.md) Channel 2 ·
 - [x] **Code** — `WellnessWatcher` senza idle/presence; persist snapshot; notify cap; drop proactive TTS; summary UI; dialogue ask (`STATO WELLNESS`)
 - [x] **Wellness v2 harden (ott 2026):** compute mic-independent; mark done solo se snapshot salvato; clear inFlight / retry se JSON senza `wellness` — smoke device: check **partito** e snapshot in Riepilogo
 - [x] **Scoring pasti — assenza ≠ ok (ott 2026):** prompt + `(none logged today)` nel contesto; `ok` solo con evidenza positiva; dopo finestra pranzo/cena senza log → `attention`
+- [x] **Work vs social channels (ott 2026):** Teams/Slack → `WORK_THREAD` (carico_lavoro); WhatsApp/… → `SOCIAL_THREAD` (`WorkCommunicationChannels`) — no backfill storico
 - [ ] Smoke v2 completo in [`guides/PROATTIVITA_SMOKE.md`](guides/PROATTIVITA_SMOKE.md) (Predittività / abitudini / notifica — ancora aperto; Wellness compute+persist ok in smoke parziale)
 - [ ] Feedback loop strutturato dopo proactive speak (accettato / ignorato / rifiutato)
 - [ ] **Proattività + Abitudini dedotte — verifica end-to-end (ott 2026):** in uso reale **non sembrano presenti / non funzionano correttamente** (lista vuota o slot che non compaiono; Predittività quasi mai propone nulla; a volte tratta come fatte cose non fatte). Da verificare prima di redesign:
@@ -118,6 +119,9 @@ Da fare (prompt normativo + allineo `BODY_INTEGRATION.md` / descrizioni tool):
 | Guide umane | Mancano guide narrative LLM / body (memoria, proattività, umore, proxy ok) |
 | `TOOL_ARCHITECTURE.md` | ~1600 righe — snellire sezioni storiche |
 | Prompt corpo cinematica | Vedi sezione *Body — cinematica / prompt* sopra |
+| **Barge-in TTS (ott 2026)** | Codice presente (`beginBargeIn`, `SpeechInterrupted`, `onSpeechInterrupted`, `EchoSpeechFilter`) ma **disabilitato** nel ViewModel per eco TTS→mic — [`STT_ARCHITECTURE.md`](STT_ARCHITECTURE.md). **Verificare** se conviene ripristinare (filtro eco / AEC) o **rimuovere del tutto** il percorso morto. |
+
+- [ ] **Barge-in durante TTS — verifica o rimozione:** oggi STT pausato per tutto il turno assistente; barge-in non chiamato. Decidere: (a) tenere spento e documentato, (b) riprovare con eco più solido, (c) cancellare API/service/VM path se non conviene.
 
 ---
 
