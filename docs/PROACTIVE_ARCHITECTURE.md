@@ -412,7 +412,7 @@ Schedule: poll every ~5 min while process eligible (same loop as mood monitor), 
 - `base_pan` ≈ **−25 / 0 / +25**, each followed by `take_photo`.
 - Playbook [`room_order_audit_prompt.txt`](../app/src/main/assets/prompts/room_order_audit_prompt.txt) (`ROOM_ORDER_AUDIT`).
 - Evaluate clutter/order only — **no** object inventory / landmark identity.
-- **Judgment in OBSERVATION is objective** (`ordinato` | `disordinato` | `molto_disordinato`). Soft wording is for **notification / ask**, not for stored OBS.
+- **Judgment in OBSERVATION is objective/honest** (`ordinato` | `disordinato` | `molto_disordinato`) — no euphemisms. DOMAIN_SCORE for `ordine_ambiente` keeps the same honesty (map disordinato→attention, molto_disordinato→critical); other care domains may stay softer in `summary_it`.
 - `save_memory` OBSERVATION + `SensingLogRepository.record(SensingKind.ROOM_SCENE)`.
 
 **Without body:** skip phase 2; score text-only domains.

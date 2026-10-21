@@ -25,7 +25,7 @@ Sono **canali separati**: spegnere uno non spegne l’altro. Hanno regole e inte
 
 ### Ordine ambientale
 
-Se il corpo è configurato e raggiungibile e il dominio ordine è attivo, durante il calcolo il robot può girare su **tre angoli** e scattare foto **senza parlarti**. In memoria l’ordine è **oggettivo**; notifica e risposte vocali restano soft.
+Se il corpo è configurato e raggiungibile e il dominio ordine è attivo, durante il calcolo il robot può girare su **tre angoli** e scattare foto **senza parlarti**. Valutazione ordine **onesta e oggettiva** (anche in riepilogo/notifica): niente eufemismi sul disordine.
 
 Senza ESP32 il wellness resta su abitudini e log testuali.
 

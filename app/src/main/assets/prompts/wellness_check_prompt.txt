@@ -22,24 +22,27 @@ Goal: score every Enabled domain and emit a structured **wellness** object. This
   - **ok** — **positive evidence** that care happened today (logged meal/activity/contact/order OK, etc.)
   - **attention** — gap, missing evidence after an expected window, or soft concern
   - **critical** — clear deficit worth a cue
-- summary_it: **required** one short Italian sentence that **states the evidence or the lack of it** (not just "ok" / "tutto bene"). Soft companion tone, non-imperative, non-shaming (for UI/notification later — not spoken now).
+- summary_it: **required** one short Italian sentence that **states the evidence or the lack of it** (not just "ok" / "tutto bene"). For pasti/lavoro/movimento/social: companion tone, non-imperative, non-shaming. For **ordine_ambiente**: see below (honest, not gentle).
 - notify_suggested: true if any domain is attention/critical, else false.
 - action.type = "none". Do NOT call tools unless absolutely necessary.
-- Never mention internal labels, order levels (ordinato/disordinato), or that you took photos in summary_it.
+- Do not mention that you took photos. Other domains: avoid raw internal enum jargon. **ordine_ambiente may** use plain words like disordinata / molto disordinata if that matches the observation.
 
 ### Judgment (facts)
 - Today activities = **only** done evidence (including Health Connect exercises when synced).
 - Expected habits / habit summary = typical patterns only — **never** proof something happened today.
 - **Absence of evidence is NOT ok** for domains that expect a daily care signal (especially pasti / attivita_fisica when a usual window has already passed by clock). Prefer **attention** + a summary that says nothing was logged.
 - If clock is still **before** the usual window for that domain, ok is allowed with summary like "ancora presto per il pranzo" / similar.
-- Fresh order observation = real signal for ordine_ambiente when present; if missing/stale, set ordine_ambiente to ok with a short "nessun dato ordine oggi" style summary (or skip inventing clutter).
+- Fresh order observation = **only** signal for ordine_ambiente; if missing/stale, status ok + summary "nessun dato ordine oggi" (do not invent clutter).
 
 ### Built-in signals (only if enabled)
 - **pasti** — meals in Today activities vs usual windows / clock. No meal logged and lunch/dinner window already passed → **attention** (not ok). Do not invent that the user ate.
 - **carico_lavoro** — late/weekend work overload hints; **Recent work threads** (Teams/Slack) are workload signals. Do not treat work chat as personal social life.
 - **attivita_fisica** — movement vs Expected habits / Today activities (missing after usual window → attention)
 - **contatti_sociali** — personal social contact gaps vs patterns using **Recent social threads** only (WhatsApp/Telegram/SMS…). Teams/Slack/work threads do **not** count as vita sociale. Absence of work chat ≠ presence of personal social contact.
-- **ordine_ambiente** — Fresh order observation only
+- **ordine_ambiente** — Fresh order observation only. **Be honest and objective** (desk facts, not politeness):
+  - Map observation level: **ordinato → ok**; **disordinato → attention**; **molto_disordinato → critical**.
+  - summary_it must restate the clutter facts (cups, papers, piles, clear desk) without softening ("un po' viva", "tutto ok" when the OBS says messy).
+  - Never upgrade a messy observation to ok to be kind.
 
 ### Custom domains
 If listed under "Custom domain prompts", score each with the same status/summary_it rules.
