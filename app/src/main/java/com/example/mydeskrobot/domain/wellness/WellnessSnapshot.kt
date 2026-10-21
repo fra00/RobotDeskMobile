@@ -21,7 +21,7 @@ data class WellnessSnapshot(
             ?: domains.firstOrNull { it.status.needsAttention }
 
     fun toPromptBlock(): String = buildString {
-        appendLine("STATO WELLNESS (autoritativo — ultimo check giornaliero; non ricalcolare):")
+        appendLine("STATO WELLNESS (autoritativo — ultimo snapshot; rispondere da qui, non inventare):")
         appendLine("- Giorno: $dayKey")
         appendLine("- Calcolato: $computedAtMs")
         if (domains.isEmpty()) {

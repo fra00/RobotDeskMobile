@@ -9,16 +9,19 @@ import com.example.mydeskrobot.reasoning.model.RobotProfile
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
  * Wellness v2 compute gates: enabled, LLM idle, not night, translation off,
- * daily anchor, once/day. Idle / presence / SILENT / **mic session** do not block compute.
+ * daily anchor, rescore by snapshot age (default 3h). Visual once/day.
+ * Idle / presence / SILENT / **mic session** do not block compute.
  */
 class WellnessWatcherTest {
 
     private val anchorMs = 1_000_000L
     private val nowMs = anchorMs + 65 * 60_000L
+    private val today = "2026-10-21"
 
     private val watcher = WellnessWatcher(nowMillis = { nowMs })
 
@@ -85,11 +88,58 @@ class WellnessWatcherTest {
     }
 
     @Test
-    fun `nextPhase null when check already done today`() = runTest {
-        val wm = WorkingMemory.forToday()
-            .withFirstHotwordOn(anchorMs)
-            .withWellnessCheckDone()
-        assertNull(watcher.nextPhase(baseContext(workingMemory = wm)))
+    fun `nextPhase null when snapshot still fresh within rescore interval`() = runTest {
+        val phase = watcher.nextPhase(
+            baseContext(
+                workingMemory = WorkingMemory.forToday()
+                    .withFirstHotwordOn(anchorMs)
+                    .withWellnessCheckDone(),
+                lastSnapshotComputedAtMs = nowMs - 30 * 60_000L,
+                lastSnapshotDayKey = today,
+            ),
+        )
+        assertNull(phase)
+    }
+
+    @Test
+    fun `nextPhase domain score when snapshot older than 3h`() = runTest {
+        val phase = watcher.nextPhase(
+            baseContext(
+                workingMemory = WorkingMemory.forToday()
+                    .withFirstHotwordOn(anchorMs)
+                    .withWellnessCheckDone(),
+                lastSnapshotComputedAtMs = nowMs - 181 * 60_000L,
+                lastSnapshotDayKey = today,
+                proactivity = ProactivitySettings(wellnessRescoreIntervalMinutes = 180),
+            ),
+        )
+        assertEquals(WellnessPhase.DOMAIN_SCORE, phase)
+    }
+
+    @Test
+    fun `forceDomainScore skips visual and returns domain score`() = runTest {
+        val phase = watcher.nextPhase(
+            baseContext(
+                bodyConfigured = true,
+                bodyReachable = true,
+                forceDomainScore = true,
+                lastSnapshotComputedAtMs = nowMs - 5 * 60_000L,
+                lastSnapshotDayKey = today,
+            ),
+        )
+        assertEquals(WellnessPhase.DOMAIN_SCORE, phase)
+    }
+
+    @Test
+    fun `forceDomainScore bypasses anchor wait`() = runTest {
+        val earlyWatcher = WellnessWatcher(nowMillis = { anchorMs + 2 * 60_000L })
+        val phase = earlyWatcher.nextPhase(
+            baseContext(
+                proactivity = ProactivitySettings(wellnessAnchorMinutes = 15),
+                forceDomainScore = true,
+            ),
+        )
+        assertEquals(WellnessPhase.DOMAIN_SCORE, phase)
     }
 
     @Test
@@ -162,6 +212,15 @@ class WellnessWatcherTest {
         assertNull(watcher.nextPhase(baseContext(llmBusy = true)))
     }
 
+    @Test
+    fun `needsDomainScore true without today snapshot`() {
+        assertTrue(
+            watcher.needsDomainScore(
+                baseContext(lastSnapshotComputedAtMs = null, lastSnapshotDayKey = null),
+            ),
+        )
+    }
+
     private fun baseContext(
         workingMemory: WorkingMemory = WorkingMemory.forToday()
             .withFirstHotwordOn(anchorMs),
@@ -175,6 +234,10 @@ class WellnessWatcherTest {
         llmBusy: Boolean = false,
         enabledDomainIds: Set<String> = com.example.mydeskrobot.domain.wellness.WellnessDomains.ALL,
         locateUser: suspend () -> Boolean = { false },
+        todayDayKey: String = today,
+        lastSnapshotComputedAtMs: Long? = null,
+        lastSnapshotDayKey: String? = null,
+        forceDomainScore: Boolean = false,
     ) = WellnessWatchContext(
         proactivitySettings = proactivity,
         workingMemory = workingMemory,
@@ -187,5 +250,9 @@ class WellnessWatcherTest {
         translationModeActive = translationModeActive,
         enabledDomainIds = enabledDomainIds,
         locateUser = locateUser,
+        todayDayKey = todayDayKey,
+        lastSnapshotComputedAtMs = lastSnapshotComputedAtMs,
+        lastSnapshotDayKey = lastSnapshotDayKey,
+        forceDomainScore = forceDomainScore,
     )
 }

@@ -146,6 +146,7 @@ import com.example.mydeskrobot.domain.predictivity.HabitSlotEligibility
 import com.example.mydeskrobot.data.proactive.ProactivitySettingsRepository
 import com.example.mydeskrobot.data.heartbeat.SensingKind
 import com.example.mydeskrobot.data.heartbeat.SensingLogRepository
+import com.example.mydeskrobot.domain.wellness.WellnessAskDetector
 import com.example.mydeskrobot.domain.wellness.WellnessCustomDomain
 import com.example.mydeskrobot.domain.wellness.WellnessDomains
 import com.example.mydeskrobot.domain.wellness.WellnessPhase
@@ -373,6 +374,12 @@ class ConversationViewModel(
     /** Prevents double-dispatch while a wellness tick is in flight. */
     private var wellnessCheckInFlight = false
     private var currentWellnessPhase: WellnessPhase? = null
+    /** Force next Wellness DOMAIN_SCORE (on-demand «come sto?»). */
+    private var forceWellnessDomainScore = false
+    /** User phrase waiting for on-demand wellness rescore before dialogue. */
+    private var pendingWellnessAskPhrase: String? = null
+    /** Skip another on-demand rescore when draining [pendingWellnessAskPhrase]. */
+    private var wellnessAskFreshSnapshotReady = false
 
     private val inputRouter by lazy {
         InputRouter(
@@ -2556,6 +2563,7 @@ class ConversationViewModel(
 
     private fun sendPhraseToLlm(phrase: String) {
         SpatialScanSession.reset()
+        if (maybeRefreshWellnessBeforeAsk(phrase)) return
         if (confirmationPending) {
             when (VoiceConfirmationMatcher.parse(phrase)) {
                 VoiceConfirmationDecision.YES -> {
@@ -2782,6 +2790,7 @@ class ConversationViewModel(
                                     Log.w(TAG, "Wellness DOMAIN_SCORE finished without snapshot — will retry")
                                     clearWellnessInFlightWithoutDone()
                                 }
+                                onWellnessDomainScoreTurnFinished()
                             }
                         }
                         null -> clearWellnessInFlightWithoutDone()
@@ -2840,6 +2849,9 @@ class ConversationViewModel(
                     if (wasWellness) {
                         viewModelScope.launch { proactiveTracker.recordSilent("wellness") }
                         markWellnessPhaseCompleted(wellnessPhase)
+                        if (wellnessPhase == WellnessPhase.DOMAIN_SCORE) {
+                            onWellnessDomainScoreTurnFinished()
+                        }
                     }
                     if (wasWellness && wellnessPhase == WellnessPhase.VISUAL_ORDER) {
                         viewModelScope.launch {
@@ -2873,6 +2885,9 @@ class ConversationViewModel(
                             }
                         }
                         markWellnessPhaseCompleted(wellnessPhase)
+                        if (wellnessPhase == WellnessPhase.DOMAIN_SCORE) {
+                            onWellnessDomainScoreTurnFinished()
+                        }
                     }
                     val reply = LlmAssistantReply(
                         text = finalText,
@@ -2887,11 +2902,16 @@ class ConversationViewModel(
             }
 
             is ReasoningResult.Error -> {
+                val wasWellnessError = currentInputIsWellnessCheck
+                val wellnessErrorPhase = currentWellnessPhase
                  currentInputIsPredictivityDeviation = false
                 if (currentInputIsWellnessCheck) clearWellnessInFlightWithoutDone()
                 currentInputIsWellnessCheck = false
                 currentWellnessPhase = null
                 clearSilentNotificationTurnState()
+                if (wasWellnessError && wellnessErrorPhase == WellnessPhase.DOMAIN_SCORE) {
+                    onWellnessDomainScoreTurnFinished()
+                }
                 handleLlmFailure(result.message)
             }
 
@@ -2905,6 +2925,7 @@ class ConversationViewModel(
                     WellnessPhase.DOMAIN_SCORE -> {
                         // No reliable snapshot — allow retry later today.
                         clearWellnessInFlightWithoutDone()
+                        onWellnessDomainScoreTurnFinished()
                     }
                     WellnessPhase.VISUAL_ORDER -> markWellnessPhaseCompleted(maxStepsWellnessPhase)
                     null -> Unit
@@ -3885,19 +3906,77 @@ class ConversationViewModel(
         wellnessSchedulerJob = null
     }
 
-    private suspend fun pollWellnessCheck() {
+    /**
+     * On-demand «come sto?» / wellness ask: run DOMAIN_SCORE first, then dialogue.
+     * @return true if the phrase was deferred pending rescore.
+     */
+    private fun maybeRefreshWellnessBeforeAsk(phrase: String): Boolean {
+        if (wellnessAskFreshSnapshotReady) {
+            wellnessAskFreshSnapshotReady = false
+            return false
+        }
+        if (!WellnessAskDetector.isWellnessAsk(phrase)) return false
+        if (wellnessCheckInFlight || pendingWellnessAskPhrase != null) return false
+
+        val settings = runBlockingLoadProactivitySettings()
+        if (!settings.wellnessEnabled) return false
+
+        pendingWellnessAskPhrase = phrase
+        forceWellnessDomainScore = true
+        Log.i(TAG, "Wellness on-demand ask — refreshing DOMAIN_SCORE before reply")
+        _uiState.update {
+            it.copy(
+                phase = ConversationPhase.Thinking,
+                emotion = RobotEmotion.THINKING,
+                statusMessage = messages.thinkingStatus(),
+                currentUtterance = "",
+            )
+        }
+        viewModelScope.launch {
+            pollWellnessCheck(allowDuringUserAsk = true)
+            if (!wellnessCheckInFlight && pendingWellnessAskPhrase != null) {
+                // Watcher returned null (gates) — answer with whatever snapshot we have.
+                Log.w(TAG, "Wellness on-demand dispatch skipped — answering with existing snapshot")
+                drainPendingWellnessAsk()
+            }
+        }
+        return true
+    }
+
+    private fun runBlockingLoadProactivitySettings() =
+        runBlocking { proactivitySettingsRepository.load() }
+
+    private fun drainPendingWellnessAsk() {
+        val pending = pendingWellnessAskPhrase?.trim().orEmpty()
+        pendingWellnessAskPhrase = null
+        forceWellnessDomainScore = false
+        if (pending.isEmpty()) return
+        wellnessAskFreshSnapshotReady = true
+        sendPhraseToLlm(pending)
+    }
+
+    /** After on-demand DOMAIN_SCORE (success or fail), continue with the deferred user ask. */
+    private fun onWellnessDomainScoreTurnFinished() {
+        if (pendingWellnessAskPhrase != null) {
+            drainPendingWellnessAsk()
+        }
+    }
+
+    private suspend fun pollWellnessCheck(allowDuringUserAsk: Boolean = false) {
         if (wellnessCheckInFlight) return
         val uiState = _uiState.value
-        // Do not disturb an active assistant turn / dialog.
-        if (isAssistantTurnBlockingWellness(uiState)) {
+        // Do not disturb an active assistant turn / dialog (except on-demand ask we initiated).
+        if (!allowDuringUserAsk && isAssistantTurnBlockingWellness(uiState)) {
             return
         }
+        // On-demand may run while Thinking is already shown for the ask.
+        if (allowDuringUserAsk && llmJob?.isActive == true) return
 
         // Recover prior bug: marked done today but no snapshot stored for today.
         val wm = workingMemoryRepository.load()
+        val today = wellnessSnapshotRepository.todayDayKey()
+        val snap = wellnessSnapshotRepository.getLatest()
         if (wm.wellnessCheckDoneToday) {
-            val snap = wellnessSnapshotRepository.getLatest()
-            val today = wellnessSnapshotRepository.todayDayKey()
             if (snap == null || snap.dayKey != today) {
                 Log.w(TAG, "Wellness done flag set without today's snapshot — clearing for retry")
                 workingMemoryRepository.clearWellnessCheckDone()
@@ -3918,6 +3997,7 @@ class ConversationViewModel(
                     prompt = prompt,
                 )
             }
+        val forceScore = forceWellnessDomainScore
         val context = WellnessWatchContext(
             proactivitySettings = proactivitySettingsRepository.load(),
             workingMemory = workingMemoryRepository.load(),
@@ -3925,15 +4005,20 @@ class ConversationViewModel(
             micSessionActive = VoiceSessionState.isActive,
             bodyConfigured = bodySettings.isConfigured(),
             bodyReachable = BodyReachability.isReachable(bodySettings),
-            llmBusy = llmJob?.isActive == true,
+            llmBusy = llmJob?.isActive == true && !allowDuringUserAsk,
             isNightMode = uiState.isNightMode,
             translationModeActive = translationModeRepository.getState().enabled,
             enabledDomainIds = enabledDomainIds,
             locateUser = { bodyLocateService.locateUserNow() },
+            todayDayKey = today,
+            lastSnapshotComputedAtMs = snap?.computedAtMs,
+            lastSnapshotDayKey = snap?.dayKey,
+            forceDomainScore = forceScore,
         )
         val phase = wellnessWatcher.nextPhase(context) ?: return
         if (phase == WellnessPhase.DOMAIN_SCORE) {
             syncHealthConnectExercisesBestEffort()
+            forceWellnessDomainScore = false
         }
         val input = wellnessContextBuilder.build(
             phase = phase,
@@ -3943,7 +4028,10 @@ class ConversationViewModel(
             customDomains = customDomains,
         )
         wellnessCheckInFlight = true
-        Log.i(TAG, "Wellness dispatch phase=$phase micActive=${VoiceSessionState.isActive}")
+        Log.i(
+            TAG,
+            "Wellness dispatch phase=$phase force=$forceScore micActive=${VoiceSessionState.isActive}",
+        )
         wellnessCheckOrchestrator.dispatch(input)
     }
 

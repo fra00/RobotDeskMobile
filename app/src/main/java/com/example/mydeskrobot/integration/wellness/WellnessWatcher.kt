@@ -19,17 +19,24 @@ data class WellnessWatchContext(
     val enabledDomainIds: Set<String> = WellnessDomains.ALL,
     /** Unused for v2 compute; kept for call-site compatibility. */
     val locateUser: suspend () -> Boolean = { false },
+    /** Calendar day key for "today" (yyyy-MM-dd). */
+    val todayDayKey: String = "",
+    /** Latest snapshot compute time, if any. */
+    val lastSnapshotComputedAtMs: Long? = null,
+    /** Day key of latest snapshot, if any. */
+    val lastSnapshotDayKey: String? = null,
+    /** On-demand ask («come sto?») — force DOMAIN_SCORE now (still skips redoing visual). */
+    val forceDomainScore: Boolean = false,
 )
 
 /**
  * Scheduling for Wellness **compute** (v2).
  *
- * Gates: enabled, LLM idle, not night, translation off, daily anchor, once/day.
+ * Gates: enabled, LLM idle, not night, translation off, daily anchor.
+ * DOMAIN_SCORE: first of day, or snapshot older than [ProactivitySettings.wellnessRescoreIntervalMinutes],
+ * or [WellnessWatchContext.forceDomainScore] (on-demand).
+ * VISUAL_ORDER: still once/day when body + order domain available.
  * **Not** gated on mic / hotword session (compute ≠ communicate).
- * Dropped vs v1: idle-after-dialog, user presence / locateUser, SILENT robot context
- * (SILENT still blocks **notification**, not compute).
- *
- * [WellnessWatchContext.micSessionActive] is unused for compute; kept for call-site compatibility.
  */
 class WellnessWatcher(
     private val nowMillis: () -> Long = System::currentTimeMillis,
@@ -40,13 +47,32 @@ class WellnessWatcher(
 
         val orderEnabled = WellnessDomains.ORDER in context.enabledDomainIds
         val bodyReady = context.bodyConfigured && context.bodyReachable
-        if (orderEnabled && bodyReady && !context.workingMemory.wellnessVisualDoneToday) {
+        // On-demand ask skips visual — score from text/log only; photos stay once/day via scheduler.
+        if (
+            !context.forceDomainScore &&
+            orderEnabled &&
+            bodyReady &&
+            !context.workingMemory.wellnessVisualDoneToday
+        ) {
             return WellnessPhase.VISUAL_ORDER
         }
-        if (!context.workingMemory.wellnessCheckDoneToday) {
+        if (needsDomainScore(context)) {
             return WellnessPhase.DOMAIN_SCORE
         }
         return null
+    }
+
+    fun needsDomainScore(context: WellnessWatchContext): Boolean {
+        if (context.forceDomainScore) return true
+        val computedAt = context.lastSnapshotComputedAtMs
+        val snapDay = context.lastSnapshotDayKey
+        val today = context.todayDayKey
+        if (computedAt == null || snapDay.isNullOrBlank() || today.isBlank() || snapDay != today) {
+            return true
+        }
+        val ageMinutes = (nowMillis() - computedAt) / 60_000L
+        val interval = context.proactivitySettings.wellnessRescoreIntervalMinutes.coerceIn(60, 720)
+        return ageMinutes >= interval
     }
 
     private fun baseSchedulingGates(context: WellnessWatchContext): Boolean {
@@ -54,6 +80,9 @@ class WellnessWatcher(
         if (context.isNightMode) return false
         if (context.llmBusy) return false
         if (context.translationModeActive) return false
+
+        // On-demand may skip waiting for the cold-start anchor.
+        if (context.forceDomainScore) return true
 
         // Anchor = first day activity timestamp (hotword-on or app session open).
         val anchor = context.workingMemory.firstHotwordOnTodayMs ?: return false

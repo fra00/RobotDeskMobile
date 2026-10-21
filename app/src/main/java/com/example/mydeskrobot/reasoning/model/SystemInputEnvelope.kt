@@ -212,7 +212,8 @@ data class SystemInputEnvelope(
                 }
             }.trimEnd()
 
-            val dedupKey = "wellness_check:${check.phase.name}:${check.timestamp / 60000}"
+            // Second-level bucket so on-demand / 3h rescore in the same minute is not dropped.
+            val dedupKey = "wellness_check:${check.phase.name}:${check.timestamp / 1000}"
 
             return SystemInputEnvelope(
                 input = check,

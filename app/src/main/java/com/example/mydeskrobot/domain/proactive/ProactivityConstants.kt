@@ -22,6 +22,10 @@ object ProactivityConstants {
     /** Minutes after first hotword-on before Wellness **compute** is eligible (v2). */
     const val WELLNESS_ANCHOR_MINUTES = 15
     /**
+     * Min age of today's DOMAIN_SCORE snapshot before an automatic rescore (visual order stays 1×/day).
+     */
+    const val WELLNESS_RESCORE_INTERVAL_MINUTES = 180
+    /**
      * Legacy v1 idle buffer — unused by Wellness v2 compute gates (kept for settings migration).
      */
     const val WELLNESS_IDLE_MINUTES = 5

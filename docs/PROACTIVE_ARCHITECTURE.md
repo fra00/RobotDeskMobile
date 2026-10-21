@@ -56,6 +56,7 @@ flowchart TB
 | Constant | Default | Meaning |
 |----------|---------|---------|
 | `N` (`wellnessAnchorMinutes`) | **15** (was 60 in v1) | Minutes after **first hotword-on of the day** before Wellness **compute** is eligible — only to avoid work at cold start |
+| `R` (`wellnessRescoreIntervalMinutes`) | **180** (3 h) | Auto **DOMAIN_SCORE** again when today's snapshot is older than R; **VISUAL_ORDER** stays 1×/day; notify still 1×/day. On-demand («come sto?») forces DOMAIN_SCORE then answers |
 | `idleMinutes` | — (v2) | **Removed from compute gates.** Was 5 min post-dialog buffer for v1 speak-coupled tick |
 | `W` (`wellnessPresenceMinutes`) | — (v2 compute) | **Not required for compute.** Kept only if a future optional voice path is re-enabled |
 | `wellnessNotifyCapPerDay` | 1 | Max Wellness **notifications** per day (replaces v1 `wellnessSpeakCapPerDay` TTS cap) |
@@ -310,7 +311,7 @@ All must pass before `SYSTEM_INPUT: wellness_check` **compute** phases:
 | Night | Suppress whole tick at night |
 | Translation mode | Off |
 | Daily anchor | `now - firstHotwordOnToday >= N` minutes (`N` default **15**) — timestamp set on first app session / hotword of the day |
-| Once per day | `wellnessCheckDoneToday` only after **snapshot persisted**; visual done after VISUAL_ORDER |
+| Rescore | DOMAIN_SCORE when no today's snapshot **or** age ≥ `wellnessRescoreIntervalMinutes` (default 3 h), or **force** on wellness ask; `wellnessCheckDoneToday` is bookkeeping only. Visual done once/day after VISUAL_ORDER |
 | Body for visual | `ordine_ambiente` on **and** body configured+reachable → may run `VISUAL_ORDER`; else skip visual |
 
 **Removed from compute (were v1 speak-coupled):**
