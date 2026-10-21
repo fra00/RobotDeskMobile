@@ -124,8 +124,6 @@ data class HeartbeatSettingsFormState(
     val predictivityEnabled: Boolean = true,
     val wellnessEnabled: Boolean = true,
     val wellnessAnchorMinutes: Int = ProactivityConstants.WELLNESS_ANCHOR_MINUTES,
-    val wellnessIdleMinutes: Int = ProactivityConstants.WELLNESS_IDLE_MINUTES,
-    val wellnessPresenceMinutes: Int = 15,
     val healthConnectEnabled: Boolean = false,
 )
 
@@ -141,8 +139,6 @@ fun HeartbeatSettings.toFormState(
     predictivityEnabled = proactivity.predictivityEnabled,
     wellnessEnabled = proactivity.wellnessEnabled,
     wellnessAnchorMinutes = proactivity.wellnessAnchorMinutes,
-    wellnessIdleMinutes = proactivity.wellnessIdleMinutes,
-    wellnessPresenceMinutes = proactivity.wellnessPresenceMinutes,
     healthConnectEnabled = proactivity.healthConnectEnabled,
 )
 

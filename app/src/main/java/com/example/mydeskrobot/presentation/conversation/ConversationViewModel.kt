@@ -1851,8 +1851,6 @@ class ConversationViewModel(
                 predictivityEnabled = form.predictivityEnabled,
                 wellnessEnabled = form.wellnessEnabled,
                 wellnessAnchorMinutes = form.wellnessAnchorMinutes,
-                wellnessIdleMinutes = form.wellnessIdleMinutes,
-                wellnessPresenceMinutes = form.wellnessPresenceMinutes,
                 healthConnectEnabled = form.healthConnectEnabled,
             )
             if (form.healthConnectEnabled) {

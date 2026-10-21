@@ -117,6 +117,11 @@ fun HeartbeatSettingsDialog(
                         modifier = Modifier.weight(1f),
                     )
                 }
+                Text(
+                    text = stringResource(R.string.heartbeat_time_window_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
 
                 Spacer(modifier = Modifier.height(12.dp))
 
@@ -207,6 +212,11 @@ fun HeartbeatSettingsDialog(
                     valueRange = 15f..180f,
                     steps = 10,
                     modifier = Modifier.fillMaxWidth(),
+                )
+                Text(
+                    text = stringResource(R.string.proactivity_wellness_anchor_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
 
                 Spacer(modifier = Modifier.height(12.dp))
